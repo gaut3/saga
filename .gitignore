@@ -21,3 +21,4 @@ Webpage/
 # Release obfuscation output — keep locally for crash symbolication
 build/debug-info/
 *.apk
+SAGA_NOTES_ADDENDUM.md

@@ -73,17 +73,18 @@ class ProgressBackup {
 
   static Future<ProgressBackupData?> pickAndParse() async {
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.any,
-      withData: true,
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      withData: false,
     );
     if (result == null || result.files.isEmpty) return null;
 
     final picked = result.files.first;
-    String content;
-    if (picked.bytes != null) {
-      content = utf8.decode(picked.bytes!);
-    } else if (picked.path != null) {
+    final String content;
+    if (picked.path != null) {
       content = await File(picked.path!).readAsString();
+    } else if (picked.bytes != null) {
+      content = utf8.decode(picked.bytes!);
     } else {
       return null;
     }

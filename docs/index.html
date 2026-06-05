@@ -436,7 +436,7 @@
           <rect class="sp sp3" x="105" y="36" width="22" height="128" rx="5" fill="#F4EAD8"/>
           <rect class="sp sp4" x="137" y="36" width="22" height="128" rx="5" fill="#F4EAD8"/>
         </svg>
-        <div class="eyebrow">Saga &middot; v1.0 &middot; For Plex</div>
+        <div class="eyebrow" id="hero-version">Saga &middot; For Plex</div>
       </div>
       <h1 class="hero-h1">
         Your audiobooks,<br>
@@ -607,8 +607,9 @@
         <a class="btn btn-amber btn-lg" href="https://github.com/gaut3/saga/releases/latest">&#8595; Download latest APK</a>
         <p class="download-note">Requires Android 5.0+. A running Plex Media Server with an audiobook library is required.</p>
         <p class="download-note">
-          To update without losing your data:<br>
-          <code>adb install -r saga.apk</code>
+          To update without losing your data, download the new APK and tap Install — Android
+          preserves your data as long as the app is signed with the same key. Or use
+          <code>adb install -r saga.apk</code> from a desktop.
         </p>
         <p class="download-note">
           Prefer to build from source?<br>
@@ -812,6 +813,17 @@
     });
   });
 })();
+
+// Fetch latest release tag and inject into hero eyebrow
+fetch('https://api.github.com/repos/gaut3/saga/releases/latest')
+  .then(r => r.ok ? r.json() : null)
+  .then(data => {
+    if (data && data.tag_name) {
+      const el = document.getElementById('hero-version');
+      if (el) el.textContent = 'Saga · ' + data.tag_name + ' · For Plex';
+    }
+  })
+  .catch(() => {});
 </script>
 </body>
 </html>
