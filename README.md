@@ -5,7 +5,7 @@
 
 **Saga** is a native Android audiobook player for [Plex Media Server](https://www.plex.tv/), built with Flutter. It picks up where Plex's own app leaves off — a focused listening experience designed around how audiobooks are actually consumed.
 
-> **Vibecoded.** Saga was built entirely through conversational AI-assisted development using [Claude](https://claude.ai). Every screen, every fix, and every architectural decision was written collaboratively in chat — no traditional coding sessions. This is a personal project to make a Plex audiobook app that i can really use.
+> **Vibecoded.** Saga was built entirely through conversational AI-assisted development using [Claude](https://claude.ai). Every screen, every fix, and every architectural decision was written collaboratively in chat — no traditional coding sessions. This is a personal project to make a Plex audiobook app that I can really use.
 
 ---
 
@@ -33,8 +33,6 @@
 **Custom Collections**
 - Create, rename, and delete collections
 - Drag-to-reorder within a collection (insertion order drives Up Next in Series)
-- Cover auto-set from the first book; bulk add from Browse long-press select mode
-- Download all tracks in a collection in one tap
 
 **Progress & Bookmarks**
 - Automatic position saving every 10 s, plus on pause, background, and process exit
@@ -58,7 +56,6 @@
 |---|---|---|
 | <img src="saga_handoff/assets/svg/mark/saga-mark-ink-bg.svg" width="80"> | <img src="saga_handoff/assets/svg/mark/saga-mark-cream-bg.svg" width="80"> | <img src="saga_handoff/assets/svg/mark/saga-mark-terra-bg.svg" width="80"> |
 
-Themes apply instantly across all screens with no restart.
 
 ---
 

@@ -10,7 +10,7 @@ Saga is a local-first Android app. This policy describes what data the app store
 
 All data lives on your device and nowhere else:
 
-- **Playback positions and bookmarks** — where you are in each book, named bookmarks you create.
+- **Playback positions and bookmarks** — your current position in each book and any named bookmarks you have saved.
 - **Listening history** — timestamps and durations of your listening sessions, used for the in-app stats screen.
 - **Settings** — playback speed, skip intervals, theme, animation preference.
 - **Downloaded audio files** — books you choose to download for offline playback.

@@ -1359,7 +1359,7 @@ class _FinishedPanel extends ConsumerWidget {
             runSpacing: 10,
             alignment: WrapAlignment.center,
             children: [
-              _FinChip(value: '$count×', label: 'times read'),
+              _FinChip(value: '$count×', label: 'times listened'),
               if (spanDays != null)
                 _FinChip(
                     value: '$spanDays ${spanDays == 1 ? 'day' : 'days'}',

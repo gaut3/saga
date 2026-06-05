@@ -1024,7 +1024,7 @@ class _SeriesQueueRow extends StatelessWidget {
             child: Row(
               children: [
                 Text(
-                  'Up next · ',
+                  'Up next in ',
                   style: TextStyle(
                     color: SagaColors.accent,
                     fontSize: 18,

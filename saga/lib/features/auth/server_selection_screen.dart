@@ -92,7 +92,7 @@ class ServerSelectionScreen extends ConsumerWidget {
                     style: TextStyle(color: SagaColors.fg),
                   ),
                   subtitle: Text(
-                    '${server.connections.length} connection(s)',
+                    '${server.connections.length} ${server.connections.length == 1 ? 'connection' : 'connections'}',
                     style: TextStyle(color: SagaColors.fgMuted),
                   ),
                   trailing: Icon(Icons.chevron_right, color: SagaColors.fgMuted),

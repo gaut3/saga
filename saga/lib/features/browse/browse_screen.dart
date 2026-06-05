@@ -349,7 +349,7 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                                   TextStyle(color: SagaColors.fg),
                               decoration: InputDecoration(
                                 hintText:
-                                    'Search by title, author, genre…',
+                                    'Search by title or author…',
                                 hintStyle: TextStyle(
                                     color: SagaColors.fgSubtle),
                                 prefixIcon: Icon(Icons.search,

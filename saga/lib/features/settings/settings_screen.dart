@@ -143,7 +143,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _SwitchTile(
                   icon: Icons.history_rounded,
                   title: 'Auto-rewind on resume',
-                  subtitle: 'Skip back a little when resuming after a pause',
+                  subtitle: 'Rewind slightly when resuming playback',
                   value: _autoRewind,
                   onChanged: (v) async {
                     await SettingsStore.setAutoRewindEnabled(v);
@@ -186,13 +186,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _SettingsTile(
                   icon: Icons.upload_outlined,
                   title: 'Export progress',
-                  subtitle: 'Share a backup of your reading positions and bookmarks',
+                  subtitle: 'Share a backup of your listening positions and bookmarks',
                   onTap: _exportProgress,
                 ),
                 _SettingsTile(
                   icon: Icons.download_outlined,
                   title: 'Import progress',
-                  subtitle: 'Restore from a previously exported backup file',
+                  subtitle: 'Restore from an exported backup file',
                   onTap: _importProgress,
                 ),
                 _SettingsTile(
@@ -290,7 +290,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           title: Text('Restore progress',
               style: TextStyle(color: SagaColors.fg)),
           content: Text(
-            'Restore ${data.positions.length} book position${data.positions.length == 1 ? '' : 's'}, '
+            'Restore ${data.positions.length} listening position${data.positions.length == 1 ? '' : 's'}, '
             '${data.completed.length} completed, '
             '${data.namedBookmarks.length} bookmark${data.namedBookmarks.length == 1 ? '' : 's'}?',
             style: TextStyle(color: SagaColors.fgMuted),

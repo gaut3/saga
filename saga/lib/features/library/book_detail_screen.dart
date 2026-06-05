@@ -307,9 +307,9 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                                           ? Icons.restart_alt
                                           : Icons.play_arrow),
                                   label: Text(_isCompleted
-                                      ? 'Relisten'
+                                      ? 'Listen again'
                                       : savedPosition != null
-                                          ? 'From Start'
+                                          ? 'From start'
                                           : 'Play'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: savedPosition != null

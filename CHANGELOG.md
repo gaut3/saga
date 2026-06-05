@@ -13,6 +13,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - All snackbars replaced app-wide with a custom overlay toast appearing at the top of the screen, avoiding bottom navigation margin issues entirely. Toasts are tappable to dismiss early. Error toasts (playback error, server unreachable, failed import/export) stay visible for 4 seconds; informational toasts dismiss after 2.5 seconds.
 - Settings screen version display was hardcoded to `v1.0.0`. Now reads from `pubspec.yaml` at runtime via `package_info_plus`.
 
+### Changed
+- User-facing text pass: "Relisten" → "Listen again"; "From Start" → "From start"; "times read" → "times listened"; "reading/book positions" → "listening positions"; server connection count now uses correct singular/plural; search hint no longer mentions genre (genre is not searchable); "Up next · " separator changed to "Up next in "; "Skip back a little when resuming after a pause" reworded to "Rewind slightly when resuming playback".
+
 ---
 
 ## [1.0.0] – 2026-06-05
