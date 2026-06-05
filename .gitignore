@@ -20,3 +20,4 @@ Webpage/
 
 # Release obfuscation output — keep locally for crash symbolication
 build/debug-info/
+*.apk
