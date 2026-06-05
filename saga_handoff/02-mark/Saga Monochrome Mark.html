@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Saga — Monochrome mark</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#1C140F; --card:#271C15; --elev:#241A13; --ink:#1C140F;
+    --amber:#E8A24A; --cream:#F2E7D6; --terra:#C2603C; --sub:#CDBBA6; --muted:#8C7C6C;
+    --line:rgba(242,231,214,0.10); --line2:rgba(242,231,214,0.16);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:#15100C; color:var(--cream); font-family:'Manrope',sans-serif; min-height:100vh; padding:44px; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1100px; margin:0 auto;}
+  .head{margin-bottom:32px;}
+  .head h1{font-weight:800; letter-spacing:-0.035em; font-size:33px; margin:0 0 8px;}
+  .head p{margin:0; color:rgba(242,231,214,0.55); font-size:14px; line-height:1.5; max-width:620px;}
+  .sec{margin-bottom:42px;}
+  .sec-head{display:flex; justify-content:space-between; align-items:baseline; padding-bottom:10px; margin-bottom:22px; border-bottom:1px solid var(--line);}
+  .sec-head h2{font-weight:700; font-size:18px; letter-spacing:-0.02em; margin:0;}
+  .sec-num{font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.2em; color:rgba(242,231,214,0.4);}
+
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  @media(max-width:820px){.grid{grid-template-columns:1fr;}}
+
+  /* swatches */
+  .swatches{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .sw{border-radius:16px; padding:40px; display:flex; flex-direction:column; align-items:center; gap:18px; box-shadow:0 0 0 1px rgba(255,255,255,0.04);}
+  .sw img{width:120px; height:120px;}
+  .sw.dark{background:var(--ink);} .sw.light{background:var(--cream); color:var(--ink);}
+  .sw .cap{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; opacity:0.55;}
+  .sw.light .cap{color:var(--ink);}
+
+  /* android phone mock */
+  .device{width:340px; margin:0 auto; border-radius:34px; overflow:hidden; background:#0E0B08; box-shadow:0 40px 80px -40px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.05);}
+  .shade{background:linear-gradient(180deg,#241A13,#1A130D); min-height:480px; padding:0 0 20px;}
+  .sysbar{display:flex; justify-content:space-between; align-items:center; padding:9px 18px 7px; font-family:'Roboto',sans-serif; font-size:12.5px; color:#fff; font-weight:500;}
+  .sysbar .icons{display:flex; align-items:center; gap:7px;}
+  .sysbar .icons img{width:13px; height:13px; opacity:0.95;}
+  .sysbar .icons svg{width:14px; height:14px;}
+  .shclock{text-align:center; padding:18px 0 6px; font-family:'Roboto',sans-serif;}
+  .shclock .t{font-size:54px; font-weight:300; color:#fff; line-height:1;}
+  .shclock .d{font-size:13px; color:rgba(255,255,255,0.7); margin-top:4px;}
+  .notif{background:#2B2018; margin:14px 12px 0; border-radius:22px; padding:14px 16px; font-family:'Roboto',sans-serif;}
+  .notif .nhead{display:flex; align-items:center; gap:8px; font-size:12px; color:rgba(255,255,255,0.65); margin-bottom:10px;}
+  .notif .nhead img{width:15px; height:15px;}
+  .notif .nhead .dot{width:3px; height:3px; border-radius:50%; background:rgba(255,255,255,0.4);}
+  .nbody{display:grid; grid-template-columns:auto 1fr auto; gap:13px; align-items:center;}
+  .nbody .art{width:52px; height:52px; border-radius:9px; background:linear-gradient(150deg,#3a2a1c,#22160f); box-shadow:inset 0 0 0 1px rgba(242,231,214,0.08); flex:none;}
+  .nbody .nt .a{color:#fff; font-size:14.5px; font-weight:500; line-height:1.2;}
+  .nbody .nt .b{color:rgba(255,255,255,0.6); font-size:12.5px; margin-top:3px;}
+  .nbody .np{width:42px; height:42px; border-radius:50%; background:var(--amber); display:grid; place-items:center; flex:none;}
+  .nbody .np svg{width:20px; height:20px;}
+  .nrow{display:flex; gap:8px; margin-top:13px;}
+  .nrow .chip{flex:1; text-align:center; font-size:12.5px; color:rgba(255,255,255,0.8); padding:7px; border-radius:99px; background:rgba(255,255,255,0.06);}
+
+  .lockchip{display:flex; align-items:center; gap:7px; background:rgba(255,255,255,0.07); border-radius:99px; padding:5px 12px 5px 8px; font-family:'Roboto'; font-size:12px; color:rgba(255,255,255,0.8);}
+  .lockchip img{width:14px; height:14px;}
+
+  /* density strip */
+  .density{display:flex; align-items:flex-end; gap:30px; background:var(--bg); border-radius:16px; padding:34px 30px; flex-wrap:wrap; box-shadow:0 0 0 1px rgba(255,255,255,0.03);}
+  .dcell{display:flex; flex-direction:column; align-items:center; gap:12px;}
+  .dchip{background:#0E0B08; border-radius:10px; display:grid; place-items:center; box-shadow:inset 0 0 0 1px rgba(255,255,255,0.06);}
+  .dcell .dl{font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.1em; color:var(--muted); text-align:center; line-height:1.4;}
+
+  .files{font-family:'JetBrains Mono',monospace; font-size:11.5px; line-height:1.9; color:var(--sub); background:#120D0A; border:1px solid var(--line); border-radius:12px; padding:18px 22px;}
+  .files b{color:var(--cream);}
+  .files .dir{color:var(--amber);}
+
+  .note{margin-top:14px; background:var(--elev); border:1px solid var(--line); border-radius:16px; padding:20px 24px; font-size:13.5px; line-height:1.62; color:rgba(242,231,214,0.72);}
+  .note b{color:var(--amber); font-weight:700;}
+  .note + .note{margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>Monochrome mark</h1>
+    <p>A flat, single-colour silhouette of the spine mark for places that can’t take colour: the status bar, notification small icon, and any tinted system surface. No accent bar, no text lines, no gradient — just the shape.</p>
+  </div>
+
+  <!-- 01 the two fills -->
+  <section class="sec">
+    <div class="sec-head"><h2>Two fills, one shape</h2><div class="sec-num">01 · WHITE + BLACK · TRANSPARENT</div></div>
+    <div class="swatches">
+      <div class="sw dark"><img src="assets/saga-mono-white.png" alt="White monochrome mark"><div class="cap">saga-mono-white.png · for dark / tinted surfaces</div></div>
+      <div class="sw light"><img src="assets/saga-mono-black.png" alt="Black monochrome mark"><div class="cap">saga-mono-black.png · for light surfaces</div></div>
+    </div>
+    <div class="note">Both are the <b>same silhouette</b> — the resting 4-spine pose, vertically centred. The accent bar is dropped (a monochrome icon can’t carry it) and so are the spine text-lines (they’d disappear or smear at this size).</div>
+  </section>
+
+  <!-- 02 in context: android -->
+  <section class="sec">
+    <div class="sec-head"><h2>In context · Android</h2><div class="sec-num">02 · STATUS BAR + NOTIFICATION SHADE</div></div>
+    <div class="grid">
+      <div class="device">
+        <div class="shade">
+          <div class="sysbar">
+            <div class="icons">
+              <!-- saga small icon sits among status icons, tinted white -->
+              <img src="assets/notification/saga-notification-xhdpi-48.png" alt="Saga status icon">
+              <svg viewBox="0 0 24 24" fill="#fff"><path d="M5 18h4V8H5v10zm6 0h2V4h-2v14zm6 0h2v-6h-2v6z"/></svg>
+            </div>
+            <span>12:48</span>
+            <div class="icons">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M2 9.5a14 14 0 0 1 20 0"/><path d="M5 13a9 9 0 0 1 14 0"/><circle cx="12" cy="17" r="1.4" fill="#fff" stroke="none"/></svg>
+              <svg viewBox="0 0 24 24" fill="#fff"><path d="M2 7h15v10H2z"/><path d="M19 10h2v4h-2z"/></svg>
+            </div>
+          </div>
+          <div class="shclock"><div class="t">12:48</div><div class="d">Tue, Jun 2</div></div>
+
+          <div class="notif">
+            <div class="nhead"><img src="assets/notification/saga-notification-xhdpi-48.png" alt="Saga"><span>Saga</span><span class="dot"></span><span>now playing</span></div>
+            <div class="nbody">
+              <div class="art"></div>
+              <div class="nt"><div class="a">Overlord, Vol. 8: The Two Leaders</div><div class="b">Kugane Maruyama</div></div>
+              <div class="np"><svg viewBox="0 0 24 24" fill="#1C140F"><path d="M7 5h3v14H7zM14 5h3v14h-3z"/></svg></div>
+            </div>
+            <div class="nrow"><div class="chip">‹‹ 30</div><div class="chip">Pause</div><div class="chip">30 ››</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="files">
+<span class="dir">assets/</span>
+  <b>saga-mono-white.png</b>      1024² · white
+  <b>saga-mono-black.png</b>      1024² · black
+  <span class="dir">notification/</span>
+    saga-notification-<b>mdpi-24</b>.png
+    saga-notification-<b>hdpi-36</b>.png
+    saga-notification-<b>xhdpi-48</b>.png
+    saga-notification-<b>xxhdpi-72</b>.png
+    saga-notification-<b>xxxhdpi-96</b>.png
+        </div>
+        <div class="note"><b>Android rule:</b> the notification small icon <b>must</b> be white-on-transparent — the OS tints the silhouette to match the system theme, discarding any colour. These are exported white at the five density buckets so they stay crisp from the status bar (24 dp) up.</div>
+        <div class="note"><b>iOS:</b> use the white master as a template image (renders monochrome, tinted by the system) for things like the Control Center / lock-screen player glyph.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 density set -->
+  <section class="sec">
+    <div class="sec-head"><h2>Density set</h2><div class="sec-num">03 · 24 → 96 PX · WHITE</div></div>
+    <div class="density">
+      <div class="dcell"><div class="dchip" style="width:24px;height:24px"><img src="assets/notification/saga-notification-mdpi-24.png" style="width:24px;height:24px"></div><div class="dl">mdpi<br>24px</div></div>
+      <div class="dcell"><div class="dchip" style="width:36px;height:36px"><img src="assets/notification/saga-notification-hdpi-36.png" style="width:36px;height:36px"></div><div class="dl">hdpi<br>36px</div></div>
+      <div class="dcell"><div class="dchip" style="width:48px;height:48px"><img src="assets/notification/saga-notification-xhdpi-48.png" style="width:48px;height:48px"></div><div class="dl">xhdpi<br>48px</div></div>
+      <div class="dcell"><div class="dchip" style="width:72px;height:72px"><img src="assets/notification/saga-notification-xxhdpi-72.png" style="width:72px;height:72px"></div><div class="dl">xxhdpi<br>72px</div></div>
+      <div class="dcell"><div class="dchip" style="width:96px;height:96px"><img src="assets/notification/saga-notification-xxxhdpi-96.png" style="width:96px;height:96px"></div><div class="dl">xxxhdpi<br>96px</div></div>
+    </div>
+    <div class="note">Drawn with a generous safe-zone (mark fills ~66% of the canvas) so it never clips when the system masks or pads it. The master 1024² files are for anything larger — print, docs, vector re-export.</div>
+  </section>
+</div>
+</body>
+</html>

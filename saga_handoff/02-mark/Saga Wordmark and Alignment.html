@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Saga — Wordmark & alignment</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#1C140F; --card:#271C15; --elev:#241A13; --ink:#1C140F;
+    --amber:#E8A24A; --cream:#F2E7D6; --terra:#C2603C; --sub:#CDBBA6; --muted:#8C7C6C;
+    --line:rgba(242,231,214,0.10); --line2:rgba(242,231,214,0.16);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:#15100C; color:var(--cream); font-family:'Manrope',sans-serif; min-height:100vh; padding:44px; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1120px; margin:0 auto;}
+  .head{margin-bottom:34px;}
+  .head h1{font-weight:800; letter-spacing:-0.035em; font-size:34px; margin:0 0 8px;}
+  .head p{margin:0; color:rgba(242,231,214,0.55); font-size:14px; line-height:1.5; max-width:600px;}
+  .sec{margin-bottom:46px;}
+  .sec-head{display:flex; justify-content:space-between; align-items:baseline; padding-bottom:10px; margin-bottom:24px; border-bottom:1px solid var(--line);}
+  .sec-head h2{font-weight:700; font-size:18px; letter-spacing:-0.02em; margin:0;}
+  .sec-num{font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.2em; color:rgba(242,231,214,0.4);}
+
+  /* weight ladder */
+  .ladder{background:var(--bg); border-radius:18px; padding:14px 30px; box-shadow:0 0 0 1px rgba(255,255,255,0.03);}
+  .lrow{display:flex; align-items:center; gap:30px; padding:18px 0; border-bottom:1px solid var(--line);}
+  .lrow:last-child{border-bottom:none;}
+  .lmeta{width:150px; flex:none; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.08em; color:var(--muted);}
+  .lmeta b{display:block; color:var(--sub); font-size:12px; margin-bottom:3px; letter-spacing:0.12em;}
+  .wm{display:inline-flex; align-items:baseline; gap:0.1em; font-size:46px; line-height:1; color:var(--cream); letter-spacing:-0.02em;}
+  .wm .tri{width:0.34em; height:0.34em; align-self:center; margin-left:0.12em;}
+  .lrow.pick{background:linear-gradient(90deg,rgba(232,162,74,0.08),transparent); border-radius:12px; margin:0 -14px; padding-left:14px; padding-right:14px;}
+  .tag{font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; padding:4px 9px; border-radius:99px; background:rgba(232,162,74,0.18); color:var(--amber); margin-left:auto;}
+  .tag.dim{background:rgba(242,231,214,0.07); color:var(--muted);}
+
+  /* alignment compare */
+  .cmp{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  @media(max-width:780px){.cmp{grid-template-columns:1fr;}}
+  .cell{background:var(--bg); border-radius:18px; padding:38px 28px 26px; display:flex; flex-direction:column; align-items:center; gap:20px; box-shadow:0 0 0 1px rgba(255,255,255,0.03);}
+  .cell .big{height:150px; display:flex; align-items:center;}
+  .fold{display:flex; align-items:center; gap:14px; color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase;}
+  .cell .nm{font-size:18px; font-weight:700; text-align:center;}
+  .cell .ds{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); text-align:center; line-height:1.55;}
+  .verdict{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; padding:5px 11px; border-radius:99px;}
+  .v-good{background:rgba(232,162,74,0.18); color:var(--amber);} .v-bad{background:rgba(242,231,214,0.07); color:var(--muted);}
+
+  /* mark + animation */
+  .mk .sp{fill:currentColor; transform-box:fill-box; transform:scaleY(var(--h,0.6)); transition:transform .1s linear;}
+  .mk .sb{fill:var(--accent);}
+  .mk.center .sp{transform-origin:center;}
+  .mk.shelf .sp{transform-origin:center bottom;}
+
+  /* lockups */
+  .locks{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  @media(max-width:780px){.locks{grid-template-columns:1fr;}}
+  .lock{border-radius:18px; padding:44px; display:flex; flex-direction:column; gap:26px; box-shadow:0 30px 60px -36px rgba(0,0,0,0.5);}
+  .lock.dark{background:var(--ink); color:var(--cream);} .lock.light{background:var(--cream); color:var(--ink);}
+  .lockrow{display:flex; align-items:center; gap:18px;}
+  .lockrow .mk{width:58px; height:58px; flex:none;}
+  .lockrow .word{font-weight:600; font-size:50px; line-height:1; letter-spacing:-0.025em; display:inline-flex; align-items:center;}
+  .lockrow .word .tri{width:0.3em; height:0.3em; margin-left:0.14em;}
+  .lockcap{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; opacity:0.5;}
+
+  .note{margin-top:14px; background:var(--elev); border:1px solid var(--line); border-radius:16px; padding:20px 24px; font-size:13.5px; line-height:1.62; color:rgba(242,231,214,0.72);}
+  .note b{color:var(--amber); font-weight:700;}
+  .note + .note{margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>Wordmark weight & spine alignment</h1>
+    <p>Two open questions: how heavy should “saga” be (the app reads lighter than extrabold), and should the spines sit on a shelf or grow from the centre? The centre answer also decides how cleanly they fold into the play triangle.</p>
+  </div>
+
+  <!-- 01 weight ladder -->
+  <section class="sec">
+    <div class="sec-head"><h2>How heavy is “saga”?</h2><div class="sec-num">01 · MANROPE WEIGHT LADDER</div></div>
+    <div class="ladder" id="ladder"></div>
+    <div class="note">It’s <b>Manrope</b>, but your app is clearly not the 800 I’d been using on the lockups — it reads around <b>500–600</b>. My pick is <b>600 (SemiBold)</b>: confident and legible at small sizes without the chunky, logo-shouting feel of extrabold. 800 is great only for very large hero moments. (If the app font is actually something other than Manrope, send the name and I’ll match it — but the proportions look like Manrope.)</div>
+  </section>
+
+  <!-- 02 centered vs shelf -->
+  <section class="sec">
+    <div class="sec-head"><h2>Centred, not on a shelf</h2><div class="sec-num">02 · ALIGNMENT</div></div>
+    <div class="cmp">
+      <div class="cell">
+        <div class="big"><svg class="mk center live" data-accent="1" width="150" height="150" viewBox="0 0 200 200"></svg></div>
+        <div class="fold">folds to
+          <svg width="46" height="46" viewBox="0 0 200 200"><path d="M41 36 L159 100 L41 164 Z" fill="var(--amber)"/></svg>
+          a clean ▶
+        </div>
+        <div class="nm">Centred</div>
+        <div class="ds">grows symmetrically<br>from the mid-line</div>
+        <span class="verdict v-good">use this</span>
+      </div>
+      <div class="cell">
+        <div class="big"><svg class="mk shelf live" data-accent="1" width="150" height="150" viewBox="0 0 200 200"></svg></div>
+        <div class="fold">folds to
+          <svg width="46" height="46" viewBox="0 0 200 200"><path d="M41 36 L159 164 L41 164 Z" fill="var(--muted)"/></svg>
+          a lopsided ramp
+        </div>
+        <div class="nm">On a shelf</div>
+        <div class="ds">bottom-anchored<br>like books / a meter</div>
+        <span class="verdict v-bad">breaks the morph</span>
+      </div>
+    </div>
+    <div class="note">Centred wins for one concrete reason: <b>a play triangle is vertically symmetric</b>, so centred spines fold straight into it. Bottom-anchored spines fold into a right-angled ramp instead — the morph that ties the brand to the play button only works centred. Centred also pairs better with the wordmark, sitting on the same optical mid-line as the lowercase x-height rather than dropping below the baseline.</div>
+  </section>
+
+  <!-- 03 lockup -->
+  <section class="sec">
+    <div class="sec-head"><h2>The lockup</h2><div class="sec-num">03 · MARK + WORDMARK · 600</div></div>
+    <div class="locks">
+      <div class="lock dark">
+        <div class="lockrow">
+          <svg class="mk center" data-accent="1" data-static="1" viewBox="0 0 200 200"></svg>
+          <span class="word">saga<svg class="tri" viewBox="0 0 100 100"><path d="M20 12 L84 50 L20 88 Z" fill="var(--amber)"/></svg></span>
+        </div>
+        <div class="lockcap">Ink theme · cream spines · amber accent + triangle</div>
+      </div>
+      <div class="lock light">
+        <div class="lockrow">
+          <svg class="mk center" data-accent="1" data-static="1" viewBox="0 0 200 200" style="--accent:var(--terra)"></svg>
+          <span class="word">saga<svg class="tri" viewBox="0 0 100 100"><path d="M20 12 L84 50 L20 88 Z" fill="var(--terra)"/></svg></span>
+        </div>
+        <div class="lockcap">Cream theme · ink spines · terra accent + triangle</div>
+      </div>
+    </div>
+    <div class="note">Two wordmark options in play: keep the app’s <b>“saga ▶”</b> (word + play triangle) as the text logo, and use the <b>4-spine mark</b> as the standalone icon/app-icon — or lock them together as shown for a fuller brand signature. The triangle and the mark are the same idea (folded vs unfolded), so they’re consistent either way.</div>
+  </section>
+</div>
+
+<script>
+  // weight ladder
+  const ladder = document.getElementById('ladder');
+  const tri = '<svg class="tri" viewBox="0 0 100 100"><path d="M20 12 L84 50 L20 88 Z" fill="var(--amber)"/></svg>';
+  [
+    {w:800, n:'ExtraBold', note:'hero only', dim:true},
+    {w:700, n:'Bold', note:'', dim:true},
+    {w:600, n:'SemiBold', note:'recommended', pick:true},
+    {w:500, n:'Medium', note:'app-like', pick:false, app:true},
+    {w:400, n:'Regular', note:'', dim:true},
+    {w:300, n:'Light', note:'too thin at size', dim:true},
+  ].forEach(r=>{
+    const row = document.createElement('div');
+    row.className = 'lrow' + (r.pick?' pick':'');
+    row.innerHTML =
+      `<div class="lmeta"><b>${r.n}</b>weight ${r.w}</div>`+
+      `<span class="wm" style="font-weight:${r.w}">saga${tri}</span>`+
+      (r.pick?'<span class="tag">★ pick · 600</span>':(r.app?'<span class="tag">app ≈ 500</span>':(r.note?`<span class="tag dim">${r.note}</span>`:'')));
+    ladder.appendChild(row);
+  });
+
+  // build marks (4 upright spines)
+  const BARS=[[41],[73],[105],[137]];
+  function buildMark(svg){
+    let h='';
+    const cls=['sa','sb','sc','sd'];
+    BARS.forEach((b,i)=>{ h+=`<rect class="sp ${cls[i]}" x="${b[0]}" y="36" width="22" height="128" rx="5"></rect>`; });
+    svg.innerHTML=h;
+    if(svg.dataset.static){
+      // resting "centred logo" pose — varied heights, centred on y=100
+      const hs=[104,124,88,108];
+      svg.querySelectorAll('.sp').forEach((r,i)=>{ r.style.setProperty('--h',(hs[i]/128).toFixed(3)); });
+    }
+  }
+  document.querySelectorAll('.mk').forEach(buildMark);
+
+  // loudness sim for the live marks
+  const live=[...document.querySelectorAll('.mk.live')];
+  let phase=0, master=0.6, mTarget=0.6;
+  const off=[0,1.1,2.3,3.4], rate=[1,1.6,1.3,2.0];
+  function frame(){
+    phase+=0.09;
+    if(Math.random()<0.04) mTarget=0.4+Math.random()*0.55;
+    master+=(mTarget-master)*0.12;
+    live.forEach(svg=>{
+      svg.querySelectorAll('.sp').forEach((b,i)=>{ let h=master+0.18*Math.sin(phase*rate[i]+off[i]); h=Math.max(0.16,Math.min(1,h)); b.style.setProperty('--h',h.toFixed(3)); });
+    });
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>

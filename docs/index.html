@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Saga — Audiobook player for Plex</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="A native Android audiobook player for your self-hosted Plex library. Stream, download offline, and track your listening. Free and open source." />
+  <meta property="og:title" content="Saga — Audiobook player for Plex" />
+  <meta property="og:description" content="Stream audiobooks from your Plex server. No subscription, no telemetry, all yours." />
+  <meta property="og:type" content="website" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --ink:    #1E1410;
+      --ink-bg: #150E0A;
+      --cream:  #F4EAD8;
+      --amber:  #E0A050;
+      --terra:  #C25A3A;
+      --sub:    rgba(244,234,216,0.62);
+      --sub2:   rgba(244,234,216,0.35);
+      --border: rgba(244,234,216,0.07);
+      --ff-body:    'Manrope', system-ui, sans-serif;
+      --ff-display: 'Instrument Serif', Georgia, serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--ff-body);
+      background: var(--ink-bg);
+      color: var(--cream);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ─── ANIMATED MARK ─── */
+    /* Uniform bar geometry for ALL animated states: y=36 h=128, centred at y=100.
+       Logo-pose (varied heights) is static-only — nav and footer only. */
+    .mark .sp, .demo-mark .sp {
+      transform-box: fill-box;
+      transform-origin: center center;
+    }
+
+    /* Playing — synthetic RMS envelope per spec:
+       levels[i] = master + 0.18·sin(phase·rate[i] + off[i])
+       rate=[1,1.6,1.3,2.0]  off=[0,1.1,2.3,3.4]  master≈0.68
+       → periods from rate: 2.4 / rate[i] */
+    @keyframes sp1 {
+      0%,100% { transform: scaleY(0.78); }
+      40%     { transform: scaleY(0.50); }
+      70%     { transform: scaleY(0.86); }
+    }
+    @keyframes sp2 {
+      0%,100% { transform: scaleY(0.72); }
+      35%     { transform: scaleY(0.90); }
+      65%     { transform: scaleY(0.50); }
+    }
+    @keyframes sp3 {
+      0%,100% { transform: scaleY(0.80); }
+      50%     { transform: scaleY(0.48); }
+    }
+    @keyframes sp4 {
+      0%,100% { transform: scaleY(0.65); }
+      30%     { transform: scaleY(0.94); }
+      68%     { transform: scaleY(0.54); }
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      /* periods: 2.4s / rate;  delays: off/(2π) × period */
+      .mark.playing .sp1 { animation: sp1 2.40s ease-in-out infinite 0.00s; }
+      .mark.playing .sp2 { animation: sp2 1.50s ease-in-out infinite 0.26s; }
+      .mark.playing .sp3 { animation: sp3 1.85s ease-in-out infinite 0.68s; }
+      .mark.playing .sp4 { animation: sp4 1.20s ease-in-out infinite 0.65s; }
+    }
+
+    /* ─── NAV ─── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 56px; height: 68px;
+      background: rgba(21,14,10,0.88);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex; align-items: center; gap: 9px; text-decoration: none;
+    }
+    .nav-wordmark {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-family: var(--ff-body); font-weight: 600; font-size: 19px;
+      letter-spacing: -0.025em; color: var(--cream);
+    }
+
+    .nav-links { display: flex; gap: 32px; list-style: none; }
+    .nav-links a {
+      font-size: 13px; font-weight: 500;
+      color: var(--sub); text-decoration: none;
+      transition: color .15s;
+    }
+    .nav-links a:hover { color: var(--cream); }
+
+    /* ─── BUTTONS ─── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-family: var(--ff-body); font-weight: 700;
+      border-radius: 99px; text-decoration: none; cursor: pointer;
+      transition: opacity .15s, transform .15s;
+      border: none;
+    }
+    .btn:hover { opacity: .88; transform: translateY(-1px); }
+
+    .btn-amber { background: var(--amber); color: var(--ink); }
+    .btn-sm  { font-size: 13px; padding: 10px 20px; }
+    .btn-md  { font-size: 15px; padding: 15px 28px; }
+    .btn-lg  { font-size: 16px; padding: 18px 34px; }
+
+    .btn-ghost {
+      background: transparent; color: var(--cream);
+      border: 1px solid rgba(244,234,216,.22);
+    }
+    .btn-ghost:hover { border-color: rgba(244,234,216,.45); opacity: 1; }
+
+    /* ─── PHONE FRAME ─── */
+    .phone {
+      border-radius: 40px; overflow: hidden; background: #060302;
+      box-shadow:
+        0 50px 80px -30px rgba(0,0,0,.75),
+        0 0 0 7px #100806,
+        0 0 0 8px rgba(244,234,216,.04);
+      flex-shrink: 0;
+    }
+    .phone img { display: block; width: 100%; }
+
+    /* ─── HERO ─── */
+    #hero {
+      position: relative; overflow: hidden;
+      min-height: 100svh;
+      display: flex; align-items: center;
+      padding: 100px 56px 80px;
+    }
+
+    .hero-glow {
+      position: absolute; right: -80px; top: -180px;
+      width: 860px; height: 860px; pointer-events: none;
+      background: radial-gradient(circle, rgba(224,160,80,.2) 0%, rgba(194,90,58,.06) 45%, transparent 68%);
+      filter: blur(18px);
+    }
+
+    .hero-grid {
+      position: absolute; inset: 0; pointer-events: none; opacity: .032;
+      background-image:
+        linear-gradient(rgba(244,234,216,1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(244,234,216,1) 1px, transparent 1px);
+      background-size: 48px 48px;
+    }
+
+    .hero-inner {
+      position: relative;
+      max-width: 1240px; margin: 0 auto; width: 100%;
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 80px; align-items: center;
+    }
+
+    .hero-copy { display: flex; flex-direction: column; gap: 22px; }
+
+    .eyebrow {
+      font-size: 10.5px; font-weight: 600;
+      letter-spacing: .2em; text-transform: uppercase;
+      color: var(--amber);
+    }
+
+    .hero-h1 {
+      font-family: var(--ff-display);
+      font-size: clamp(50px, 5.5vw, 84px);
+      line-height: .97; letter-spacing: -.02em;
+    }
+    .hero-h1 em { color: var(--amber); font-style: italic; }
+
+    .hero-sub {
+      font-size: 17px; line-height: 1.58;
+      color: var(--sub); max-width: 460px;
+    }
+
+    .hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+
+    .hero-trust {
+      display: flex; gap: 26px; flex-wrap: wrap; margin-top: 6px;
+    }
+    .hero-trust span {
+      font-size: 10px; font-weight: 600;
+      letter-spacing: .16em; text-transform: uppercase;
+      color: var(--sub2);
+    }
+
+    .hero-phones {
+      position: relative; height: 580px;
+    }
+    .hero-phones .phone-a {
+      position: absolute; left: 0; top: 80px;
+      width: 210px; transform: rotate(-7deg);
+    }
+    .hero-phones .phone-b {
+      position: absolute; left: 150px; top: 10px;
+      width: 245px; transform: rotate(3deg); z-index: 2;
+    }
+
+    /* ─── SHARED SECTION CHROME ─── */
+    .section { padding: 120px 56px; }
+    .section-inner { max-width: 1200px; margin: 0 auto; }
+
+    .section-h2 {
+      font-family: var(--ff-display);
+      font-size: clamp(34px, 3.8vw, 52px);
+      line-height: 1.05; margin: 14px 0 64px;
+    }
+
+    /* ─── MARK DEMO ─── */
+    /* Animations are JS-driven (rAF morph engine). Only layout here. */
+    #mark-demo { padding: 100px 56px; text-align: center; }
+    .demo-caption { font-size: 14px; color: var(--sub); margin-top: 10px; }
+    .demo-stage {
+      display: flex; justify-content: center; align-items: center;
+      height: 200px; margin: 40px 0 32px;
+    }
+
+    /* state bar */
+    .state-bar {
+      display: inline-flex; background: rgba(244,234,216,0.06);
+      border-radius: 99px; padding: 4px; gap: 2px;
+    }
+    .state-btn {
+      font-family: var(--ff-body); font-size: 12px; font-weight: 600;
+      color: var(--sub); background: transparent; border: none;
+      padding: 8px 18px; border-radius: 99px; cursor: pointer;
+      transition: background .15s, color .15s; white-space: nowrap;
+    }
+    .state-btn:hover { color: var(--cream); }
+    .state-btn.active { background: var(--amber); color: var(--ink); }
+
+    /* ─── FEATURES ─── */
+    #features { background: var(--ink); }
+
+    .features-grid {
+      display: grid; grid-template-columns: repeat(3,1fr);
+      gap: 48px; align-items: end;
+    }
+
+    .feature-card {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 28px;
+    }
+    .feature-card .phone { width: 230px; }
+
+    .feature-copy { text-align: center; }
+    .feature-copy .feature-eyebrow {
+      font-size: 10px; font-weight: 600;
+      letter-spacing: .2em; text-transform: uppercase;
+      color: var(--terra); margin-bottom: 10px;
+    }
+    .feature-copy h3 {
+      font-family: var(--ff-display);
+      font-size: 26px; line-height: 1.1; margin-bottom: 10px;
+    }
+    .feature-copy p { font-size: 14px; line-height: 1.62; color: var(--sub); }
+
+    /* ─── THEMES ─── */
+    #themes {}
+
+    .themes-grid {
+      display: grid; grid-template-columns: repeat(3,1fr);
+      gap: 36px;
+    }
+
+    .theme-card {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 20px;
+    }
+    .theme-card .phone { width: 100%; max-width: 300px; }
+
+    .theme-label {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .theme-swatch {
+      width: 13px; height: 13px; border-radius: 50%;
+      box-shadow: 0 0 0 2px rgba(244,234,216,.14);
+    }
+    .theme-name {
+      font-family: var(--ff-display); font-size: 22px;
+    }
+
+    /* ─── DOWNLOAD ─── */
+    #download { background: var(--ink); }
+
+    .download-layout {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 100px; align-items: start;
+    }
+
+    .steps { display: flex; flex-direction: column; gap: 32px; }
+
+    .step { display: flex; gap: 18px; align-items: flex-start; }
+
+    .step-num {
+      width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+      border: 1px solid rgba(244,234,216,.18);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: var(--amber);
+      margin-top: 3px;
+    }
+    .step-body h4 { font-size: 15px; font-weight: 600; margin-bottom: 5px; }
+    .step-body p  { font-size: 14px; line-height: 1.55; color: var(--sub); }
+
+    .download-aside {
+      display: flex; flex-direction: column; gap: 20px;
+      padding-top: 8px;
+    }
+    .download-note {
+      font-size: 13px; line-height: 1.6; color: var(--sub2);
+    }
+    .download-note code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: var(--amber); font-size: 12px;
+    }
+
+    /* ─── HERO MARK ─── */
+    .hero-mark-wrap {
+      display: flex; align-items: center; gap: 16px; margin-bottom: 4px;
+    }
+
+    /* ─── PRIVACY ─── */
+    #privacy { border-top: 1px solid var(--border); }
+
+    .privacy-grid {
+      display: grid; grid-template-columns: repeat(2,1fr);
+      gap: 24px; margin-top: 0;
+    }
+
+    .privacy-card {
+      padding: 32px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(244,234,216,.025);
+    }
+    .privacy-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
+    .privacy-card p  { font-size: 14px; line-height: 1.65; color: var(--sub); }
+
+    /* ─── FOOTER ─── */
+    footer {
+      padding: 52px 56px;
+      border-top: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      align-items: center; gap: 18px; text-align: center;
+    }
+
+    footer img { height: 18px; opacity: .45; }
+
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a {
+      font-size: 13px; color: var(--sub2); text-decoration: none;
+    }
+    .footer-links a:hover { color: var(--sub); }
+
+    .footer-legal {
+      font-size: 12px; color: var(--sub2);
+      max-width: 580px; line-height: 1.65;
+    }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 860px) {
+      nav { padding: 0 24px; }
+      .nav-links { display: none; }
+
+      #hero { padding: 80px 24px 60px; }
+      .hero-inner { grid-template-columns: 1fr; gap: 56px; }
+      .hero-phones { height: 340px; }
+      .hero-phones .phone-a { width: 160px; top: 40px; }
+      .hero-phones .phone-b { left: 110px; top: 0; width: 190px; }
+
+      .section { padding: 80px 24px; }
+
+      .features-grid,
+      .themes-grid,
+      .download-layout { grid-template-columns: 1fr; gap: 40px; }
+
+      .privacy-grid { grid-template-columns: 1fr; gap: 20px; }
+
+      .feature-card .phone,
+      .theme-card .phone { max-width: 260px; }
+
+      footer { padding: 40px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="#">
+    <svg viewBox="0 0 200 200" width="26" height="26" aria-hidden="true">
+      <rect x="41"  y="48" width="22" height="104" rx="5" fill="#F4EAD8"/>
+      <rect x="73"  y="38" width="22" height="124" rx="5" fill="#E0A050"/>
+      <rect x="105" y="56" width="22" height="88"  rx="5" fill="#F4EAD8"/>
+      <rect x="137" y="46" width="22" height="108" rx="5" fill="#F4EAD8"/>
+    </svg>
+    <span class="nav-wordmark">saga<svg width="9" height="9" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4 L34 20 L8 36 Z" fill="#E0A050"/></svg></span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#themes">Themes</a></li>
+    <li><a href="#download">Download</a></li>
+    <li><a href="https://github.com/gaut3/saga" target="_blank" rel="noopener">GitHub</a></li>
+  </ul>
+  <a class="btn btn-amber btn-sm" href="https://github.com/gaut3/saga/releases/latest">&#8595; Download APK</a>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-grid"></div>
+  <div class="hero-inner">
+
+    <div class="hero-copy">
+      <div class="hero-mark-wrap">
+        <svg class="mark playing" viewBox="0 0 200 200" width="52" height="52" aria-hidden="true">
+          <rect class="sp sp1" x="41"  y="36" width="22" height="128" rx="5" fill="#F4EAD8"/>
+          <rect class="sp sp2" x="73"  y="36" width="22" height="128" rx="5" fill="#E0A050"/>
+          <rect class="sp sp3" x="105" y="36" width="22" height="128" rx="5" fill="#F4EAD8"/>
+          <rect class="sp sp4" x="137" y="36" width="22" height="128" rx="5" fill="#F4EAD8"/>
+        </svg>
+        <div class="eyebrow">Saga &middot; v1.0 &middot; For Plex</div>
+      </div>
+      <h1 class="hero-h1">
+        Your audiobooks,<br>
+        <em>on the shelf<br>you own.</em>
+      </h1>
+      <p class="hero-sub">
+        A native Android player for your self-hosted Plex library.
+        Chapter navigation, bookmarks, sleep timer, and three warm themes &mdash;
+        no subscription, no telemetry, all yours.
+        Your progress is yours to keep &mdash; export and import everything.
+      </p>
+      <div class="hero-ctas">
+        <a class="btn btn-amber btn-md" href="https://github.com/gaut3/saga/releases/latest">&#8595; Download APK</a>
+        <a class="btn btn-ghost btn-md" href="https://github.com/gaut3/saga" target="_blank" rel="noopener">Source on GitHub &rarr;</a>
+      </div>
+      <div class="hero-trust">
+        <span>No tracking</span>
+        <span>No subscription</span>
+        <span>Your data, your server</span>
+      </div>
+    </div>
+
+    <div class="hero-phones">
+      <div class="phone phone-a">
+        <img src="screens/home-cream.png" alt="Home screen, cream theme" />
+      </div>
+      <div class="phone phone-b">
+        <img src="screens/player-ink.png" alt="Now Playing screen" />
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- MARK DEMO -->
+<section id="mark-demo" class="section">
+  <div class="section-inner">
+    <div class="eyebrow">The mark is the player</div>
+    <p class="demo-caption">One shape for every state &mdash; tap to explore.</p>
+    <div class="demo-stage">
+      <!-- JS morph engine sets polygon points each frame.
+           4 polygons = 4 bar/triangle slices; z-order handles pause-bar colour. -->
+      <svg id="demo-mark" viewBox="0 0 200 200" width="160" height="160" overflow="visible" style="cursor:pointer" role="button" aria-label="Toggle play/pause">
+        <polygon class="sp sp1" fill="#F4EAD8"/>
+        <polygon class="sp sp2" fill="#E0A050"/>
+        <polygon class="sp sp3" fill="#F4EAD8"/>
+        <polygon class="sp sp4" fill="#F4EAD8"/>
+      </svg>
+    </div>
+    <div class="state-bar">
+      <button class="state-btn active" data-state="breathing">Breathing</button>
+      <button class="state-btn" data-state="paused">Paused</button>
+      <button class="state-btn" data-state="playing">Playing</button>
+      <button class="state-btn" data-state="pausebars">Pause bars</button>
+      <button class="state-btn" data-state="buffering">Buffering</button>
+      <button class="state-btn" data-state="downloading">Downloading</button>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features" class="section">
+  <div class="section-inner">
+    <div class="eyebrow">Built for listeners</div>
+    <h2 class="section-h2">Made for long-form listening.</h2>
+    <div class="features-grid">
+
+      <div class="feature-card">
+        <div class="phone"><img src="screens/home-ink.png" alt="Library screen" loading="lazy" /></div>
+        <div class="feature-copy">
+          <div class="feature-eyebrow">01 &middot; Library</div>
+          <h3>Your Plex,<br>beautifully.</h3>
+          <p>Browse your library, see what&rsquo;s in progress, and jump back in instantly. Continue Listening and Up Next in Series, always in reach.</p>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="phone"><img src="screens/player-ink.png" alt="Player screen" loading="lazy" /></div>
+        <div class="feature-copy">
+          <div class="feature-eyebrow">02 &middot; Playback</div>
+          <h3>Built for<br>listeners.</h3>
+          <p>Chapter navigation, named bookmarks, variable speed, sleep timer, and Chromecast &mdash; all on one screen. Your place is saved automatically.</p>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="phone"><img src="screens/history-day-ink.png" alt="History screen" loading="lazy" /></div>
+        <div class="feature-copy">
+          <div class="feature-eyebrow">03 &middot; Stats</div>
+          <h3>Every session,<br>logged.</h3>
+          <p>Streaks, heatmaps, and a full session log. Three tabs &mdash; Day, Month, Total &mdash; so you can see exactly how much you&rsquo;ve been listening.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- THEMES -->
+<section id="themes" class="section">
+  <div class="section-inner">
+    <div class="eyebrow">Appearance</div>
+    <h2 class="section-h2">One app, three moods.</h2>
+    <div class="themes-grid">
+
+      <div class="theme-card">
+        <div class="phone"><img src="screens/home-ink.png" alt="Ink theme" loading="lazy" /></div>
+        <div class="theme-label">
+          <div class="theme-swatch" style="background:#1E1410"></div>
+          <span class="theme-name">Ink</span>
+        </div>
+      </div>
+
+      <div class="theme-card">
+        <div class="phone"><img src="screens/home-cream.png" alt="Cream theme" loading="lazy" /></div>
+        <div class="theme-label">
+          <div class="theme-swatch" style="background:#F4EAD8"></div>
+          <span class="theme-name">Cream</span>
+        </div>
+      </div>
+
+      <div class="theme-card">
+        <div class="phone"><img src="screens/home-terra.png" alt="Terra theme" loading="lazy" /></div>
+        <div class="theme-label">
+          <div class="theme-swatch" style="background:#C25A3A"></div>
+          <span class="theme-name">Terra</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- DOWNLOAD -->
+<section id="download" class="section">
+  <div class="section-inner">
+    <div class="download-layout">
+
+      <div>
+        <div class="eyebrow">Get Saga</div>
+        <h2 class="section-h2">Install in three steps.</h2>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <h4>Enable unknown sources</h4>
+              <p>On your Android device go to Settings &rarr; Apps &rarr; Special app access &rarr; Install unknown apps and allow your browser or file manager.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <h4>Download the APK</h4>
+              <p>Tap the button to open the latest GitHub Release, then download the <code style="font-family:monospace;color:var(--amber);font-size:12px">saga.apk</code> file directly to your device.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <h4>Install and sign in</h4>
+              <p>Open the downloaded file, tap Install, then sign in with your Plex account. Saga auto-discovers your server on the local network. Remote access works too.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="download-aside">
+        <a class="btn btn-amber btn-lg" href="https://github.com/gaut3/saga/releases/latest">&#8595; Download latest APK</a>
+        <p class="download-note">Requires Android 5.0+. A running Plex Media Server with an audiobook library is required.</p>
+        <p class="download-note">
+          To update without losing your data:<br>
+          <code>adb install -r saga.apk</code>
+        </p>
+        <p class="download-note">
+          Prefer to build from source?<br>
+          <a href="https://github.com/gaut3/saga" style="color:var(--amber);text-decoration:none">See the README &rarr;</a>
+        </p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- PRIVACY -->
+<section id="privacy" class="section">
+  <div class="section-inner">
+    <div class="eyebrow">Privacy</div>
+    <h2 class="section-h2" style="margin-bottom:48px">Your data stays yours.</h2>
+    <div class="privacy-grid">
+
+      <div class="privacy-card">
+        <h3>No analytics</h3>
+        <p>No Firebase, no Crashlytics, no tracking SDKs of any kind. The only outbound traffic goes to your own Plex server and plex.tv for sign-in. Nothing else.</p>
+      </div>
+
+      <div class="privacy-card">
+        <h3>Encrypted local storage</h3>
+        <p>Bookmarks, history, and settings are stored in AES-256 encrypted Hive boxes. The key lives in the Android Keystore &mdash; never hardcoded, never logged.</p>
+      </div>
+
+      <div class="privacy-card">
+        <h3>No cloud backup</h3>
+        <p><code style="font-family:monospace;font-size:12px;color:var(--amber)">android:allowBackup</code> is disabled. Your data cannot be swept into Google cloud backup or extracted via <code style="font-family:monospace;font-size:12px;color:var(--amber)">adb backup</code>.</p>
+      </div>
+
+      <div class="privacy-card">
+        <h3>Portable data</h3>
+        <p>Export all your bookmarks, progress, and listening history to a JSON file at any time. Import it back on a new device or after a reinstall. No credentials are included in the export.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <a href="#" style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;opacity:.4;">
+    <svg class="mark" viewBox="0 0 200 200" width="18" height="18" aria-hidden="true">
+      <rect x="41"  y="48" width="22" height="104" rx="5" fill="#F4EAD8"/>
+      <rect x="73"  y="38" width="22" height="124" rx="5" fill="#E0A050"/>
+      <rect x="105" y="56" width="22" height="88"  rx="5" fill="#F4EAD8"/>
+      <rect x="137" y="46" width="22" height="108" rx="5" fill="#F4EAD8"/>
+    </svg>
+    <span style="display:inline-flex;align-items:center;gap:4px;font-family:var(--ff-body);font-weight:600;font-size:14px;letter-spacing:-0.025em;color:var(--cream)">saga<svg width="7" height="7" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4 L34 20 L8 36 Z" fill="#E0A050"/></svg></span>
+  </a>
+  <div class="footer-links">
+    <a href="https://github.com/gaut3/saga" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/gaut3/saga/releases" target="_blank" rel="noopener">Releases</a>
+    <a href="https://github.com/gaut3/saga/blob/main/PRIVACY_POLICY.md" target="_blank" rel="noopener">Privacy Policy</a>
+    <a href="https://github.com/gaut3/saga/issues" target="_blank" rel="noopener">Issues</a>
+  </div>
+  <p class="footer-legal">
+    Saga is an independent, third-party client. It is not affiliated with, endorsed by,
+    or associated with Plex&nbsp;Inc. &ldquo;Plex&rdquo; is a trademark of Plex&nbsp;Inc.
+  </p>
+  <p class="footer-legal">&copy; 2026 gaut3 &middot; MIT License</p>
+</footer>
+
+<script>
+(function () {
+  const svg = document.getElementById('demo-mark');
+  if (!svg) return;
+  const polys = Array.from(svg.querySelectorAll('.sp'));
+
+  // ── Spec geometry (200×200 design box) ──────────────────────
+  // TRI: four contiguous wedges that form the play triangle
+  const TRI = [
+    [[41,36],[70.5,52],[70.5,148],[41,164]],
+    [[70.5,52],[100,68],[100,132],[70.5,148]],
+    [[100,68],[129.5,84],[129.5,116],[100,132]],
+    [[129.5,84],[159,100],[159,100],[129.5,116]]
+  ];
+  // BAR: four uniform upright spines (y=36 h=128, centred at y=100)
+  const BAR = [
+    [[41,36],[63,36],[63,164],[41,164]],
+    [[73,36],[95,36],[95,164],[73,164]],
+    [[105,36],[127,36],[127,164],[105,164]],
+    [[137,36],[159,36],[159,164],[137,164]]
+  ];
+  // PB: pause-bars — bar0+1 merge amber-left, bar2+3 merge cream-right
+  // z-order: bar1 (amber) paints over bar0 (cream) → left reads amber ✓
+  const PB = [
+    [[41,36],[95,36],[95,164],[41,164]],
+    [[41,36],[95,36],[95,164],[41,164]],
+    [[105,36],[159,36],[159,164],[105,164]],
+    [[105,36],[159,36],[159,164],[105,164]]
+  ];
+
+  const SHAPES  = { paused:TRI, playing:BAR, buffering:BAR, downloading:BAR, breathing:BAR, pausebars:PB };
+  // downloading is the one bottom-anchored exception
+  const ORIGINS = { paused:'c', playing:'c', buffering:'c', downloading:'b', breathing:'c', pausebars:'c' };
+
+  const clamp = (v,lo,hi) => Math.max(lo, Math.min(hi, v));
+  // easeInOutCubic — spec: cubic-bezier(.66,0,.34,1) ≈ easeInOutCubic
+  const eic = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
+
+  // ── Level functions per state (phase in seconds) ─────────────
+  const LEVELS = {
+    paused:     ()  => [1, 1, 1, 1],
+    playing:     t  => { const r=[1,1.6,1.3,2.0], o=[0,1.1,2.3,3.4], m=0.68;
+                         return r.map((v,i) => clamp(m + 0.18*Math.sin(t*v*2 + o[i]), .16, 1)); },
+    buffering:   t  => [0,1,2,3].map(i => 0.3 + 0.7*((Math.sin(t*Math.PI*2/1.4 - i*0.5)+1)/2)),
+    downloading: t  => { const p=(t%2.8)/2.8; return [0,1,2,3].map(i => clamp(p*4-i, .14, 1)); },
+    breathing:   t  => [0,.15,.30,.45].map(s => 0.82 + 0.18*Math.sin(2*Math.PI*(t-s)/2.4)),
+    pausebars:  ()  => [1, 1, 1, 1]
+  };
+
+  // ── Morph state ───────────────────────────────────────────────
+  const cp = b => b.map(r => r.map(p => [...p]));  // deep copy
+  let state = 'playing';
+  let fromShape = cp(BAR), toShape = cp(BAR);
+  let morphT = 1, morphStart = null;
+  const MORPH_DUR = 470;  // ms, per spec
+  let phase = 0, lastTs = null;
+
+  function lerpShape(a, b, t) {
+    return a.map((bar,i) => bar.map((_,k) => [
+      a[i][k][0] + (b[i][k][0]-a[i][k][0])*t,
+      a[i][k][1] + (b[i][k][1]-a[i][k][1])*t
+    ]));
+  }
+
+  // Apply level scaling around bar centre (or bottom for downloading)
+  function applyLevel(pts, lv, mt, origin) {
+    const el = 1 + (lv-1)*mt;  // blends to 1 at morphT=0 so shape transition is clean
+    const cy = origin==='b'
+      ? Math.max(pts[2][1], pts[3][1])        // bottom edge
+      : (pts[0][1] + pts[2][1]) / 2;          // vertical centre
+    return pts.map(p => [p[0], cy + (p[1]-cy)*el]);
+  }
+
+  function tick(ts) {
+    const dt = lastTs ? (ts-lastTs)/1000 : 0;
+    lastTs = ts; phase += dt;
+
+    if (morphStart !== null) morphT = Math.min(1, (ts-morphStart)/MORPH_DUR);
+    const et = eic(morphT);
+    const shape = lerpShape(fromShape, toShape, et);
+    const levels = LEVELS[state](phase);
+    const origin = ORIGINS[state];
+
+    polys.forEach((poly, i) => {
+      const pts = applyLevel(shape[i], levels[i], et, origin);
+      poly.setAttribute('points', pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' '));
+    });
+
+    if (morphT >= 1) morphStart = null;
+    requestAnimationFrame(tick);
+  }
+
+  // Init to breathing (idle/splash state — mark just sits quietly)
+  state = 'breathing';
+  fromShape = cp(BAR); toShape = cp(BAR);
+  polys.forEach((p,i) => p.setAttribute('points', BAR[i].map(pt=>pt.join(',')).join(' ')));
+  requestAnimationFrame(tick);
+
+  // ── State switching ───────────────────────────────────────────
+  function setState(s) {
+    if (!SHAPES[s]) return;
+    const et = eic(morphT);
+    fromShape = lerpShape(fromShape, toShape, et);
+    toShape   = cp(SHAPES[s]);
+    morphT    = 0;
+    morphStart = performance.now();
+    state     = s;
+  }
+
+  // Cycle order — mirrors the natural app experience
+  const CYCLE = ['breathing', 'paused', 'playing', 'pausebars', 'buffering', 'downloading'];
+  let cycleIdx = 0;  // starts at breathing
+
+  function setActiveBtn(s) {
+    document.querySelectorAll('.state-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.state === s);
+    });
+  }
+
+  // Click the mark → advance to next state in cycle
+  svg.addEventListener('click', () => {
+    cycleIdx = (cycleIdx + 1) % CYCLE.length;
+    const s = CYCLE[cycleIdx];
+    setState(s);
+    setActiveBtn(s);
+  });
+
+  // State-bar buttons → jump to that state and sync cycle position
+  document.querySelectorAll('.state-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const s = btn.dataset.state;
+      cycleIdx = CYCLE.indexOf(s);
+      setState(s);
+      setActiveBtn(s);
+    });
+  });
+})();
+</script>
+</body>
+</html>

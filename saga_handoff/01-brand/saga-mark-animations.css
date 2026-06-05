@@ -1,0 +1,54 @@
+/* ─────────────────────────────────────────────────────────────
+   Saga — animated mark
+   Drop-in CSS for the stacked-spines mark.
+   Pair with the SVG markup pattern in components/SagaMark.tsx
+   (or this comment block):
+
+     <svg class="saga-mark" data-state="playing" viewBox="0 0 200 200">
+       <rect class="spine s-left"  ... />
+       <rect class="spine s-mid"   ... />
+       <rect class="spine s-right" ... />
+       ... title-line ornaments (no spine class) ...
+     </svg>
+
+   Supported data-state values:
+     "playing"   → VU-meter pulse, each spine has its own rhythm
+     "breathing" → gentle alive affordance (splash, idle)
+     "loading"   → staggered fill, use during buffering/sync
+     anything else (or no data-state) → static logo
+   ───────────────────────────────────────────────────────────── */
+
+.saga-mark .spine {
+  /* Grow from the bottom edge so the spines look anchored to a
+     baseline, like a physical level meter. */
+  transform-origin: center bottom;
+  transform-box: fill-box;
+}
+
+/* ── PLAYING — VU meter ───────────────────────────────────── */
+.saga-mark[data-state="playing"]  .s-left   { animation: saga-pulse-left  1.3s ease-in-out infinite; }
+.saga-mark[data-state="playing"]  .s-mid    { animation: saga-pulse-mid   0.9s ease-in-out infinite; }
+.saga-mark[data-state="playing"]  .s-right  { animation: saga-pulse-right 1.7s ease-in-out infinite; }
+
+@keyframes saga-pulse-left  { 0%, 100% { transform: scaleY(1); }   50% { transform: scaleY(0.55); } }
+@keyframes saga-pulse-mid   { 0%, 100% { transform: scaleY(1); }   30% { transform: scaleY(0.42); } 65% { transform: scaleY(0.78); } }
+@keyframes saga-pulse-right { 0%, 100% { transform: scaleY(1); }   40% { transform: scaleY(0.62); } 75% { transform: scaleY(0.88); } }
+
+/* ── BREATHING — gentle alive affordance ──────────────────── */
+.saga-mark[data-state="breathing"] .spine    { animation: saga-breathe 2.4s ease-in-out infinite; }
+.saga-mark[data-state="breathing"] .s-mid    { animation-delay: 0.2s; }
+.saga-mark[data-state="breathing"] .s-right  { animation-delay: 0.4s; }
+
+@keyframes saga-breathe { 0%, 100% { transform: scaleY(1); opacity: 1; } 50% { transform: scaleY(0.88); opacity: 0.85; } }
+
+/* ── LOADING — staggered fill ─────────────────────────────── */
+.saga-mark[data-state="loading"] .s-left   { animation: saga-load 1.6s ease-in-out infinite; animation-delay: 0.0s; }
+.saga-mark[data-state="loading"] .s-mid    { animation: saga-load 1.6s ease-in-out infinite; animation-delay: 0.15s; }
+.saga-mark[data-state="loading"] .s-right  { animation: saga-load 1.6s ease-in-out infinite; animation-delay: 0.3s; }
+
+@keyframes saga-load { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+
+/* ── ACCESSIBILITY ────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .saga-mark .spine { animation: none !important; }
+}

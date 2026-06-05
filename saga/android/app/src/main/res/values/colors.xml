@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#1E1410</color>
+    <!-- Launch splash — ink so startup matches the app's dark-first surface
+         instead of flashing white/black with the OS theme. -->
+    <color name="saga_ink">#1E1410</color>
+</resources>

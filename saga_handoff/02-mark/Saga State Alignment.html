@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Saga — State alignment: centred vs shelf</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#1C140F; --card:#271C15; --elev:#241A13; --ink:#1C140F;
+    --amber:#E8A24A; --cream:#F2E7D6; --terra:#C2603C; --sub:#CDBBA6; --muted:#8C7C6C;
+    --line:rgba(242,231,214,0.10); --line2:rgba(242,231,214,0.16);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:#15100C; color:var(--cream); font-family:'Manrope',sans-serif; min-height:100vh; padding:44px; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1080px; margin:0 auto;}
+  .head{margin-bottom:32px;}
+  .head h1{font-weight:800; letter-spacing:-0.035em; font-size:33px; margin:0 0 8px;}
+  .head p{margin:0; color:rgba(242,231,214,0.55); font-size:14px; line-height:1.5; max-width:600px;}
+  .sec-num{font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.2em; color:rgba(242,231,214,0.4);}
+
+  .baseline{display:flex; align-items:center; gap:8px; font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--muted); margin:18px 0 22px;}
+  .baseline span{flex:none;}
+  .baseline .bar{flex:1; height:1px; background:var(--line2);}
+
+  .stack{display:flex; flex-direction:column; gap:14px;}
+  .scard{background:var(--bg); border-radius:18px; padding:24px 26px; box-shadow:0 0 0 1px rgba(255,255,255,0.03);}
+  .scard .top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;}
+  .scard h3{margin:0; font-size:17px; font-weight:700;}
+  .scard .desc{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted);}
+  .pair{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:18px;}
+  @media(max-width:680px){.pair{grid-template-columns:1fr;}}
+  .opt{background:#160F0B; border-radius:14px; padding:24px; display:flex; flex-direction:column; align-items:center; gap:14px; position:relative;}
+  .opt .midline{position:absolute; left:24px; right:24px; top:50%; height:1px; background:rgba(242,231,214,0.10); transform:translateY(-26px);}
+  .opt .floorline{position:absolute; left:24px; right:24px; height:1px; background:rgba(242,231,214,0.10); top:calc(24px + 124px);}
+  .opt .holder{height:124px; display:flex; align-items:center; z-index:1;}
+  .opt .lbl{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; z-index:1;}
+  .opt .v{font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; padding:4px 10px; border-radius:99px; z-index:1;}
+  .v-good{background:rgba(232,162,74,0.18); color:var(--amber);}
+  .v-mid{background:rgba(242,231,214,0.07); color:var(--muted);}
+
+  .mk{color:var(--cream); --accent:var(--amber);}
+  .mk .sp{fill:currentColor; transform-box:fill-box;}
+  .mk .sb{fill:var(--accent);}
+  .mk.center .sp{transform-origin:center;}
+  .mk.shelf .sp{transform-origin:center bottom;}
+
+  .mk[data-state="buffering"] .sp{animation:load 1.4s ease-in-out infinite;}
+  .mk[data-state="buffering"] .sb{animation-delay:.12s;} .mk[data-state="buffering"] .sc{animation-delay:.24s;} .mk[data-state="buffering"] .sd{animation-delay:.36s;}
+  .mk[data-state="finished"] .sp{animation:celebrate 1.4s ease-in-out infinite;}
+  .mk[data-state="finished"] .sb{animation-delay:.08s;} .mk[data-state="finished"] .sc{animation-delay:.16s;} .mk[data-state="finished"] .sd{animation-delay:.24s;}
+  .mk[data-state="downloading"] .sp{transform:scaleY(var(--h,.2)); transition:transform .12s linear;}
+  .mk[data-state="playing"] .sp{transform:scaleY(var(--h,.6)); transition:transform .1s linear;}
+  @keyframes load{0%,100%{transform:scaleY(.3);}50%{transform:scaleY(1);}}
+  @keyframes celebrate{0%{transform:scaleY(1);}26%{transform:scaleY(.42);}54%{transform:scaleY(1.18);}76%{transform:scaleY(.94);}100%{transform:scaleY(1);}}
+  @media(prefers-reduced-motion:reduce){.mk .sp{animation:none!important;}}
+
+  .note{margin-top:22px; background:var(--elev); border:1px solid var(--line); border-radius:16px; padding:20px 24px; font-size:13.5px; line-height:1.62; color:rgba(242,231,214,0.72);}
+  .note b{color:var(--amber); font-weight:700;}
+  .note + .note{margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>Should every state be centred?</h1>
+    <p>Playing already grows from the centre. Buffering, downloading and finished currently sit on a shelf (bottom-anchored). Here’s each one both ways — the faint line marks the anchor.</p>
+  </div>
+  <div class="baseline"><span>Centred = mid-line anchor</span><div class="bar"></div><span>Shelf = floor anchor</span></div>
+
+  <div class="stack" id="stack"></div>
+
+  <div class="note"><b>Recommendation: centre everything.</b> The mark’s identity is the centred form that folds into the play triangle — so if buffering/finished sit on a shelf, switching states makes the whole mark hop vertically (anchor jumps from floor to mid-line). Centred keeps the optical centre fixed, so any state crossfades into any other with no jump, and they all share one baseline with the wordmark.</div>
+  <div class="note"><b>The one debatable case is Downloading.</b> “Filling up from the floor” is a strong, literal progress metaphor, so shelf reads slightly clearer there. Centred still works (bars complete and hold), and it keeps the no-jump consistency — but if you want one deliberate exception, downloading is the candidate. My vote is still centred for cohesion.</div>
+</div>
+
+<script>
+  const STATES = [
+    {id:'buffering', nm:'Buffering', desc:'staggered sweep · stream loading', cv:'good', sv:'mid', cvt:'symmetric pulse', svt:'rising bars'},
+    {id:'downloading', nm:'Downloading', desc:'determinate · bar = quarter of %', cv:'mid', sv:'good', cvt:'grows from middle', svt:'fills from floor'},
+    {id:'finished', nm:'Finished', desc:'celebratory bloom · book complete', cv:'good', sv:'mid', cvt:'blooms outward', svt:'shoots up'},
+  ];
+  const BARS=[41,73,105,137], CLS=['sa','sb','sc','sd'];
+  function svg(state, align){
+    let r='';
+    BARS.forEach((x,i)=>{ r+=`<rect class="sp ${CLS[i]}" x="${x}" y="36" width="22" height="128" rx="5"></rect>`; });
+    return `<svg class="mk ${align}" data-state="${state}" width="118" height="118" viewBox="0 0 200 200">${r}</svg>`;
+  }
+  const stack = document.getElementById('stack');
+  STATES.forEach(s=>{
+    const card = document.createElement('div');
+    card.className='scard';
+    card.innerHTML = `
+      <div class="top"><h3>${s.nm}</h3><div class="desc">${s.desc}</div></div>
+      <div class="pair">
+        <div class="opt"><div class="midline"></div><div class="holder">${svg(s.id,'center')}</div>
+          <div class="lbl">Centred · ${s.cvt}</div><span class="v v-${s.cv}">${s.cv==='good'?'preferred':'works'}</span></div>
+        <div class="opt"><div class="floorline"></div><div class="holder">${svg(s.id,'shelf')}</div>
+          <div class="lbl">Shelf · ${s.svt}</div><span class="v v-${s.sv}">${s.sv==='good'?'preferred':'works'}</span></div>
+      </div>`;
+    stack.appendChild(card);
+  });
+
+  // drivers for downloading (determinate) + playing-style if present
+  const dl = [...document.querySelectorAll('.mk[data-state="downloading"]')];
+  function frame(ts){
+    const prog = (ts % 3600) / 3600;
+    dl.forEach(svg=>{
+      svg.querySelectorAll('.sp').forEach((b,i)=>{ let h=Math.max(0.14,Math.min(1,prog*4-i)); b.style.setProperty('--h',h.toFixed(3)); });
+    });
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>

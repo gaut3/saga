@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Saga — Reactive vs pause-bar</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#1C140F; --card:#271C15; --elev:#241A13; --ink:#1C140F;
+    --amber:#E8A24A; --cream:#F2E7D6; --terra:#C2603C; --sub:#CDBBA6; --muted:#8C7C6C;
+    --line:rgba(242,231,214,0.10); --line2:rgba(242,231,214,0.16);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:#15100C; color:var(--cream); font-family:'Manrope',sans-serif; min-height:100vh; padding:44px; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1040px; margin:0 auto;}
+  .head{margin-bottom:30px;}
+  .head h1{font-weight:800; letter-spacing:-0.035em; font-size:33px; margin:0 0 8px;}
+  .head p{margin:0; color:rgba(242,231,214,0.55); font-size:14px; line-height:1.5; max-width:600px;}
+  .sec-num{font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.2em; color:rgba(242,231,214,0.4);}
+  .sec-head{display:flex; justify-content:space-between; align-items:baseline; padding-bottom:10px; margin:42px 0 22px; border-bottom:1px solid var(--line);}
+  .sec-head h2{font-weight:700; font-size:18px; letter-spacing:-0.02em; margin:0;}
+
+  /* hero */
+  .hero{background:var(--bg); border-radius:24px; padding:46px; display:flex; flex-direction:column; align-items:center; gap:26px; box-shadow:0 40px 80px -40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03);}
+  .ppbtn{background:none; border:none; padding:0; cursor:pointer; display:grid; place-items:center; -webkit-tap-highlight-color:transparent;}
+  .ppbtn:focus-visible{outline:3px solid var(--amber); outline-offset:6px; border-radius:12px;}
+  .hint{font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:var(--muted); font-weight:700;}
+
+  /* segmented control (the user setting) */
+  .seg{display:inline-flex; background:#160F0B; border:1px solid var(--line2); border-radius:99px; padding:4px; gap:2px;}
+  .seg button{border:none; background:none; color:var(--sub); font:600 13px/1 'Manrope'; padding:10px 20px; border-radius:99px; cursor:pointer; transition:.18s; display:flex; align-items:center; gap:9px;}
+  .seg button .ic{width:18px; height:18px; display:block;}
+  .seg button.on{background:var(--amber); color:#1C140F;}
+  .setlabel{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted);}
+
+  /* the mark */
+  .g4 .sp{transition:d .46s cubic-bezier(.66,0,.34,1), fill .3s ease, transform .12s linear;}
+  /* fills */
+  .g4 .sp{fill:var(--fg, var(--cream));}
+  .g4 .sb{fill:var(--accent, var(--amber));}
+  /* PAUSED → solid accent play triangle */
+  .g4[data-state="paused"] .sa{d:path("M41 36 L70.5 52 L70.5 148 L41 164 Z");}
+  .g4[data-state="paused"] .sb{d:path("M70.5 52 L100 68 L100 132 L70.5 148 Z");}
+  .g4[data-state="paused"] .sc{d:path("M100 68 L129.5 84 L129.5 116 L100 132 Z");}
+  .g4[data-state="paused"] .sd{d:path("M129.5 84 L159 100 L159 100 L129.5 116 Z");}
+  .g4[data-state="paused"] .sp{transform:none;}
+  /* accent stripe runs through the play triangle too: slice #2 is amber, rest cream */
+  .g4[data-state="paused"] .sa,
+  .g4[data-state="paused"] .sc,
+  .g4[data-state="paused"] .sd{fill:var(--fg,var(--cream));}
+  .g4[data-state="paused"] .sb{fill:var(--accent,var(--amber));}
+  /* PLAYING · reactive → 4 upright spines, JS sets --h */
+  .g4[data-state="playing"][data-mode="reactive"] .sa{d:path("M41 36 L63 36 L63 164 L41 164 Z"); fill:var(--fg,var(--cream));}
+  .g4[data-state="playing"][data-mode="reactive"] .sb{d:path("M73 36 L95 36 L95 164 L73 164 Z");}
+  .g4[data-state="playing"][data-mode="reactive"] .sc{d:path("M105 36 L127 36 L127 164 L105 164 Z"); fill:var(--fg,var(--cream));}
+  .g4[data-state="playing"][data-mode="reactive"] .sd{d:path("M137 36 L159 36 L159 164 L137 164 Z"); fill:var(--fg,var(--cream));}
+  .g4[data-state="playing"][data-mode="reactive"] .sp{transform-box:fill-box; transform-origin:center; transform:scaleY(var(--h,.6));}
+  /* PLAYING · pause → spines merge into 2 solid bars (sa+sb left, sc+sd right) */
+  .g4[data-state="playing"][data-mode="pause"] .sa{d:path("M50 36 L94 36 L94 164 L50 164 Z");}
+  .g4[data-state="playing"][data-mode="pause"] .sb{d:path("M50 36 L94 36 L94 164 L50 164 Z");}
+  .g4[data-state="playing"][data-mode="pause"] .sc{d:path("M106 36 L150 36 L150 164 L106 164 Z");}
+  .g4[data-state="playing"][data-mode="pause"] .sd{d:path("M106 36 L150 36 L150 164 L106 164 Z");}
+  .g4[data-state="playing"][data-mode="pause"] .sp{transform:none;}
+  /* accent carries through: the accent spine (#2) folds into the LEFT bar → amber left, cream right */
+  .g4[data-state="playing"][data-mode="pause"] .sa,
+  .g4[data-state="playing"][data-mode="pause"] .sc,
+  .g4[data-state="playing"][data-mode="pause"] .sd{fill:var(--fg,var(--cream));}
+  .g4[data-state="playing"][data-mode="pause"] .sb{fill:var(--accent,var(--amber));}
+  @media(prefers-reduced-motion:reduce){.g4 .sp{transition:d .2s, fill .2s;}}
+
+  /* comparison cards */
+  .cmp{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  @media(max-width:740px){.cmp{grid-template-columns:1fr;}}
+  .card{background:var(--bg); border-radius:18px; padding:30px 26px; display:flex; flex-direction:column; align-items:center; gap:16px; box-shadow:0 0 0 1px rgba(255,255,255,0.03);}
+  .card .flow{display:flex; align-items:center; gap:18px;}
+  .card .arr{color:var(--muted);}
+  .card h3{margin:0; font-size:16px; font-weight:700;}
+  .card .ds{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); text-align:center; line-height:1.5;}
+
+  .code{background:#120D0A; color:#EDE2D2; padding:22px; border-radius:14px; font-family:'JetBrains Mono',monospace; font-size:11.5px; line-height:1.62; overflow:auto; border:1px solid var(--line); max-width:100%;}
+  .code .c{color:#C9863A;} .code .k{color:#E8A24A;}
+  .note{margin-top:14px; background:var(--elev); border:1px solid var(--line); border-radius:16px; padding:20px 24px; font-size:13.5px; line-height:1.62; color:rgba(242,231,214,0.72);}
+  .note b{color:var(--amber); font-weight:700;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>Reactive spines, or a plain pause</h1>
+    <p>A user setting for the now-playing button. Tap the mark to play/pause; switch the toggle to choose what the playing state becomes — the loudness-reactive spines, or a clean two-bar pause the four spines fold into.</p>
+  </div>
+
+  <div class="hero">
+    <button class="ppbtn" id="bigbtn" aria-label="Play or pause">
+      <svg class="g4" id="bigmark" data-state="paused" data-mode="reactive" width="190" height="190" viewBox="0 0 200 200" style="--fg:var(--cream); --accent:var(--amber);">
+        <path class="sp sa"></path><path class="sp sb"></path><path class="sp sc"></path><path class="sp sd"></path>
+      </svg>
+    </button>
+
+    <div style="display:flex; flex-direction:column; align-items:center; gap:10px;">
+      <div class="setlabel">Now-playing animation</div>
+      <div class="seg" id="seg">
+        <button data-mode="reactive" class="on">
+          <svg class="ic" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="9" width="3.4" height="6" rx="1.2"/><rect x="8.3" y="5" width="3.4" height="14" rx="1.2"/><rect x="13.6" y="11" width="3.4" height="2" rx="1"/><rect x="18.9" y="7" width="2.6" height="10" rx="1.2" transform="translate(-4 0)"/></svg>
+          Reactive
+        </button>
+        <button data-mode="pause">
+          <svg class="ic" viewBox="0 0 24 24"><rect x="6" y="5" width="4.5" height="14" rx="1.4" fill="var(--amber)"/><rect x="13.5" y="5" width="4.5" height="14" rx="1.4" fill="currentColor"/></svg>
+          Pause bars
+        </button>
+      </div>
+      <div class="hint">tap the mark ↑</div>
+    </div>
+  </div>
+
+  <!-- comparison -->
+  <div class="sec-head"><h2>The two endings</h2><div class="sec-num">PAUSED → PLAYING</div></div>
+  <div class="cmp">
+    <div class="card">
+      <div class="flow">
+        <svg class="g4" data-state="paused" data-mode="reactive" width="86" height="86" viewBox="0 0 200 200" style="--fg:var(--cream);--accent:var(--amber);"><path class="sp sa"></path><path class="sp sb"></path><path class="sp sc"></path><path class="sp sd"></path></svg>
+        <span class="arr">→</span>
+        <svg class="g4 demo" data-state="playing" data-mode="reactive" width="86" height="86" viewBox="0 0 200 200" style="--fg:var(--cream);--accent:var(--amber);"><path class="sp sa"></path><path class="sp sb"></path><path class="sp sc"></path><path class="sp sd"></path></svg>
+      </div>
+      <h3>Reactive spines</h3>
+      <div class="ds">default · follows the<br>narration loudness</div>
+    </div>
+    <div class="card">
+      <div class="flow">
+        <svg class="g4" data-state="paused" data-mode="pause" width="86" height="86" viewBox="0 0 200 200" style="--fg:var(--cream);--accent:var(--amber);"><path class="sp sa"></path><path class="sp sb"></path><path class="sp sc"></path><path class="sp sd"></path></svg>
+        <span class="arr">→</span>
+        <svg class="g4" data-state="playing" data-mode="pause" width="86" height="86" viewBox="0 0 200 200" style="--fg:var(--cream);--accent:var(--amber);"><path class="sp sa"></path><path class="sp sb"></path><path class="sp sc"></path><path class="sp sd"></path></svg>
+      </div>
+      <h3>Pause bars</h3>
+      <div class="ds">opt-out · 4 spines fold<br>into a standard pause</div>
+    </div>
+  </div>
+
+  <div class="note"><b>How the fold works:</b> in pause mode the two left spines slide together into one solid bar and the two right spines into another — so it’s the <i>same four shapes</i>, just gathered into a two-bar pause instead of spreading into a meter. The triangle⇄glyph morph is identical either way; only the playing end-state differs. <b>The accent carries through:</b> spine #2 (the amber one) folds into the left bar, so the pause reads amber-left / cream-right — The accent that’s a stripe in the meter, a stripe through the play triangle, and the left bar in pause — one consistent accent across every state.</div>
+
+  <div class="sec-head"><h2>In Flutter</h2><div class="sec-num">ONE FLAG ON THE PAINTER</div></div>
+  <pre class="code"><span class="c">// Same SpinePainter. A `reactive` flag picks the playing target.</span>
+<span class="c">// levels still drives reactive; pause ignores audio entirely.</span>
+List&lt;double&gt; targetFor(bool playing, bool reactive, List&lt;double&gt; levels) {
+  if (!playing) return paused;          <span class="c">// → triangle (t animates 1→0)</span>
+  return reactive ? levels              <span class="c">// 4 live heights</span>
+                  : const [1,1,1,1];    <span class="c">// 4 full bars …</span>
+}
+<span class="c">// … and in pause mode, x-merge bars 0&1 and 2&3 (lerp their x toward</span>
+<span class="c">// the two bar centres) so they read as two solid bars, not four.</span>
+final pauseX = reactive ? barX : [72,72,128,128];  <span class="c">// design units</span></pre>
+  <div class="note">Setting lives wherever playback prefs do (e.g. <b>Settings › Player › Now-playing animation</b>): <i>Reactive</i> (default) or <i>Pause bars</i>. Reduced-motion users could default to Pause bars automatically.</div>
+</div>
+
+<script>
+  const big = document.getElementById('bigmark');
+  const btn = document.getElementById('bigbtn');
+  const seg = document.getElementById('seg');
+
+  // restore saved mode
+  let mode = localStorage.getItem('saga-np-mode') || 'reactive';
+  function applyMode(m){
+    mode = m;
+    localStorage.setItem('saga-np-mode', m);
+    big.dataset.mode = m;
+    seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.mode===m));
+  }
+  applyMode(mode);
+
+  btn.addEventListener('click', ()=>{
+    big.dataset.state = big.dataset.state==='playing' ? 'paused' : 'playing';
+    btn.setAttribute('aria-label', big.dataset.state==='playing' ? 'Pause' : 'Play');
+  });
+  seg.querySelectorAll('button').forEach(b=>b.addEventListener('click', ()=>applyMode(b.dataset.mode)));
+
+  // loudness sim → drives reactive bars (hero + demo card)
+  const reactiveMarks = [big, ...document.querySelectorAll('.g4.demo')];
+  let phase=0, master=0.6, mTarget=0.6;
+  const off=[0,1.1,2.3,3.4], rate=[1,1.6,1.3,2.0];
+  function frame(){
+    phase+=0.09;
+    if(Math.random()<0.04) mTarget=0.4+Math.random()*0.55;
+    master+=(mTarget-master)*0.12;
+    reactiveMarks.forEach(svg=>{
+      if(svg.dataset.state==='playing' && svg.dataset.mode==='reactive'){
+        svg.querySelectorAll('.sp').forEach((b,i)=>{
+          let h=master+0.18*Math.sin(phase*rate[i]+off[i]); h=Math.max(0.16,Math.min(1,h));
+          b.style.setProperty('--h', h.toFixed(3));
+        });
+      }
+    });
+    requestAnimationFrame(frame);
+  }
+  // the demo card's reactive mark should always show playing-reactive
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+/* ─────────────────────────────────────────────────────────────
+   Saga — brand tokens
+   Import this once at app root.
+
+   Three brand themes ship as data-theme attributes:
+     <html data-theme="cream">   default / light
+     <html data-theme="ink">     dark
+     <html data-theme="terra">   reverse / loud accent
+
+   You can also use the raw palette tokens directly
+   (--saga-cream, --saga-ink, --saga-terracotta, …) — they are
+   stable across themes.
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Raw palette ─────────────────────────────────────────── */
+  --saga-cream:       #F4EAD8;
+  --saga-paper:       #EFE3CE;   /* alt surface, slightly warmer */
+  --saga-linen:       #E8D8BD;   /* alt surface, deeper */
+  --saga-ink:         #1E1410;
+  --saga-ink-soft:    #3A2A20;
+  --saga-terracotta:  #C25A3A;
+  --saga-terra-deep:  #9E4128;
+  --saga-amber:       #E0A050;
+  --saga-amber-soft:  #EAB877;
+  --saga-rose:        #A85C4A;
+
+  /* ── Type ────────────────────────────────────────────────── */
+  --saga-font-display: 'Manrope', system-ui, -apple-system, sans-serif;
+  --saga-font-body:    'Manrope', system-ui, -apple-system, sans-serif;
+  --saga-font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  /* The wordmark requires Manrope 800; load via Google Fonts:
+     https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap */
+
+  --saga-tracking-tight:  -0.055em;   /* wordmark */
+  --saga-tracking-display:-0.03em;    /* headings */
+  --saga-tracking-body:   -0.01em;
+  --saga-tracking-mono:    0.12em;    /* uppercase labels */
+
+  /* ── Radii ───────────────────────────────────────────────── */
+  --saga-radius-sm:  6px;
+  --saga-radius-md:  10px;
+  --saga-radius-lg:  16px;
+  --saga-radius-xl:  24px;
+  --saga-radius-app: 22.5%;  /* iOS-style app icon */
+
+  /* ── Spacing scale (4px base) ────────────────────────────── */
+  --saga-space-1:  4px;
+  --saga-space-2:  8px;
+  --saga-space-3:  12px;
+  --saga-space-4:  16px;
+  --saga-space-5:  24px;
+  --saga-space-6:  32px;
+  --saga-space-7:  48px;
+  --saga-space-8:  64px;
+
+  /* ── Shadows (warm-tinted, never pure black) ─────────────── */
+  --saga-shadow-sm: 0 1px 2px rgba(30,20,16,0.08);
+  --saga-shadow-md: 0 8px 24px -8px rgba(30,20,16,0.18);
+  --saga-shadow-lg: 0 30px 60px -30px rgba(30,20,16,0.40);
+
+  /* ── Semantic defaults: CREAM theme ──────────────────────── */
+  --saga-bg:          var(--saga-cream);
+  --saga-surface:     var(--saga-paper);
+  --saga-surface-alt: var(--saga-linen);
+  --saga-fg:          var(--saga-ink);
+  --saga-fg-muted:    rgba(30,20,16,0.60);
+  --saga-fg-subtle:   rgba(30,20,16,0.40);
+  --saga-border:      rgba(30,20,16,0.12);
+  --saga-accent:      var(--saga-terracotta);
+  --saga-accent-fg:   var(--saga-cream);
+  --saga-mark-side:   var(--saga-ink);
+  --saga-mark-middle: var(--saga-terracotta);
+}
+
+/* ── INK theme (dark mode default) ─────────────────────────── */
+:root[data-theme="ink"],
+.theme-ink {
+  --saga-bg:          var(--saga-ink);
+  --saga-surface:     #261B16;
+  --saga-surface-alt: #2F221C;
+  --saga-fg:          var(--saga-cream);
+  --saga-fg-muted:    rgba(244,234,216,0.65);
+  --saga-fg-subtle:   rgba(244,234,216,0.40);
+  --saga-border:      rgba(244,234,216,0.12);
+  --saga-accent:      var(--saga-amber);
+  --saga-accent-fg:   var(--saga-ink);
+  --saga-mark-side:   var(--saga-cream);
+  --saga-mark-middle: var(--saga-amber);
+}
+
+/* ── TERRACOTTA theme (loud accent surface) ────────────────── */
+:root[data-theme="terra"],
+.theme-terra {
+  --saga-bg:          var(--saga-terracotta);
+  --saga-surface:     var(--saga-terra-deep);
+  --saga-surface-alt: #8A3520;
+  --saga-fg:          var(--saga-cream);
+  /* Terracotta is a mid-tone (~0.19 luminance) so low-opacity cream washes out.
+     Tiers raised + text should sit on --saga-surface (#9E4128), not --saga-bg:
+     cream on terra-deep clears AA (~5.4:1); muted ~4.6:1, subtle ~3.6:1 there.
+     On --saga-bg directly only large/bold text meets AA. See handoff README. */
+  --saga-fg-muted:    rgba(244,234,216,0.88);
+  --saga-fg-subtle:   rgba(244,234,216,0.72);
+  --saga-border:      rgba(244,234,216,0.24);
+  --saga-accent:      var(--saga-ink);
+  --saga-accent-fg:   var(--saga-cream);
+  --saga-mark-side:   var(--saga-cream);
+  --saga-mark-middle: var(--saga-ink);
+}
+
+/* ── Optional: follow OS dark mode ─────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --saga-bg:          var(--saga-ink);
+    --saga-surface:     #261B16;
+    --saga-surface-alt: #2F221C;
+    --saga-fg:          var(--saga-cream);
+    --saga-fg-muted:    rgba(244,234,216,0.65);
+    --saga-fg-subtle:   rgba(244,234,216,0.40);
+    --saga-border:      rgba(244,234,216,0.12);
+    --saga-accent:      var(--saga-amber);
+    --saga-accent-fg:   var(--saga-ink);
+    --saga-mark-side:   var(--saga-cream);
+    --saga-mark-middle: var(--saga-amber);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Wordmark — reusable CSS class for live text rendering
+   (use only when the wordmark is part of a translatable layout;
+    for static marketing, prefer the SVG asset).
+   ───────────────────────────────────────────────────────────── */
+.saga-wordmark {
+  font-family: var(--saga-font-display);
+  font-weight: 800;
+  letter-spacing: var(--saga-tracking-tight);
+  line-height: 1;
+  color: var(--saga-fg);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.14em;
+  font-feature-settings: "ss01";
+}
+.saga-wordmark::after {
+  /* play triangle */
+  content: "";
+  display: inline-block;
+  width: 0.42em;
+  height: 0.42em;
+  background: var(--saga-accent);
+  clip-path: polygon(20% 10%, 85% 50%, 20% 90%);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Uppercase mono label — used for metadata/captions throughout
+   ───────────────────────────────────────────────────────────── */
+.saga-label {
+  font-family: var(--saga-font-mono);
+  font-size: 11px;
+  letter-spacing: var(--saga-tracking-mono);
+  text-transform: uppercase;
+  color: var(--saga-fg-muted);
+}

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Saga — Triangle ⇄ 3-spine logo morph</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#1C140F; --card:#271C15; --elev:#241A13;
+    --amber:#E8A24A; --cream:#F2E7D6; --sub:#CDBBA6; --muted:#8C7C6C;
+    --line:rgba(242,231,214,0.10); --line2:rgba(242,231,214,0.16);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:#15100C; color:var(--cream); font-family:'Manrope',sans-serif; min-height:100vh; padding:44px; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1120px; margin:0 auto;}
+  .head{display:flex; justify-content:space-between; align-items:flex-end; gap:28px; flex-wrap:wrap; margin-bottom:38px;}
+  .head h1{font-weight:800; letter-spacing:-0.035em; font-size:34px; margin:0 0 8px;}
+  .head p{margin:0; color:rgba(242,231,214,0.55); font-size:14px; line-height:1.5; max-width:560px;}
+  .ctrls{display:flex; gap:8px;}
+  .ctrls button{background:transparent; color:var(--cream); border:1px solid var(--line2); padding:9px 16px; border-radius:99px; font:600 12px/1 'Manrope'; cursor:pointer; transition:.18s;}
+  .ctrls button:hover{border-color:rgba(242,231,214,0.4);}
+  .ctrls button.on{background:var(--amber); color:#1C140F; border-color:var(--amber);}
+
+  /* hero */
+  .hero{background:var(--bg); border-radius:26px; padding:54px; display:flex; flex-direction:column; align-items:center; gap:28px; box-shadow:0 40px 80px -40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03); margin-bottom:18px;}
+  .ppbtn{background:none; border:none; padding:0; cursor:pointer; display:grid; place-items:center; -webkit-tap-highlight-color:transparent;}
+  .ppbtn:focus-visible{outline:3px solid var(--amber); outline-offset:6px; border-radius:10px;}
+  .hint{font-size:12px; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); font-weight:700;}
+
+  /* the 3-spine glyph (200 viewBox = today's logo geometry) */
+  .g3 .s1,.g3 .s2,.g3 .s3{transition:d .5s cubic-bezier(.66,0,.34,1), fill .35s ease;}
+  .g3 .s1,.g3 .s3{fill:var(--amber);}
+  .g3 .s2{fill:var(--amber);}
+  /* PAUSED → solid amber play triangle (three contiguous slices) */
+  body[data-state="paused"] .g3 .s1{d:path("M30 36 L70 57.3 L70 142.7 L30 164 Z");}
+  body[data-state="paused"] .g3 .s2{d:path("M70 57.3 L110 78.7 L110 121.3 L70 142.7 Z");}
+  body[data-state="paused"] .g3 .s3{d:path("M110 78.7 L150 100 L150 100 L110 121.3 Z");}
+  /* PLAYING → today's 3-spine logo (short · tall accent · short) */
+  body[data-state="playing"] .g3 .s1{d:path("M30 56 L62 56 L62 156 L30 156 Z");  fill:var(--cream);}
+  body[data-state="playing"] .g3 .s2{d:path("M74 36 L106 36 L106 176 L74 176 Z"); fill:var(--amber);}
+  body[data-state="playing"] .g3 .s3{d:path("M118 68 L150 68 L150 148 L118 148 Z"); fill:var(--cream);}
+  /* gentle meter life on the spines while playing */
+  .g3.alive .s1,.g3.alive .s2,.g3.alive .s3{transform-box:fill-box; transform-origin:center bottom;}
+  body[data-state="playing"] .g3.alive .s1{animation:m1 1.3s ease-in-out infinite;}
+  body[data-state="playing"] .g3.alive .s2{animation:m2 0.95s ease-in-out infinite;}
+  body[data-state="playing"] .g3.alive .s3{animation:m3 1.6s ease-in-out infinite;}
+  @keyframes m1{0%,100%{transform:scaleY(1);}50%{transform:scaleY(0.62);}}
+  @keyframes m2{0%,100%{transform:scaleY(1);}40%{transform:scaleY(0.55);}70%{transform:scaleY(0.82);}}
+  @keyframes m3{0%,100%{transform:scaleY(1);}55%{transform:scaleY(0.7);}}
+
+  /* the 2-bar glyph (100 viewBox) for comparison */
+  .g2 .b1,.g2 .b2{transition:d .5s cubic-bezier(.66,0,.34,1), fill .35s ease;}
+  .g2 .b1{fill:var(--amber);} .g2 .b2{fill:var(--cream);}
+  body[data-state="paused"] .g2 .b1{d:path("M36 22 L78 50 L78 50 L36 50 Z");}
+  body[data-state="paused"] .g2 .b2{d:path("M36 50 L78 50 L78 50 L36 78 Z");}
+  body[data-state="playing"] .g2 .b1{d:path("M35 24 L47 24 L47 76 L35 76 Z");}
+  body[data-state="playing"] .g2 .b2{d:path("M57 24 L69 24 L69 76 L57 76 Z");}
+
+  /* locked frames — each card shows ONE fixed end-state, ignoring the global toggle
+     (higher specificity than the body[data-state] rules so it always wins) */
+  .frame[data-lock="paused"] .g3 .s1{d:path("M30 36 L70 57.3 L70 142.7 L30 164 Z"); fill:var(--amber);}
+  .frame[data-lock="paused"] .g3 .s2{d:path("M70 57.3 L110 78.7 L110 121.3 L70 142.7 Z"); fill:var(--amber);}
+  .frame[data-lock="paused"] .g3 .s3{d:path("M110 78.7 L150 100 L150 100 L110 121.3 Z"); fill:var(--amber);}
+  .frame[data-lock="playing"] .g3 .s1{d:path("M30 56 L62 56 L62 156 L30 156 Z"); fill:var(--cream);}
+  .frame[data-lock="playing"] .g3 .s2{d:path("M74 36 L106 36 L106 176 L74 176 Z"); fill:var(--amber);}
+  .frame[data-lock="playing"] .g3 .s3{d:path("M118 68 L150 68 L150 148 L118 148 Z"); fill:var(--cream);}
+  .frame[data-lock="playing"] .g2 .b1{d:path("M35 24 L47 24 L47 76 L35 76 Z");}
+  .frame[data-lock="playing"] .g2 .b2{d:path("M57 24 L69 24 L69 76 L57 76 Z");}
+  .frame[data-lock="playing"] .g3.alive .s1{animation:m1 1.3s ease-in-out infinite;}
+  .frame[data-lock="playing"] .g3.alive .s2{animation:m2 0.95s ease-in-out infinite;}
+  .frame[data-lock="playing"] .g3.alive .s3{animation:m3 1.6s ease-in-out infinite;}
+
+  @media(prefers-reduced-motion:reduce){.g3 .s1,.g3 .s2,.g3 .s3{animation:none!important;}}
+
+  /* end-state frames */
+  .frames{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:34px;}
+  .frame{background:var(--bg); border-radius:18px; padding:36px; display:flex; flex-direction:column; align-items:center; gap:18px; box-shadow:0 30px 60px -36px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03);}
+  .frame .lab{text-align:center;}
+  .frame .lab .a{font-size:19px; font-weight:700;}
+  .frame .lab .b{font-size:12px; letter-spacing:0.14em; text-transform:uppercase; color:var(--muted); margin-top:5px; font-weight:600;}
+
+  /* comparison */
+  .cmp{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .cmp .frame{gap:14px;}
+  .tag{font:700 10px/1 'Manrope'; letter-spacing:0.16em; text-transform:uppercase; padding:5px 11px; border-radius:99px;}
+  .tag.good{background:rgba(232,162,74,0.18); color:var(--amber);}
+  .tag.mid{background:rgba(242,231,214,0.08); color:var(--sub);}
+
+  .note{margin-top:30px; background:var(--elev); border:1px solid var(--line); border-radius:16px; padding:22px 24px; font-size:14px; line-height:1.65; color:rgba(242,231,214,0.72);}
+  .note b{color:var(--amber); font-weight:700;}
+  .sec-lab{font-size:11px; letter-spacing:0.22em; text-transform:uppercase; color:rgba(242,231,214,0.4); font-weight:700; margin:6px 2px 14px;}
+</style>
+</head>
+<body data-state="paused">
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>Play triangle ⇄ today’s 3-spine logo</h1>
+      <p>The solid play triangle splits into three vertical slices that slide and stretch into the real logo — short, tall (accent), short. Tap it, or Auto-loop, to watch the fold.</p>
+    </div>
+    <div class="ctrls">
+      <button data-set="paused" class="on">Paused ▶</button>
+      <button data-set="playing">Playing</button>
+      <button id="auto">Auto-loop</button>
+    </div>
+  </div>
+
+  <div class="hero">
+    <button class="ppbtn js-toggle" aria-label="Play or pause">
+      <svg class="g3 alive" width="190" height="190" viewBox="0 0 200 200">
+        <path class="s1" d="M30 36 L70 57.3 L70 142.7 L30 164 Z"></path>
+        <path class="s2" d="M70 57.3 L110 78.7 L110 121.3 L70 142.7 Z"></path>
+        <path class="s3" d="M110 78.7 L150 100 L150 100 L110 121.3 Z"></path>
+      </svg>
+    </button>
+    <div class="hint">tap to morph</div>
+  </div>
+
+  <div class="frames">
+    <div class="frame" data-lock="paused">
+      <svg class="g3" width="120" height="120" viewBox="0 0 200 200">
+        <path class="s1" d="M30 36 L70 57.3 L70 142.7 L30 164 Z"></path><path class="s2" d="M70 57.3 L110 78.7 L110 121.3 L70 142.7 Z"></path><path class="s3" d="M110 78.7 L150 100 L150 100 L110 121.3 Z"></path>
+      </svg>
+      <div class="lab"><div class="a">Paused → Play</div><div class="b">solid amber triangle</div></div>
+    </div>
+    <div class="frame" data-lock="playing">
+      <svg class="g3 alive" width="120" height="120" viewBox="0 0 200 200">
+        <path class="s1" d="M30 56 L62 56 L62 156 L30 156 Z"></path>
+        <path class="s2" d="M74 36 L106 36 L106 176 L74 176 Z"></path>
+        <path class="s3" d="M118 68 L150 68 L150 148 L118 148 Z"></path>
+      </svg>
+      <div class="lab"><div class="a">Playing → today’s logo</div><div class="b">3 spines · middle accent</div></div>
+    </div>
+  </div>
+
+  <div class="sec-lab">Which playing-state reads better as “pause”?</div>
+  <div class="cmp">
+    <div class="frame" data-lock="playing">
+      <svg class="g3 alive" width="92" height="92" viewBox="0 0 200 200">
+        <path class="s1"></path><path class="s2"></path><path class="s3"></path>
+      </svg>
+      <span class="tag mid">3 spines · reads “now playing”</span>
+      <div class="lab"><div class="b" style="max-width:240px;">true to the logo, but uneven bars look like a meter — less like a tap-to-pause</div></div>
+    </div>
+    <div class="frame" data-lock="playing">
+      <svg class="g2" width="92" height="92" viewBox="0 0 100 100">
+        <path class="b1"></path><path class="b2"></path>
+      </svg>
+      <span class="tag good">2 bars · reads “pause”</span>
+      <div class="lab"><div class="b" style="max-width:240px;">unambiguous transport control — but it’s not literally the logo</div></div>
+    </div>
+  </div>
+
+  <div class="note">
+    Both share the exact same play triangle when paused — the only difference is what it unfolds into. <b>Three spines</b> turn the playing button into the brand itself, which is lovely for identity but reads as an equalizer (“something is playing”) more than a button you press to pause. <b>Two bars</b> stay an obvious pause control. A nice middle path: use the <b>3-spine logo as a non-interactive “now-playing” indicator</b> (mini-player, list rows) and keep the <b>2-bar morph on the actual transport button</b> — same triangle, two endings for two jobs.
+  </div>
+</div>
+
+<script>
+  function setState(s){
+    document.body.dataset.state = s;
+    document.querySelectorAll('.ctrls button[data-set]').forEach(x=>x.classList.toggle('on', x.dataset.set===s));
+  }
+  document.querySelectorAll('.js-toggle').forEach(b=>b.addEventListener('click',()=>{ stopAuto(); setState(document.body.dataset.state==='playing'?'paused':'playing'); }));
+  document.querySelectorAll('.ctrls button[data-set]').forEach(b=>b.addEventListener('click',()=>{ stopAuto(); setState(b.dataset.set); }));
+  let timer=null; const autoBtn=document.getElementById('auto');
+  function stopAuto(){ if(timer){clearInterval(timer); timer=null; autoBtn.classList.remove('on');} }
+  autoBtn.addEventListener('click',()=>{ if(timer){stopAuto();return;} autoBtn.classList.add('on'); setState('playing'); timer=setInterval(()=>setState(document.body.dataset.state==='playing'?'paused':'playing'),2200); });
+</script>
+</body>
+</html>

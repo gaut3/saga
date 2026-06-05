@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Explicitly block cleartext (HTTP) for plex.tv auth endpoints.
+         Code already uses HTTPS for these, but this enforces it at the OS level. -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">plex.tv</domain>
+        <domain includeSubdomains="true">app.plex.tv</domain>
+    </domain-config>
+
+    <!-- Local Plex servers connected by IP address may use HTTP.
+         To require HTTPS everywhere (including local servers), change the line below to false. -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>

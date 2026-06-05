@@ -1,0 +1,22 @@
+# Claude Code local settings (permissions, hooks)
+.claude/
+
+# VS Code and workspace config
+.vscode/
+saga.code-workspace
+
+# Internal development notes and codebase guide
+CLAUDE.md
+SAGA_NOTES.md
+
+# Archived Gen-1 (3-spine) design material
+Old design/
+
+# Design handoff — internal prototype folder (contains third-party book covers)
+saga_handoff/03-history/reference_prototype/
+
+# Marketing canvas and working screenshots (internal design material)
+Webpage/
+
+# Release obfuscation output — keep locally for crash symbolication
+build/debug-info/

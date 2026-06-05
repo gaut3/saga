@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Saga — Animated mark v3 (4 spines)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#1C140F; --card:#271C15; --elev:#241A13; --ink:#1C140F;
+    --amber:#E8A24A; --cream:#F2E7D6; --terra:#C2603C; --sub:#CDBBA6; --muted:#8C7C6C;
+    --line:rgba(242,231,214,0.10); --line2:rgba(242,231,214,0.16);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:#15100C; color:var(--cream); font-family:'Manrope',sans-serif; min-height:100vh; padding:44px; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1180px; margin:0 auto;}
+  .head{display:flex; justify-content:space-between; align-items:flex-end; gap:28px; flex-wrap:wrap; margin-bottom:30px;}
+  .head h1{font-weight:800; letter-spacing:-0.035em; font-size:36px; margin:0 0 8px;}
+  .head p{margin:0; color:rgba(242,231,214,0.55); font-size:14px; line-height:1.5; max-width:580px;}
+  .ctrls{display:flex; gap:8px;}
+  .ctrls button{background:transparent; color:var(--cream); border:1px solid var(--line2); padding:9px 16px; border-radius:99px; font:600 12px/1 'Manrope'; cursor:pointer; transition:.18s;}
+  .ctrls button:hover{border-color:rgba(242,231,214,0.4);}
+  .ctrls button.on{background:var(--amber); color:#1C140F; border-color:var(--amber);}
+
+  .sec{margin-bottom:46px;}
+  .sec-head{display:flex; justify-content:space-between; align-items:baseline; padding-bottom:10px; margin-bottom:22px; border-bottom:1px solid var(--line);}
+  .sec-head h2{font-weight:700; font-size:18px; letter-spacing:-0.02em; margin:0;}
+  .sec-num{font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.2em; color:rgba(242,231,214,0.4);}
+
+  /* ── the 4-spine mark ───────────────────────────────────────── */
+  .g4 .sp{transition:d .48s cubic-bezier(.66,0,.34,1), fill .35s ease;}
+  .g4 .sa,.g4 .sc,.g4 .sd{fill:currentColor;}
+  .g4 .sb{fill:var(--accent);}
+  /* default geometry = 4 upright spines */
+  .g4 .sa{d:path("M41 36 L63 36 L63 164 L41 164 Z");}
+  .g4 .sb{d:path("M73 36 L95 36 L95 164 L73 164 Z");}
+  .g4 .sc{d:path("M105 36 L127 36 L127 164 L105 164 Z");}
+  .g4 .sd{d:path("M137 36 L159 36 L159 164 L137 164 Z");}
+  /* PAUSED → solid accent play triangle */
+  .g4[data-state="paused"] .sa{d:path("M41 36 L70.5 52 L70.5 148 L41 164 Z"); fill:var(--accent);}
+  .g4[data-state="paused"] .sb{d:path("M70.5 52 L100 68 L100 132 L70.5 148 Z"); fill:var(--accent);}
+  .g4[data-state="paused"] .sc{d:path("M100 68 L129.5 84 L129.5 116 L100 132 Z"); fill:var(--accent);}
+  .g4[data-state="paused"] .sd{d:path("M129.5 84 L159 100 L159 100 L129.5 116 Z"); fill:var(--accent);}
+
+  .g4 .sp{transform-box:fill-box;}
+  /* PLAYING → loudness-driven heights (JS sets --h), centred */
+  .g4[data-state="playing"] .sp{transform-origin:center; transform:scaleY(var(--h,0.6));}
+  /* DOWNLOADING → determinate fill from the floor (JS sets --h) */
+  .g4[data-state="downloading"] .sp{transform-origin:center bottom; transform:scaleY(var(--h,0.2));}
+  /* BREATHING → gentle synchronized swell */
+  .g4[data-state="breathing"] .sp{transform-origin:center; animation:breathe 2.4s ease-in-out infinite;}
+  .g4[data-state="breathing"] .sb{animation-delay:.15s;} .g4[data-state="breathing"] .sc{animation-delay:.3s;} .g4[data-state="breathing"] .sd{animation-delay:.45s;}
+  /* BUFFERING → staggered fill sweep */
+  .g4[data-state="buffering"] .sp{transform-origin:center bottom; animation:load 1.4s ease-in-out infinite;}
+  .g4[data-state="buffering"] .sb{animation-delay:.12s;} .g4[data-state="buffering"] .sc{animation-delay:.24s;} .g4[data-state="buffering"] .sd{animation-delay:.36s;}
+  /* FINISHED → celebratory overshoot */
+  .g4[data-state="finished"] .sp{transform-origin:center bottom; animation:celebrate 1.4s ease-in-out infinite;}
+  .g4[data-state="finished"] .sb{animation-delay:.08s;} .g4[data-state="finished"] .sc{animation-delay:.16s;} .g4[data-state="finished"] .sd{animation-delay:.24s;}
+
+  @keyframes breathe{0%,100%{transform:scaleY(1);opacity:1;}50%{transform:scaleY(.82);opacity:.85;}}
+  @keyframes load{0%,100%{transform:scaleY(.3);}50%{transform:scaleY(1);}}
+  @keyframes celebrate{0%{transform:scaleY(1);}26%{transform:scaleY(.42);}54%{transform:scaleY(1.18);}76%{transform:scaleY(.94);}100%{transform:scaleY(1);}}
+  @media(prefers-reduced-motion:reduce){.g4 .sp{animation:none!important;}}
+
+  /* themes set text-colour (neutral spines) + --accent */
+  .t-ink{color:var(--cream); --accent:var(--amber);}
+  .t-cream{color:var(--ink); --accent:var(--terra);}
+  .t-terra{color:var(--cream); --accent:var(--ink);}
+
+  .ppbtn{background:none; border:none; padding:0; cursor:pointer; display:grid; place-items:center; -webkit-tap-highlight-color:transparent;}
+  .ppbtn:focus-visible{outline:3px solid var(--amber); outline-offset:5px; border-radius:8px;}
+
+  /* stages */
+  .row3{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;}
+  @media(max-width:900px){.row3{grid-template-columns:1fr;}}
+  .stage-wrap{border-radius:16px; overflow:hidden; box-shadow:0 30px 60px -34px rgba(0,0,0,0.55);}
+  .stage{padding:48px 24px; min-height:280px; display:flex; flex-direction:column; align-items:center; gap:20px; justify-content:center;}
+  .s-ink{background:var(--ink);} .s-cream{background:var(--cream);} .s-terra{background:var(--terra);}
+  .stage-meta{background:#160F0B; padding:12px 16px; display:flex; justify-content:space-between; font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:rgba(242,231,214,0.65);}
+  .hint{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:rgba(242,231,214,0.4);}
+  .s-cream .hint{color:rgba(28,20,15,0.45);}
+
+  /* state grid */
+  .states{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;}
+  @media(max-width:860px){.states{grid-template-columns:1fr 1fr;}}
+  @media(max-width:560px){.states{grid-template-columns:1fr;}}
+  .scell{background:var(--bg); border-radius:18px; padding:30px 22px; display:flex; flex-direction:column; align-items:center; gap:14px; box-shadow:0 0 0 1px rgba(255,255,255,0.03);}
+  .scell .nm{font-size:17px; font-weight:700;}
+  .scell .ds{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); text-align:center; line-height:1.5; min-height:28px;}
+
+  /* player */
+  .player{background:var(--ink); color:var(--cream); border-radius:18px; padding:22px; box-shadow:0 30px 60px -34px rgba(0,0,0,0.55); max-width:520px;}
+  .ptop{display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:center;}
+  .cover{width:66px; height:66px; border-radius:8px; background:linear-gradient(150deg,#3a2a1c,#22160f); box-shadow:inset 0 0 0 1px rgba(242,231,214,0.06);}
+  .meta .title{font-size:18px; font-weight:700;}
+  .meta .auth{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--muted); margin-top:5px;}
+  .meta .st{font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:var(--amber); margin-top:7px;}
+  .track{height:5px; background:rgba(242,231,214,0.14); border-radius:99px; position:relative; margin:18px 0 16px;}
+  .track::after{content:""; position:absolute; left:0; top:0; height:5px; width:42%; background:var(--amber); border-radius:99px;}
+  .transport{display:flex; align-items:center; justify-content:center; gap:26px;}
+  .tb{background:none; border:none; cursor:pointer; padding:4px; color:var(--sub); display:grid; place-items:center;}
+  .tb:hover{color:var(--cream);} .tb svg{width:26px; height:26px;}
+
+  pre.code{background:#120D0A; color:#EDE2D2; padding:24px; border-radius:14px; font-family:'JetBrains Mono',monospace; font-size:11.5px; line-height:1.62; overflow:auto; border:1px solid var(--line); max-width:100%;}
+  pre.code .c{color:#C9863A;} pre.code .k{color:#E8A24A;} pre.code .s{color:#9FBE8F;}
+  .code2{display:grid; grid-template-columns:1fr 1fr; gap:14px;} .code2>*{min-width:0;}
+  @media(max-width:820px){.code2{grid-template-columns:1fr;}}
+  .assets{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;}
+  @media(max-width:860px){.assets{grid-template-columns:1fr 1fr;}}
+  @media(max-width:560px){.assets{grid-template-columns:1fr;}}
+  .acard{border-radius:16px; overflow:hidden; box-shadow:0 0 0 1px rgba(255,255,255,0.04);}
+  .acard .stagebox{height:200px; display:grid; place-items:center;}
+  .acard .stagebox img{width:120px; height:120px; object-fit:contain;}
+  .acard.icon .stagebox img{width:150px; height:150px; border-radius:0;}
+  .acard .ameta{background:#160F0B; padding:11px 15px; display:flex; justify-content:space-between; align-items:center; gap:10px; font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.08em; color:rgba(242,231,214,0.6);}
+  .acard .ameta .fn{color:rgba(242,231,214,0.85);}
+  .acard .ameta .warn{color:var(--amber);}
+  .bx-ink{background:var(--ink);} .bx-cream{background:var(--cream);} .bx-terra{background:var(--terra);} .bx-neutral{background:#2a201a;}
+
+  .note{margin-top:14px; background:var(--elev); border:1px solid var(--line); border-radius:16px; padding:20px 24px; font-size:13.5px; line-height:1.62; color:rgba(242,231,214,0.72);}
+  .note b{color:var(--amber); font-weight:700;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>Animated mark · v3 · four spines</h1>
+      <p>One mark, every playback moment. Paused folds into the play triangle; playing reacts to loudness; and the same four spines cover buffering, downloading, idle and finished. Toggle the canonical mark below.</p>
+    </div>
+    <div class="ctrls">
+      <button data-set="paused" class="on">Paused ▶</button>
+      <button data-set="playing">Playing</button>
+    </div>
+  </div>
+
+  <!-- 01 button in themes -->
+  <section class="sec">
+    <div class="sec-head"><h2>The play / pause button, three themes</h2><div class="sec-num">01 · TAP TO MORPH</div></div>
+    <div class="row3">
+      <div class="stage-wrap">
+        <div class="stage s-cream">
+          <button class="ppbtn"><span class="markhost sync t-cream" data-state="paused" data-size="140"></span></button>
+          <div class="hint">click →</div>
+        </div>
+        <div class="stage-meta"><span>Cream theme</span><span>accent · terra</span></div>
+      </div>
+      <div class="stage-wrap">
+        <div class="stage s-ink">
+          <button class="ppbtn"><span class="markhost sync t-ink" data-state="paused" data-size="140"></span></button>
+          <div class="hint">click →</div>
+        </div>
+        <div class="stage-meta"><span>Ink theme</span><span>accent · amber</span></div>
+      </div>
+      <div class="stage-wrap">
+        <div class="stage s-terra">
+          <button class="ppbtn"><span class="markhost sync t-terra" data-state="paused" data-size="140"></span></button>
+          <div class="hint">click →</div>
+        </div>
+        <div class="stage-meta"><span>Terra theme</span><span>accent · ink</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 in context -->
+  <section class="sec">
+    <div class="sec-head"><h2>In context — the transport</h2><div class="sec-num">02 · STOPPED = ▶ · PLAYING = LIVE</div></div>
+    <div class="player">
+      <div class="ptop">
+        <div class="cover"></div>
+        <div class="meta"><div class="title">Overlord, Vol. 8</div><div class="auth">Kugane Maruyama</div><div class="st js-st">Paused</div></div>
+      </div>
+      <div class="track"></div>
+      <div class="transport">
+        <button class="tb" aria-label="Previous"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14H5V5h2zm12 0L9 12l10 7V5z"/></svg></button>
+        <button class="tb" aria-label="Back 30"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a9 9 0 1 1-1.5 5"/><path d="M3 3v5h5"/></svg></button>
+        <button class="ppbtn js-toggle"><span class="markhost sync t-ink" data-state="paused" data-size="60"></span></button>
+        <button class="tb" aria-label="Forward 30"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a9 9 0 1 0 1.5 5"/><path d="M21 3v5h-5"/></svg></button>
+        <button class="tb" aria-label="Next"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 5v14h2V5h-2zM5 5l10 7L5 19V5z"/></svg></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 the expressive state set -->
+  <section class="sec">
+    <div class="sec-head"><h2>One mark, every moment</h2><div class="sec-num">03 · NOW THAT WE HAVE 4 SPINES</div></div>
+    <div class="states">
+      <div class="scell"><span class="markhost t-ink" data-state="playing" data-size="96"></span><div class="nm">Playing</div><div class="ds">loudness-reactive<br>now-playing button</div></div>
+      <div class="scell"><span class="markhost t-ink" data-state="paused" data-size="96"></span><div class="nm">Paused</div><div class="ds">solid play triangle<br>tap to resume</div></div>
+      <div class="scell"><span class="markhost t-ink" data-state="buffering" data-size="96"></span><div class="nm">Buffering</div><div class="ds">staggered sweep<br>stream is loading</div></div>
+      <div class="scell"><span class="markhost t-ink" data-state="downloading" data-size="96"></span><div class="nm">Downloading</div><div class="ds">determinate fill<br>bars = % complete</div></div>
+      <div class="scell"><span class="markhost t-ink" data-state="breathing" data-size="96"></span><div class="nm">Idle / splash</div><div class="ds">slow breathing<br>app is awake</div></div>
+      <div class="scell"><span class="markhost t-ink" data-state="finished" data-size="96"></span><div class="nm">Finished</div><div class="ds">celebratory bloom<br>book complete · streak</div></div>
+    </div>
+    <div class="note">Four spines unlock states three couldn’t carry cleanly: a <b>determinate download</b> (each bar is a quarter of progress), a richer <b>loudness wave</b>, and a <b>finished/streak</b> bloom. They all share the same geometry, so any state can morph into any other — and all of them collapse back to the play triangle when stopped.</div>
+  </section>
+
+  <!-- 04 flutter -->
+  <section class="sec">
+    <div class="sec-head"><h2>How each runs in Flutter</h2><div class="sec-num">04 · ONE PAINTER, MANY DRIVERS</div></div>
+    <div class="code2">
+      <pre class="code"><span class="c">// ONE CustomPainter draws all states. `t` morphs</span>
+<span class="c">// triangle(0)→bars(1); `levels` sets the 4 heights.</span>
+class <span class="k">SpinePainter</span> extends CustomPainter {
+  SpinePainter({required this.t, required this.levels});
+  final double t;             <span class="c">// 0 triangle · 1 bars</span>
+  final List&lt;double&gt; levels;  <span class="c">// 4 heights 0..1</span>
+  static const tri = [/*4×4 Offsets*/];
+  static const bar = [/*4×4 Offsets*/];
+
+  @override
+  void paint(Canvas c, Size size) {
+    final s = size.width / 200.0;
+    for (var i = 0; i &lt; 4; i++) {
+      final p = List.generate(4,
+        (k) =&gt; Offset.lerp(tri[i][k], bar[i][k], t)!);
+      final cy = (p[0].dy + p[2].dy) / 2;
+      final h  = lerpDouble(1, levels[i].clamp(.16,1), t)!;
+      final q  = p.map((o) =&gt;
+        Offset(o.dx, cy + (o.dy-cy)*h) * s).toList();
+      c.drawPath(Path()..addPolygon(q, true),
+        Paint()..color = i==1 ? accent : cream);
+    }
+  }
+  @override bool shouldRepaint(o)=&gt;o.t!=t||o.levels!=levels;
+}</pre>
+      <pre class="code"><span class="c">// Each STATE is just a different `levels` source.</span>
+
+<span class="c">// play  → morph.forward();  pause → morph.reverse();</span>
+<span class="c">// (one AnimationController drives `t`)</span>
+
+<span class="c">// PLAYING  — loudness envelope (speech, not FFT):</span>
+levels = base.map((_,i) =&gt;
+  (rms + 0.18*sin(phase*rate[i]+off[i])).clamp(.16,1));
+
+<span class="c">// BUFFERING — staggered sine, no audio needed:</span>
+levels = [for (var i=0;i&lt;4;i++)
+  .3 + .7*((sin(phase - i*.5)+1)/2)];
+
+<span class="c">// DOWNLOADING — determinate, bar = quarter of %:</span>
+levels = [for (var i=0;i&lt;4;i++)
+  (progress*4 - i).clamp(.14, 1.0)];
+
+<span class="c">// BREATHING — single slow LFO on all four:</span>
+levels = List.filled(4, .82 + .18*sin(phase*.6));
+
+<span class="c">// FINISHED — one-shot overshoot curve, then settle.</span>
+
+<span class="c">// RMS source: Android Visualizer / iOS AVAudioEngine</span>
+<span class="c">// tap → vDSP RMS. FFT is overkill for narration.</span></pre>
+    </div>
+  </section>
+
+  <!-- 05 stripes -->
+  <section class="sec">
+    <div class="sec-head"><h2>The spine “text” lines</h2><div class="sec-num">05 · DROP FOR MOTION</div></div>
+    <div class="note">The little title-lines that sit on each book spine are a <b>large-static-logo</b> detail only. At UI sizes and in any animation they smear into noise and muddy the silhouette — so the animated mark, the button, and every in-app instance use the <b>clean</b> spines. Reserve the text-lined version for big brand lockups (splash hero, marketing), never for the moving mark.</div>
+  </section>
+
+  <!-- 06 exported assets -->
+  <section class="sec">
+    <div class="sec-head"><h2>Exported assets</h2><div class="sec-num">06 · PNG · 1024² · TRANSPARENT</div></div>
+    <div class="assets">
+      <div class="acard"><div class="stagebox bx-ink"><img src="assets/saga-mark-ink.png" alt="Saga mark, ink theme"></div><div class="ameta"><span class="fn">saga-mark-ink.png</span><span>dark UI</span></div></div>
+      <div class="acard"><div class="stagebox bx-cream"><img src="assets/saga-mark-cream.png" alt="Saga mark, cream theme"></div><div class="ameta"><span class="fn">saga-mark-cream.png</span><span>light UI</span></div></div>
+      <div class="acard"><div class="stagebox bx-terra"><img src="assets/saga-mark-terra.png" alt="Saga mark, terra theme"></div><div class="ameta"><span class="fn">saga-mark-terra.png</span><span>reverse</span></div></div>
+      <div class="acard"><div class="stagebox bx-ink"><img src="assets/saga-play-triangle-amber.png" alt="Saga play triangle"></div><div class="ameta"><span class="fn">saga-play-triangle-amber.png</span><span>play</span></div></div>
+      <div class="acard icon"><div class="stagebox bx-neutral"><img src="assets/saga-appicon-1024.png" alt="Saga app icon"></div><div class="ameta"><span class="fn">saga-appicon-1024.png</span><span>app icon</span></div></div>
+      <div class="acard"><div class="stagebox bx-ink"><img src="assets/saga-mark-ink-textlines.png" alt="Saga mark with spine text lines"></div><div class="ameta"><span class="fn">saga-mark-ink-textlines.png</span><span class="warn">lockup only</span></div></div>
+    </div>
+    <div class="note">These ship in the Claude Code handoff. The <b>text-lined</b> variant is for large brand lockups only — never the UI or the animated mark (see §05).</div>
+  </section>
+</div>
+
+<script>
+  const TRI = {
+    sa:"M41 36 L70.5 52 L70.5 148 L41 164 Z", sb:"M70.5 52 L100 68 L100 132 L70.5 148 Z",
+    sc:"M100 68 L129.5 84 L129.5 116 L100 132 Z", sd:"M129.5 84 L159 100 L159 100 L129.5 116 Z"
+  };
+  const BAR = {
+    sa:"M41 36 L63 36 L63 164 L41 164 Z", sb:"M73 36 L95 36 L95 164 L73 164 Z",
+    sc:"M105 36 L127 36 L127 164 L105 164 Z", sd:"M137 36 L159 36 L159 164 L137 164 Z"
+  };
+  function buildMark(host){
+    const st = host.dataset.state || 'paused';
+    const d = st==='paused' ? TRI : BAR;
+    const sync = host.classList.contains('sync') ? ' sync' : '';
+    host.innerHTML =
+      `<svg class="g4${sync}" data-state="${st}" width="100%" height="100%" viewBox="0 0 200 200" aria-hidden="true">`+
+      `<path class="sp sa" d="${d.sa}"></path><path class="sp sb" d="${d.sb}"></path>`+
+      `<path class="sp sc" d="${d.sc}"></path><path class="sp sd" d="${d.sd}"></path></svg>`;
+    const sz = host.dataset.size;
+    if(sz){ host.style.width = sz+'px'; host.style.height = sz+'px'; host.style.display='inline-block'; }
+  }
+  document.querySelectorAll('.markhost').forEach(buildMark);
+
+  const svgs = [...document.querySelectorAll('svg.g4')];
+
+  // simulated loudness + progress drivers
+  let phase=0, master=0.6, mTarget=0.6;
+  function frame(ts){
+    phase += 0.09;
+    if(Math.random()<0.04) mTarget = 0.4 + Math.random()*0.55;
+    master += (mTarget-master)*0.12;
+    const off=[0,1.1,2.3,3.4], rate=[1,1.6,1.3,2.0];
+    const prog = (ts % 3600) / 3600;
+    svgs.forEach(svg=>{
+      const st = svg.dataset.state;
+      const bars = svg.querySelectorAll('.sp');
+      if(st==='playing'){
+        bars.forEach((b,i)=>{ let h=master+0.18*Math.sin(phase*rate[i]+off[i]); h=Math.max(0.16,Math.min(1,h)); b.style.setProperty('--h',h.toFixed(3)); });
+      } else if(st==='downloading'){
+        bars.forEach((b,i)=>{ let h=Math.max(0.14,Math.min(1,prog*4-i)); b.style.setProperty('--h',h.toFixed(3)); });
+      }
+    });
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // interactions
+  function flip(svg){ const ns = svg.dataset.state==='playing'?'paused':'playing'; svg.dataset.state=ns; }
+  document.querySelectorAll('.js-toggle').forEach(el=>el.addEventListener('click',()=>{
+    const svg = el.querySelector('svg.g4'); flip(svg);
+    const st = el.closest('.player')?.querySelector('.js-st'); if(st) st.textContent = svg.dataset.state==='playing'?'Now playing':'Paused';
+  }));
+  document.querySelectorAll('.stage .ppbtn').forEach(el=>el.addEventListener('click',()=>flip(el.querySelector('svg.g4'))));
+  document.querySelectorAll('.ctrls button[data-set]').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('.ctrls button[data-set]').forEach(x=>x.classList.toggle('on',x===b));
+    document.querySelectorAll('svg.g4.sync').forEach(svg=>svg.dataset.state=b.dataset.set);
+    document.querySelectorAll('.js-st').forEach(s=>s.textContent=b.dataset.set==='playing'?'Now playing':'Paused');
+  }));
+</script>
+</body>
+</html>

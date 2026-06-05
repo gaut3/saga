@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <!-- Left book -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M8,32 Q8,28 12,28 L30,28 Q34,28 34,32 L34,80 Q34,84 30,84 L12,84 Q8,84 8,80 Z" />
+    <!-- Center book (tallest) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,18 Q38,14 42,14 L58,14 Q62,14 62,18 L62,84 Q62,88 58,88 L42,88 Q38,88 38,84 Z" />
+    <!-- Right book -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M66,36 Q66,32 70,32 L84,32 Q88,32 88,36 L88,80 Q88,84 84,84 L70,84 Q66,84 66,80 Z" />
+</vector>

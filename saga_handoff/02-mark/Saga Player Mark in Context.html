@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Saga — Play/pause mark in context</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#1C140F; --card:#271C15; --card2:#31251B; --elev:#241A13;
+    --amber:#E8A24A; --amber-soft:#C9863A; --amber-deep:#7E5126;
+    --cream:#F2E7D6; --sub:#CDBBA6; --muted:#8C7C6C;
+    --line:rgba(242,231,214,0.10); --line2:rgba(242,231,214,0.16);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:#15100C; color:var(--cream);
+    font-family:'Manrope',sans-serif; min-height:100vh; padding:40px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px; margin:0 auto;}
+
+  /* header / controls */
+  .head{display:flex; justify-content:space-between; align-items:flex-end; gap:28px; flex-wrap:wrap; margin-bottom:34px;}
+  .head h1{font-weight:800; letter-spacing:-0.035em; font-size:36px; margin:0 0 8px;}
+  .head p{margin:0; color:rgba(242,231,214,0.55); font-size:14px; line-height:1.5; max-width:560px;}
+  .ctrls{display:flex; gap:8px;}
+  .ctrls button{
+    background:transparent; color:var(--cream); border:1px solid var(--line2);
+    padding:9px 16px; border-radius:99px; font:600 12px/1 'Manrope'; letter-spacing:0.04em; cursor:pointer; transition:.18s;
+  }
+  .ctrls button:hover{border-color:rgba(242,231,214,0.4);}
+  .ctrls button.on{background:var(--amber); color:#1C140F; border-color:var(--amber);}
+
+  .stage{display:grid; grid-template-columns:390px 1fr; gap:40px; align-items:start;}
+  @media(max-width:900px){.stage{grid-template-columns:1fr;}}
+
+  /* phone */
+  .phone{
+    width:390px; background:var(--bg); border-radius:44px; overflow:hidden; position:relative;
+    box-shadow:0 50px 90px -40px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04), inset 0 0 0 1px rgba(255,255,255,0.02);
+  }
+  .statusbar{display:flex; justify-content:space-between; align-items:center; padding:16px 26px 6px; font-size:14px; font-weight:600; color:var(--cream);}
+  .statusbar .right{display:flex; gap:7px; align-items:center; opacity:.9;}
+  .statusbar .batt{border:1.5px solid var(--cream); border-radius:4px; padding:1px 4px; font-size:10px; font-weight:700; line-height:1;}
+  .screen{padding:8px 22px 0;}
+  .gesture{height:5px; width:135px; background:rgba(242,231,214,0.5); border-radius:99px; margin:18px auto 12px;}
+
+  .npbar{display:flex; align-items:center; gap:18px; padding:10px 2px 18px;}
+  .npbar .title{font-size:21px; font-weight:600; letter-spacing:-0.01em;}
+  .icon-btn{background:none; border:none; padding:0; cursor:pointer; color:var(--cream); display:grid; place-items:center;}
+
+  .pills{display:flex; gap:9px; margin-bottom:18px;}
+  .pill{flex:1; display:flex; align-items:center; justify-content:center; gap:6px; border:1px solid var(--line2); border-radius:99px; padding:9px 4px; font-size:12.5px; font-weight:600; color:var(--sub);}
+  .pill svg{width:14px; height:14px; opacity:.8;}
+
+  .cover{
+    width:100%; aspect-ratio:1; border-radius:16px; margin:4px 0 26px; position:relative; overflow:hidden;
+    background:
+      repeating-linear-gradient(135deg, rgba(0,0,0,0.16) 0 2px, transparent 2px 13px),
+      linear-gradient(150deg,#3a2a1c,#22160f 70%);
+    box-shadow:inset 0 0 0 1px rgba(242,231,214,0.06);
+    display:grid; place-items:center;
+  }
+  .cover span{font-size:11px; letter-spacing:0.32em; color:rgba(242,231,214,0.35); font-weight:700;}
+
+  .titles{text-align:center; margin-bottom:24px;}
+  .titles .t1{font-size:25px; font-weight:700; letter-spacing:-0.02em;}
+  .titles .t2{font-size:15px; font-weight:600; color:var(--amber); margin-top:8px;}
+  .titles .t3{font-size:14px; color:var(--muted); margin-top:5px;}
+
+  .scrub{margin:6px 2px 4px;}
+  .track{height:6px; border-radius:99px; background:rgba(242,231,214,0.12); position:relative;}
+  .track .fill{position:absolute; left:0; top:0; height:6px; width:47%; background:var(--amber); border-radius:99px;}
+  .track .knob{position:absolute; left:47%; top:50%; width:16px; height:16px; border-radius:50%; background:var(--amber); transform:translate(-50%,-50%); box-shadow:0 0 0 4px rgba(232,162,74,0.18);}
+  .times{display:flex; justify-content:space-between; font-size:12.5px; color:var(--muted); margin-top:12px; font-weight:500;}
+
+  .transport{display:flex; align-items:center; justify-content:space-between; padding:18px 6px 8px;}
+  .transport .icon-btn{color:var(--sub);}
+  .transport .icon-btn:hover{color:var(--cream);}
+  .transport .icon-btn svg{width:30px; height:30px;}
+  .transport .icon-btn.small svg{width:26px; height:26px;}
+
+  /* the morphing play/pause glyph */
+  .ppbtn{background:none; border:none; padding:0; cursor:pointer; display:grid; place-items:center; -webkit-tap-highlight-color:transparent;}
+  .ppbtn:focus-visible{outline:3px solid var(--amber); outline-offset:5px; border-radius:8px;}
+  .ppglyph{display:block;}
+  .ppglyph .pa,.ppglyph .pb{transition:d .42s cubic-bezier(.66,0,.34,1), fill .3s ease;}
+  .ppglyph .pa{fill:var(--amber);}
+  .ppglyph .pb{fill:var(--cream);}
+  /* PAUSED → show the play triangle (two-tone halves) */
+  body[data-state="paused"] .pa{d:path("M36 22 L78 50 L78 50 L36 50 Z");}
+  body[data-state="paused"] .pb{d:path("M36 50 L78 50 L78 50 L36 78 Z");}
+  /* PLAYING → show the two spine bars (pause) */
+  body[data-state="playing"] .pa{d:path("M35 24 L47 24 L47 76 L35 76 Z");}
+  body[data-state="playing"] .pb{d:path("M57 24 L69 24 L69 76 L57 76 Z");}
+  /* gentle life on the big button while playing — still clearly a pause */
+  .ppglyph.alive .pa,.ppglyph.alive .pb{transform-box:fill-box; transform-origin:center; }
+  body[data-state="playing"] .ppglyph.alive .pa{animation:liveA 1.9s ease-in-out infinite;}
+  body[data-state="playing"] .ppglyph.alive .pb{animation:liveB 1.9s ease-in-out infinite;}
+  @keyframes liveA{0%,100%{transform:scaleY(1);}50%{transform:scaleY(0.9);}}
+  @keyframes liveB{0%,100%{transform:scaleY(0.92);}50%{transform:scaleY(1);}}
+  @media(prefers-reduced-motion:reduce){.ppglyph .pa,.ppglyph .pb{animation:none!important;}}
+
+  .botrow{display:flex; justify-content:space-between; padding:14px 6px 2px;}
+  .botrow .act{display:flex; flex-direction:column; align-items:center; gap:6px; color:var(--muted); font-size:12px; font-weight:600;}
+  .botrow .act svg{width:22px; height:22px;}
+
+  /* right column showcase */
+  .col{display:flex; flex-direction:column; gap:14px;}
+  .cap{font-size:11px; letter-spacing:0.22em; text-transform:uppercase; color:rgba(242,231,214,0.4); font-weight:700; margin:8px 2px 0;}
+  .panel{background:var(--bg); border-radius:22px; padding:18px; box-shadow:0 30px 60px -34px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03);}
+
+  /* mini player */
+  .mini{display:flex; align-items:center; gap:14px; background:var(--card); border-radius:18px; padding:12px 16px;}
+  .mini .thumb{width:46px; height:46px; border-radius:9px; background:linear-gradient(150deg,#3a2a1c,#22160f); box-shadow:inset 0 0 0 1px rgba(242,231,214,0.06); flex:none;}
+  .mini .mt{flex:1; min-width:0;}
+  .mini .mt .a{font-size:14.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .mini .mt .b{font-size:12px; color:var(--muted); margin-top:2px;}
+  .mini .mc{display:flex; align-items:center; gap:18px;}
+  .mini .icon-btn{color:var(--sub);}
+
+  /* continue listening card */
+  .cont{display:grid; grid-template-columns:96px 1fr; gap:0; background:var(--card); border:1px solid rgba(232,162,74,0.25); border-radius:18px; overflow:hidden;}
+  .cont .cv{background:linear-gradient(150deg,#3a2a1c,#22160f); }
+  .cont .ci{padding:16px 16px 14px;}
+  .cont .ci .a{font-size:16px; font-weight:700; line-height:1.2;}
+  .cont .ci .b{font-size:12.5px; color:var(--muted); margin-top:3px;}
+  .cont .pg{height:5px; background:rgba(242,231,214,0.12); border-radius:99px; margin:14px 0 12px; position:relative;}
+  .cont .pg::after{content:""; position:absolute; left:0; top:0; height:5px; width:34%; background:var(--amber); border-radius:99px;}
+  .cont .crow{display:flex; align-items:center; gap:12px;}
+  .resume{flex:1; background:var(--amber); color:#1C140F; border:none; border-radius:99px; padding:11px; font:700 14px/1 'Manrope'; cursor:pointer;}
+
+  /* history rows */
+  .hist{background:var(--card); border-radius:18px; padding:6px 16px;}
+  .hrow{display:flex; align-items:center; gap:16px; padding:14px 0; border-bottom:1px solid var(--line);}
+  .hrow:last-child{border-bottom:none;}
+  .hrow .badge{width:42px; height:42px; border-radius:11px; display:grid; place-items:center; flex:none;}
+  .hrow.started .badge{background:rgba(126,81,38,0.55);}
+  .hrow .lbl{flex:1; font-size:16px; font-weight:600;}
+  .hrow .tm{font-size:14px; color:var(--muted); font-weight:500;}
+  .hrow .badge svg{width:18px; height:18px;}
+
+  .note{margin-top:30px; background:var(--elev); border:1px solid var(--line); border-radius:16px; padding:22px 24px; font-size:14px; line-height:1.6; color:rgba(242,231,214,0.72); max-width:760px;}
+  .note b{color:var(--amber); font-weight:700;}
+</style>
+</head>
+<body data-state="paused">
+
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>The mark, as your play / pause button</h1>
+      <p>Grounded in your real screens and colours. The two book-spines <em>are</em> the pause glyph; fold them together and they become the play triangle. Tap the big button — or any control — to morph it.</p>
+    </div>
+    <div class="ctrls">
+      <button data-set="paused" class="on">Paused ▶</button>
+      <button data-set="playing">Playing</button>
+      <button id="auto">Auto-loop</button>
+    </div>
+  </div>
+
+  <div class="stage">
+
+    <!-- ░░ NOW PLAYING ░░ -->
+    <div class="phone">
+      <div class="statusbar">
+        <span>13:38</span>
+        <span class="right">
+          <svg width="17" height="13" viewBox="0 0 17 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 6.5 A 9 9 0 0 1 15 6.5"/><path d="M4.5 8.7 A 5.5 5.5 0 0 1 12.5 8.7"/><circle cx="8.5" cy="11" r="0.7" fill="currentColor" stroke="none"/></svg>
+          <span class="batt">92</span>
+        </span>
+      </div>
+      <div class="screen">
+        <div class="npbar">
+          <button class="icon-btn" aria-label="Back"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 L8 12 L15 19"/></svg></button>
+          <span class="title">Now Playing</span>
+        </div>
+
+        <div class="pills">
+          <div class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/></svg>Chapters (13)</div>
+          <div class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v16l-6-4-6 4z"/></svg>Bookmarks</div>
+          <div class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg>Sessions</div>
+        </div>
+
+        <div class="cover"><span>COVER ART</span></div>
+
+        <div class="titles">
+          <div class="t1">Overlord, Vol. 8</div>
+          <div class="t2">Overlord, Vol. 8: The Two Leaders</div>
+          <div class="t3">Kugane Maruyama</div>
+        </div>
+
+        <div class="scrub">
+          <div class="track"><div class="fill"></div><div class="knob"></div></div>
+          <div class="times"><span>4:36:04</span><span>9:50:17</span></div>
+        </div>
+
+        <div class="transport">
+          <button class="icon-btn small" aria-label="Previous"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14H5V5h2zm12 0L9 12l10 7V5z"/></svg></button>
+          <button class="icon-btn" aria-label="Back 30 seconds"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a9 9 0 1 1-1.5 5"/><path d="M3 3v5h5"/><text x="12" y="15.5" font-size="8" font-family="Manrope" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle">30</text></svg></button>
+
+          <button class="ppbtn js-toggle" aria-label="Play"><svg class="ppglyph alive" width="72" height="72" viewBox="0 0 100 100"><path class="pa" d="M36 22 L78 50 L78 50 L36 50 Z"></path><path class="pb" d="M36 50 L78 50 L78 50 L36 78 Z"></path></svg></button>
+
+          <button class="icon-btn" aria-label="Forward 30 seconds"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a9 9 0 1 0 1.5 5"/><path d="M21 3v5h-5"/><text x="12" y="15.5" font-size="8" font-family="Manrope" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle">30</text></svg></button>
+          <button class="icon-btn small" aria-label="Next"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 5v14h2V5h-2zM5 5l10 7L5 19V5z"/></svg></button>
+        </div>
+
+        <div class="botrow">
+          <div class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 13l4-3"/></svg>1.0x</div>
+          <div class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v16l-6-4-6 4z"/><path d="M12 8v5M9.5 10.5h5"/></svg>Bookmark</div>
+          <div class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17a4 4 0 0 1 4 4M3 13a8 8 0 0 1 8 8M4 6h16v10h-6"/><circle cx="4" cy="20" r="1" fill="currentColor" stroke="none"/></svg>Cast</div>
+          <div class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14a8 8 0 1 1-10-10 7 7 0 0 0 10 10z"/></svg>Sleep</div>
+        </div>
+
+        <div class="gesture"></div>
+      </div>
+    </div>
+
+    <!-- ░░ SHOWCASE COLUMN ░░ -->
+    <div class="col">
+      <div class="cap">Mini-player · persistent bar</div>
+      <div class="panel">
+        <div class="mini">
+          <div class="thumb"></div>
+          <div class="mt"><div class="a">Overlord, Vol. 8: The Two Leaders</div><div class="b">Four</div></div>
+          <div class="mc">
+            <button class="ppbtn js-toggle" aria-label="Play"><svg class="ppglyph" width="30" height="30" viewBox="0 0 100 100"><path class="pa" d="M36 22 L78 50 L78 50 L36 50 Z"></path><path class="pb" d="M36 50 L78 50 L78 50 L36 78 Z"></path></svg></button>
+            <button class="icon-btn" aria-label="Next"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M17 5v14h2V5h-2zM5 5l10 7L5 19V5z"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cap">Continue listening · home card</div>
+      <div class="panel">
+        <div class="cont">
+          <div class="cv"></div>
+          <div class="ci">
+            <div class="a">Overlord, Vol. 8: The Two Leaders</div>
+            <div class="b">Kugane Maruyama</div>
+            <div class="pg"></div>
+            <div class="crow">
+              <button class="ppbtn js-toggle" aria-label="Play"><svg class="ppglyph" width="26" height="26" viewBox="0 0 100 100"><path class="pa" d="M36 22 L78 50 L78 50 L36 50 Z"></path><path class="pb" d="M36 50 L78 50 L78 50 L36 78 Z"></path></svg></button>
+              <button class="resume js-resume js-toggle">Resume</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cap">History · session log (static states)</div>
+      <div class="panel">
+        <div class="hist">
+          <div class="hrow paused">
+            <div class="badge"><svg viewBox="0 0 100 100"><rect x="34" y="22" width="13" height="56" rx="3" fill="var(--cream)"/><rect x="53" y="22" width="13" height="56" rx="3" fill="var(--cream)"/></svg></div>
+            <div class="lbl">Paused</div><div class="tm">13:25</div>
+          </div>
+          <div class="hrow started">
+            <div class="badge"><svg viewBox="0 0 100 100"><path d="M36 24 L78 50 L36 76 Z" fill="var(--amber)"/></svg></div>
+            <div class="lbl">Started</div><div class="tm">13:25</div>
+          </div>
+          <div class="hrow paused">
+            <div class="badge"><svg viewBox="0 0 100 100"><rect x="34" y="22" width="13" height="56" rx="3" fill="var(--cream)"/><rect x="53" y="22" width="13" height="56" rx="3" fill="var(--cream)"/></svg></div>
+            <div class="lbl">Paused</div><div class="tm">12:20</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    The morph is the whole idea: <b>two spines fold into the play triangle</b> (top half amber, bottom half cream) and unfold back into the pause bars. It matches what your app already does — pause = spines, play = triangle — so nothing about the existing transport needs to change; the two states are now literally <b>the same object</b>. The big button breathes very slightly while playing so it reads as “live,” without ever stopping looking like a pause. History rows keep the plain static glyphs.
+  </div>
+</div>
+
+<script>
+  function setState(s){
+    document.body.dataset.state = s;
+    document.querySelectorAll('.js-toggle').forEach(b=>{
+      if(b.matches('.ppbtn')) b.setAttribute('aria-label', s==='playing'?'Pause':'Play');
+    });
+    const resume = document.querySelector('.js-resume');
+    if(resume) resume.textContent = s==='playing' ? 'Pause' : 'Resume';
+    document.querySelectorAll('.ctrls button[data-set]').forEach(x=>x.classList.toggle('on', x.dataset.set===s));
+  }
+  document.querySelectorAll('.js-toggle').forEach(b=>{
+    b.addEventListener('click',()=>{ stopAuto(); setState(document.body.dataset.state==='playing'?'paused':'playing'); });
+  });
+  document.querySelectorAll('.ctrls button[data-set]').forEach(b=>{
+    b.addEventListener('click',()=>{ stopAuto(); setState(b.dataset.set); });
+  });
+  let timer=null; const autoBtn=document.getElementById('auto');
+  function stopAuto(){ if(timer){clearInterval(timer); timer=null; autoBtn.classList.remove('on');} }
+  autoBtn.addEventListener('click',()=>{
+    if(timer){stopAuto(); return;}
+    autoBtn.classList.add('on');
+    setState('playing');
+    timer=setInterval(()=>setState(document.body.dataset.state==='playing'?'paused':'playing'),2000);
+  });
+</script>
+
+</body>
+</html>
