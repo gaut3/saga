@@ -162,6 +162,15 @@
         linear-gradient(rgba(244,234,216,1) 1px, transparent 1px),
         linear-gradient(90deg, rgba(244,234,216,1) 1px, transparent 1px);
       background-size: 48px 48px;
+      -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+      mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+    }
+
+    #hero::after {
+      content: '';
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 220px; pointer-events: none;
+      background: linear-gradient(to bottom, transparent, var(--ink-bg));
     }
 
     .hero-inner {
