@@ -232,13 +232,15 @@
 
     /* state bar */
     .state-bar {
-      display: inline-flex; background: rgba(244,234,216,0.06);
-      border-radius: 99px; padding: 4px; gap: 2px;
+      display: flex; flex-wrap: wrap; justify-content: center;
+      background: rgba(244,234,216,0.06);
+      border-radius: 16px; padding: 4px; gap: 2px;
+      max-width: 100%;
     }
     .state-btn {
       font-family: var(--ff-body); font-size: 12px; font-weight: 600;
       color: var(--sub); background: transparent; border: none;
-      padding: 8px 18px; border-radius: 99px; cursor: pointer;
+      padding: 8px 14px; border-radius: 99px; cursor: pointer;
       transition: background .15s, color .15s; white-space: nowrap;
     }
     .state-btn:hover { color: var(--cream); }
