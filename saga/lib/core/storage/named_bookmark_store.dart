@@ -114,4 +114,6 @@ class NamedBookmarkStore {
   static Future<void> delete(String id) async {
     await _box.delete(id);
   }
+
+  static Future<void> clearAll() => _box.clear();
 }

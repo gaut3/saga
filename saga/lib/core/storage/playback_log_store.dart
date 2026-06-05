@@ -70,6 +70,8 @@ class PlaybackLogStore {
   static void clearLog(String bookRatingKey) =>
       _box.delete('log_$bookRatingKey');
 
+  static Future<void> clearAll() => _box.clear();
+
   /// Full `log_<key>` → [event maps] map for backup (the session history shown
   /// in the day/week tabs, which is not re-fetchable from Plex).
   static Map<String, dynamic> exportAll() {

@@ -4,9 +4,15 @@ import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/mark_motion.dart';
+import '../../core/utils/format.dart';
 import '../../core/plex/models/plex_library.dart';
 import '../../core/providers.dart';
 import '../../core/storage/bookmark_store.dart';
+import '../../core/storage/completed_books_store.dart';
+import '../../core/storage/listen_days_store.dart';
+import '../../core/storage/listening_history_store.dart';
+import '../../core/storage/named_bookmark_store.dart';
+import '../../core/storage/playback_log_store.dart';
 import '../../core/storage/progress_backup.dart';
 import '../../core/storage/settings_store.dart';
 import '../auth/server_selection_screen.dart';
@@ -274,7 +280,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       await ProgressBackup.export();
     } catch (e) {
-      if (mounted) showSagaToast(context, 'Export failed: $e');
+      if (mounted) showSagaToast(context, 'Export failed: $e', isError: true);
     }
   }
 
@@ -283,41 +289,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final data = await ProgressBackup.pickAndParse();
       if (data == null || !mounted) return;
 
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          backgroundColor: SagaColors.surface,
-          title: Text('Restore progress',
-              style: TextStyle(color: SagaColors.fg)),
-          content: Text(
-            'Restore ${data.positions.length} listening position${data.positions.length == 1 ? '' : 's'}, '
-            '${data.completed.length} completed, '
-            '${data.namedBookmarks.length} bookmark${data.namedBookmarks.length == 1 ? '' : 's'}?',
-            style: TextStyle(color: SagaColors.fgMuted),
+      final conflicts = ProgressBackup.detectConflicts(data);
+      Set<String>? skipKeys;
+
+      if (conflicts.isEmpty) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            backgroundColor: SagaColors.surface,
+            title: Text('Restore progress',
+                style: TextStyle(color: SagaColors.fg)),
+            content: Text(
+              'Restore ${data.positions.length} listening position${data.positions.length == 1 ? '' : 's'}, '
+              '${data.completed.length} completed, '
+              '${data.namedBookmarks.length} bookmark${data.namedBookmarks.length == 1 ? '' : 's'}?',
+              style: TextStyle(color: SagaColors.fgMuted),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text('Restore',
+                    style: TextStyle(color: SagaColors.accent)),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text('Restore',
-                  style: TextStyle(color: SagaColors.accent)),
-            ),
-          ],
-        ),
-      );
+        );
+        if (confirmed != true) return;
+        skipKeys = const {};
+      } else {
+        skipKeys = await showDialog<Set<String>>(
+          context: context,
+          builder: (_) => _ConflictResolutionDialog(
+            conflicts: conflicts,
+            nonConflictCount: data.positions.length - conflicts.length,
+          ),
+        );
+      }
 
-      if (confirmed != true || !mounted) return;
+      if (skipKeys == null || !mounted) return;
 
-      await ProgressBackup.restore(data);
+      await ProgressBackup.restore(data, skipPositionKeys: skipKeys);
       ref.read(completionRevisionProvider.notifier).state++;
       ref.read(bookmarkRevisionProvider.notifier).state++;
 
       if (mounted) showSagaToast(context, 'Progress restored');
     } catch (e) {
-      if (mounted) showSagaToast(context, 'Import failed: $e');
+      if (mounted) showSagaToast(context, 'Import failed: $e', isError: true);
     }
   }
 
@@ -326,11 +347,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: SagaColors.surface,
-        title: Text('Clear progress',
-            style: TextStyle(color: SagaColors.fg)),
+        title: Text('Clear progress', style: TextStyle(color: SagaColors.fg)),
         content: Text(
-            'This will remove all listening positions and bookmarks. This cannot be undone.',
-            style: TextStyle(color: SagaColors.fgMuted)),
+          'This will permanently erase:\n'
+          '• All listening positions\n'
+          '• Listening history, streaks and heatmap\n'
+          '• Completed-book records\n'
+          '• Named bookmarks\n'
+          '• Session logs\n\n'
+          'This cannot be undone.',
+          style: TextStyle(color: SagaColors.fgMuted),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -345,11 +372,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
     if (confirmed == true) {
-      final positions = BookmarkStore.allPositions();
-      for (final key in positions.keys) {
-        await BookmarkStore.delete(key);
-      }
-      if (mounted) showSagaToast(context, 'Listening progress cleared');
+      await BookmarkStore.clearAll();
+      await CompletedBooksStore.clearAll();
+      await ListeningHistoryStore.clearAll();
+      await NamedBookmarkStore.clearAll();
+      await PlaybackLogStore.clearAll();
+      await ListenDaysStore.clearAll();
+      if (!mounted) return;
+      ref.read(bookmarkRevisionProvider.notifier).state++;
+      ref.read(completionRevisionProvider.notifier).state++;
+      ref.read(historyRevisionProvider.notifier).state++;
+      showSagaToast(context, 'Listening progress cleared');
     }
   }
 
@@ -816,5 +849,239 @@ class _LibraryPickerTile extends ConsumerWidget {
           ],
         ),
       ), scrollable: false);
+  }
+}
+
+// ── Backup conflict resolution ─────────────────────────────────────────────────
+
+class _ConflictResolutionDialog extends StatefulWidget {
+  final List<PositionConflict> conflicts;
+  final int nonConflictCount;
+
+  const _ConflictResolutionDialog({
+    required this.conflicts,
+    required this.nonConflictCount,
+  });
+
+  @override
+  State<_ConflictResolutionDialog> createState() =>
+      _ConflictResolutionDialogState();
+}
+
+class _ConflictResolutionDialogState
+    extends State<_ConflictResolutionDialog> {
+  // Keys whose local position the user wants to keep (not overwritten).
+  // Defaults to all conflict keys — "keep current" is the safe default.
+  late final Set<String> _keepLocal;
+
+  @override
+  void initState() {
+    super.initState();
+    _keepLocal = widget.conflicts.map((c) => c.bookKey).toSet();
+  }
+
+  bool get _allKeep => _keepLocal.length == widget.conflicts.length;
+  bool get _allRestore => _keepLocal.isEmpty;
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  String _fmtDate(DateTime dt) => '${_months[dt.month - 1]} ${dt.day}';
+
+  @override
+  Widget build(BuildContext context) {
+    final n = widget.conflicts.length;
+    final showBulk = n > 3;
+    return AlertDialog(
+      backgroundColor: SagaColors.surface,
+      title: Text('Restore progress', style: TextStyle(color: SagaColors.fg)),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$n book${n == 1 ? '' : 's'} '
+              'ha${n == 1 ? 's' : 've'} a newer local position than this backup.',
+              style: TextStyle(color: SagaColors.fgMuted, fontSize: 13),
+            ),
+            if (widget.nonConflictCount > 0) ...[
+              const SizedBox(height: 4),
+              Text(
+                '${widget.nonConflictCount} other position'
+                '${widget.nonConflictCount == 1 ? '' : 's'} '
+                'will be restored automatically.',
+                style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12),
+              ),
+            ],
+            if (showBulk) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _bulkChip('Keep all current', _allKeep,
+                      () => setState(() => _keepLocal.addAll(
+                          widget.conflicts.map((c) => c.bookKey)))),
+                  const SizedBox(width: 8),
+                  _bulkChip('Restore all', _allRestore,
+                      () => setState(() => _keepLocal.clear())),
+                ],
+              ),
+            ],
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 280),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: widget.conflicts.length,
+                separatorBuilder: (_, _) => Divider(
+                  color: SagaColors.border,
+                  height: 1,
+                  thickness: 0.5,
+                ),
+                itemBuilder: (_, i) => _conflictTile(widget.conflicts[i]),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () =>
+              Navigator.pop(context, Set<String>.from(_keepLocal)),
+          child: Text('Restore', style: TextStyle(color: SagaColors.accent)),
+        ),
+      ],
+    );
+  }
+
+  Widget _bulkChip(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected
+              ? SagaColors.accent.withValues(alpha: 0.15)
+              : SagaColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected
+                ? SagaColors.accent
+                : SagaColors.fgSubtle.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? SagaColors.accent : SagaColors.fgMuted,
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _conflictTile(PositionConflict c) {
+    final keepLocal = _keepLocal.contains(c.bookKey);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Book #${c.bookKey}',
+            style: TextStyle(
+                color: SagaColors.fg,
+                fontSize: 13,
+                fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: _positionChip(
+                  label: 'Keep current',
+                  pos: c.local,
+                  selected: keepLocal,
+                  onTap: () => setState(() => _keepLocal.add(c.bookKey)),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _positionChip(
+                  label: 'Restore',
+                  pos: c.backup,
+                  selected: !keepLocal,
+                  onTap: () => setState(() => _keepLocal.remove(c.bookKey)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _positionChip({
+    required String label,
+    required BookPosition pos,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? SagaColors.accent.withValues(alpha: 0.12)
+              : SagaColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected
+                ? SagaColors.accent
+                : SagaColors.fgSubtle.withValues(alpha: 0.25),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                if (selected) ...[
+                  Icon(Icons.check_circle, color: SagaColors.accent, size: 11),
+                  const SizedBox(width: 3),
+                ],
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: selected ? SagaColors.accent : SagaColors.fgSubtle,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              fmtDurationMs(pos.absolutePositionMs),
+              style: TextStyle(color: SagaColors.fg, fontSize: 12),
+            ),
+            Text(
+              _fmtDate(pos.savedAt),
+              style: TextStyle(color: SagaColors.fgSubtle, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

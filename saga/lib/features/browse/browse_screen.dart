@@ -68,6 +68,19 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
   final Set<String> _selectedKeys = {};
 
   @override
+  void didUpdateWidget(_BrowseContent old) {
+    super.didUpdateWidget(old);
+    if (old.libraryKey != widget.libraryKey) {
+      _debounce?.cancel();
+      _searchController.clear();
+      _query = '';
+      _debouncedQuery = '';
+      _selectMode = false;
+      _selectedKeys.clear();
+    }
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();

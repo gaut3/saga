@@ -90,6 +90,8 @@ class ListeningHistoryStore {
     return result;
   }
 
+  static Future<void> clearAll() => _box.clear();
+
   /// Restores raw key→value pairs from a backup without overwriting newer data.
   static Future<void> importAll(Map<String, dynamic> raw) async {
     for (final entry in raw.entries) {

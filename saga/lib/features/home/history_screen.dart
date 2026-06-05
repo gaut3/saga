@@ -196,13 +196,18 @@ Color _heatTextColor(int ms) =>
   var d = todayClean;
   while (ListeningHistoryStore.getMs(d) > 0) {
     current++;
-    d = d.subtract(const Duration(days: 1));
+    // Renormalize to midnight after each subtraction — Duration(days:1) is
+    // exactly 24h and lands at 23:00 across the spring-forward DST boundary,
+    // causing the history store lookup to miss and the streak to end early.
+    final prev = d.subtract(const Duration(days: 1));
+    d = DateTime(prev.year, prev.month, prev.day);
   }
 
   int longest = 0;
   int run = 0;
   for (int i = 0; i < 365; i++) {
-    final day = todayClean.subtract(Duration(days: i));
+    final raw = todayClean.subtract(Duration(days: i));
+    final day = DateTime(raw.year, raw.month, raw.day);
     if (ListeningHistoryStore.getMs(day) > 0) {
       run++;
       if (run > longest) longest = run;

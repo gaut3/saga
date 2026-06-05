@@ -37,6 +37,19 @@ class ProgressBackupData {
   });
 }
 
+/// A backup position that is older than the locally stored one. Surfaces in
+/// the restore confirmation UI so the user can decide per-book.
+class PositionConflict {
+  final String bookKey;
+  final BookPosition local;
+  final BookPosition backup;
+  const PositionConflict({
+    required this.bookKey,
+    required this.local,
+    required this.backup,
+  });
+}
+
 class ProgressBackup {
   static const _version = 3;
 
@@ -134,8 +147,31 @@ class ProgressBackup {
     );
   }
 
-  static Future<void> restore(ProgressBackupData data) async {
+  /// Returns positions in [data] where the locally stored position is newer
+  /// than the backup's. Used to surface per-book choices in the restore UI.
+  static List<PositionConflict> detectConflicts(ProgressBackupData data) {
+    final result = <PositionConflict>[];
     for (final e in data.positions.entries) {
+      final local = BookmarkStore.load(e.key);
+      if (local != null && local.savedAt.isAfter(e.value.savedAt)) {
+        result.add(PositionConflict(
+          bookKey: e.key,
+          local: local,
+          backup: e.value,
+        ));
+      }
+    }
+    return result;
+  }
+
+  /// Restores [data]. Positions whose key is in [skipPositionKeys] are not
+  /// written — used to preserve locally-newer positions the user chose to keep.
+  static Future<void> restore(
+    ProgressBackupData data, {
+    Set<String> skipPositionKeys = const {},
+  }) async {
+    for (final e in data.positions.entries) {
+      if (skipPositionKeys.contains(e.key)) continue;
       await BookmarkStore.save(e.key, e.value);
     }
     // v3+ backups carry full per-completion timestamps (count + dates); older

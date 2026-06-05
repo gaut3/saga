@@ -130,7 +130,7 @@ class ServerSelectionScreen extends ConsumerWidget {
     if (ref.read(plexClientProvider).serverUri == null) {
       if (context.mounted) {
         showSagaToast(context, 'Could not reach server. Check your connection.',
-            duration: const Duration(seconds: 4));
+            isError: true, duration: const Duration(seconds: 4));
       }
     }
   }

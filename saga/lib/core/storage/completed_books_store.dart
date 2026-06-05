@@ -78,6 +78,8 @@ class CompletedBooksStore {
   /// Merges a backed-up ratingKey → [timestampMs...] map. Completion timestamps
   /// are unioned (deduped) so a restore never double-counts a completion already
   /// present locally, and never drops dates recorded on either side.
+  static Future<void> clearAll() => _box.clear();
+
   static Future<void> importAll(Map<String, dynamic> raw) async {
     for (final entry in raw.entries) {
       final incoming = (entry.value as List?)

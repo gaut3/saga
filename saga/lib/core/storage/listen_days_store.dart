@@ -78,6 +78,8 @@ class ListenDaysStore {
     return s == null ? null : _parse(s);
   }
 
+  static Future<void> clearAll() => _box.clear();
+
   /// Full ratingKey → `{ s, d }` cycle map for backup.
   static Map<String, dynamic> exportAll() {
     final out = <String, dynamic>{};

@@ -51,8 +51,12 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       onError: (Object e, StackTrace st) {
         // Network drop or stream error: save position immediately, then attempt
         // a transparent reload so the user doesn't need to restart the app.
+        // Guard behind ready: if the error fires during loading, _player.position
+        // is Duration.zero and writing that would overwrite the real resume point.
         _progressTimer?.cancel();
-        _saveAndReportPosition(state: 'paused');
+        if (_player.processingState == ProcessingState.ready) {
+          _saveAndReportPosition(state: 'paused');
+        }
         final key = _bookRatingKey;
         if (key != null && !_reloadInProgress) {
           _reloadInProgress = true;
@@ -362,12 +366,22 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _sleepTimer = null;
   }
 
-  /// Saves the current position immediately. Called on app lifecycle events
-  /// (background, detach) to close the process-death window between periodic saves.
+  /// Saves the current position immediately. Called by the periodic 10-s timer;
+  /// skips when the player is not fully ready to avoid writing a stale position.
   void savePosition() {
     if (_player.processingState == ProcessingState.ready) {
       _saveAndReportPosition(state: _player.playing ? 'playing' : 'paused');
     }
+  }
+
+  /// Saves the current position unconditionally. Called on app lifecycle events
+  /// (background, detach) so the position is never lost when Android kills the app
+  /// while the player is buffering on a slow connection.
+  /// _player.position remains valid during ProcessingState.buffering.
+  void savePositionForLifecycle() {
+    final ps = _player.processingState;
+    if (ps == ProcessingState.idle || ps == ProcessingState.completed) return;
+    _saveAndReportPosition(state: _player.playing ? 'playing' : 'paused');
   }
 
   @override

@@ -287,11 +287,15 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
 
     int targetMs;
     if (m4bChapters != null && m4bChapters.isNotEmpty) {
-      final next = m4bChapters.firstWhere(
-        (c) => c.start.inMilliseconds > positionMs,
-        orElse: () => m4bChapters.last,
-      );
-      targetMs = next.start.inMilliseconds;
+      // Find the first chapter that starts after the current position. When the
+      // user is already in the last chapter no such chapter exists — fall through
+      // to the file-duration target so the timer stops at the end of the audio
+      // rather than firing immediately (the previous orElse: () => last bug).
+      final upcoming = m4bChapters
+          .where((c) => c.start.inMilliseconds > positionMs);
+      targetMs = upcoming.isNotEmpty
+          ? upcoming.first.start.inMilliseconds
+          : (durationMs ?? positionMs + 60000);
     } else {
       targetMs = durationMs ?? positionMs + 60000;
     }

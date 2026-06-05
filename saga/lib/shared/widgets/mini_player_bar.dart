@@ -1,4 +1,6 @@
-﻿import 'package:audio_service/audio_service.dart';
+﻿import 'dart:io';
+
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -118,18 +120,28 @@ class _ArtThumbnail extends StatelessWidget {
     return SizedBox(
       width: 56,
       height: 68,
-      child: artUri != null
-          ? Image.network(
-              artUri.toString(),
-              fit: BoxFit.cover,
-              cacheWidth: 112,
-              frameBuilder: (_, child, frame, syncLoad) {
-                if (syncLoad || frame != null) return child;
-                return _placeholder();
-              },
-              errorBuilder: (_, _, _) => _placeholder(),
-            )
-          : _placeholder(),
+      child: artUri != null ? _buildImage(artUri!) : _placeholder(),
+    );
+  }
+
+  Widget _buildImage(Uri uri) {
+    if (uri.scheme == 'file') {
+      return Image.file(
+        File(uri.toFilePath()),
+        fit: BoxFit.cover,
+        cacheWidth: 112,
+        errorBuilder: (_, _, _) => _placeholder(),
+      );
+    }
+    return Image.network(
+      uri.toString(),
+      fit: BoxFit.cover,
+      cacheWidth: 112,
+      frameBuilder: (_, child, frame, syncLoad) {
+        if (syncLoad || frame != null) return child;
+        return _placeholder();
+      },
+      errorBuilder: (_, _, _) => _placeholder(),
     );
   }
 

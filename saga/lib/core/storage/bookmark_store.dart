@@ -45,7 +45,13 @@ class BookmarkStore {
     final cipher = HiveAesCipher(encKey);
     try {
       _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
+    } on HiveError catch (e) {
+      // Only wipe and recreate for decryption/corruption failures (wrong key on
+      // first run after re-install). Rethrow anything else (I/O errors, truncated
+      // files from an unclean OS kill) so the caller can surface a real error
+      // rather than silently deleting every saved position.
+      final msg = e.message.toLowerCase();
+      if (!msg.contains('wrong key') && !msg.contains('corrupt')) rethrow;
       await Hive.deleteBoxFromDisk(_boxName);
       _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
     }
@@ -64,6 +70,8 @@ class BookmarkStore {
   static Future<void> delete(String bookRatingKey) async {
     await _box.delete(bookRatingKey);
   }
+
+  static Future<void> clearAll() => _box.clear();
 
   static Set<String> savedBookKeys() {
     return _box.keys.map((k) => k.toString()).toSet();

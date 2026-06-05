@@ -497,7 +497,10 @@ class _ListeningStrip extends ConsumerWidget {
 
     final today = DateTime.now();
     final todayClean = DateTime(today.year, today.month, today.day);
-    final monday = todayClean.subtract(Duration(days: today.weekday - 1));
+    final mondayRaw = todayClean.subtract(Duration(days: today.weekday - 1));
+    // Renormalize: Duration subtraction lands at 23:00 on a DST spring-forward
+    // Sunday, shifting every weekday entry one hour early and zeroing bar data.
+    final monday = DateTime(mondayRaw.year, mondayRaw.month, mondayRaw.day);
     final weekDays = List.generate(7, (i) => monday.add(Duration(days: i)));
     final weekMs = weekDays.map(ListeningHistoryStore.getMs).toList();
     final weekTotal = weekMs.fold(0, (a, b) => a + b);

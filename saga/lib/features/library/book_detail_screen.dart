@@ -479,7 +479,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     } catch (_) {
       if (context.mounted) {
         showSagaToast(context, 'Playback error — check your connection',
-            duration: const Duration(seconds: 4));
+            isError: true, duration: const Duration(seconds: 4));
       }
     }
   }
@@ -854,7 +854,7 @@ class _ChapterListSliver extends ConsumerWidget {
     } catch (_) {
       if (context.mounted) {
         showSagaToast(context, 'Playback error — check your connection',
-            duration: const Duration(seconds: 4));
+            isError: true, duration: const Duration(seconds: 4));
       }
     }
   }

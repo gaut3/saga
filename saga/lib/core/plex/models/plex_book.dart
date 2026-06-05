@@ -31,7 +31,7 @@ class PlexBook {
         .toList();
     return PlexBook(
       ratingKey: json['ratingKey'].toString(),
-      title: json['title'] as String,
+      title: json['title'] as String? ?? '',
       authorName: json['parentTitle'] as String?,
       thumbPath: json['thumb'] as String?,
       year: json['year'] as int?,

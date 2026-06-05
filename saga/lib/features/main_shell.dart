@@ -46,7 +46,7 @@ class _MainShellState extends ConsumerState<MainShell>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
-      ref.read(playerServiceProvider).savePosition();
+      ref.read(playerServiceProvider).savePositionForLifecycle();
     } else if (state == AppLifecycleState.resumed) {
       // Back in the foreground — push any positions queued while offline.
       ref.read(playerServiceProvider).flushTimelineQueue();
