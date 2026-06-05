@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../shared/widgets/saga_toast.dart';
 
 import '../../core/providers.dart';
 
@@ -108,8 +109,6 @@ class ServerSelectionScreen extends ConsumerWidget {
   Future<void> _selectServer(
       BuildContext context, WidgetRef ref, dynamic server) async {
     final discovery = ref.read(plexServerDiscoveryProvider);
-    final messenger = ScaffoldMessenger.of(context);
-    final bottomPad = MediaQuery.of(context).padding.bottom;
 
     showDialog(
       context: context,
@@ -129,13 +128,10 @@ class ServerSelectionScreen extends ConsumerWidget {
     if (!isSetup) Navigator.of(context).pop(); // back to settings (not needed in setup)
 
     if (ref.read(plexClientProvider).serverUri == null) {
-      messenger.showSnackBar(SnackBar(
-        content: const Text('Could not reach server. Check your connection.'),
-        backgroundColor: Colors.redAccent,
-        behavior: SnackBarBehavior.floating,
-        margin: EdgeInsets.only(
-            bottom: bottomPad + 8, left: 16, right: 16),
-      ));
+      if (context.mounted) {
+        showSagaToast(context, 'Could not reach server. Check your connection.',
+            duration: const Duration(seconds: 4));
+      }
     }
   }
 }

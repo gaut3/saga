@@ -13,6 +13,7 @@ import '../library/book_detail_screen.dart';
 import '../player/player_provider.dart';
 import '../../core/utils/format.dart';
 import '../../shared/widgets/saga_sheet.dart';
+import '../../shared/widgets/saga_toast.dart';
 
 enum _SortOption { defaultOrder, titleAsc, titleDesc, byAuthor }
 
@@ -161,7 +162,6 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                                   color: SagaColors.fgSubtle, fontSize: 12)),
                           onTap: () async {
                             final navigator = Navigator.of(ctx);
-                            final messenger = ScaffoldMessenger.of(context);
                             for (final key in keys) {
                               await CustomCollectionStore.addBook(col.id, key);
                             }
@@ -170,16 +170,10 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                                 .state++;
                             navigator.pop();
                             _cancelSelect();
-                            messenger.showSnackBar(SnackBar(
-                              content: Text(
-                                  'Added ${keys.length} book${keys.length == 1 ? '' : 's'} to "${col.name}"',
-                                  style: TextStyle(color: SagaColors.fg)),
-                              backgroundColor: SagaColors.surface,
-                              behavior: SnackBarBehavior.floating,
-                              margin: EdgeInsets.only(
-                                  bottom: bottomPad + 8, left: 16, right: 16),
-                              duration: const Duration(seconds: 2),
-                            ));
+                            if (mounted) {
+                              showSagaToast(this.context,
+                                  'Added ${keys.length} book${keys.length == 1 ? '' : 's'} to "${col.name}"');
+                            }
                           },
                         )),
                     const SizedBox(height: 8),
@@ -204,16 +198,8 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
       } catch (_) {}
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Queued ${keys.length} book${keys.length == 1 ? '' : 's'} for download'),
-        backgroundColor: SagaColors.surface,
-        behavior: SnackBarBehavior.floating,
-        margin: EdgeInsets.only(
-            bottom: MediaQuery.of(context).padding.bottom + 8,
-            left: 16, right: 16),
-        duration: const Duration(seconds: 2),
-      ));
+      showSagaToast(context,
+          'Queued ${keys.length} book${keys.length == 1 ? '' : 's'} for download');
     }
   }
 

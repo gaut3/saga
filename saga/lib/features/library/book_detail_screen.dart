@@ -17,6 +17,7 @@ import '../player/player_screen.dart';
 import '../../core/utils/format.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_sheet.dart';
+import '../../shared/widgets/saga_toast.dart';
 
 class BookDetailScreen extends ConsumerStatefulWidget {
   final PlexBook book;
@@ -477,14 +478,8 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
       await service.play();
     } catch (_) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Playback error — check your connection'),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(
-              bottom: MediaQuery.of(context).padding.bottom + 8,
-              left: 16, right: 16),
-        ));
+        showSagaToast(context, 'Playback error — check your connection',
+            duration: const Duration(seconds: 4));
       }
     }
   }
@@ -858,14 +853,8 @@ class _ChapterListSliver extends ConsumerWidget {
       await service.play();
     } catch (_) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Playback error — check your connection'),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(
-              bottom: MediaQuery.of(context).padding.bottom + 8,
-              left: 16, right: 16),
-        ));
+        showSagaToast(context, 'Playback error — check your connection',
+            duration: const Duration(seconds: 4));
       }
     }
   }

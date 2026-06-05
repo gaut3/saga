@@ -68,7 +68,14 @@ class App extends ConsumerWidget {
         ),
         textTheme: base.textTheme.apply(fontFamily: 'Manrope'),
         dialogTheme: DialogThemeData(backgroundColor: t.surface),
-        snackBarTheme: SnackBarThemeData(backgroundColor: t.surface),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: t.surface,
+          contentTextStyle: TextStyle(
+            color: t.fg,
+            fontFamily: 'Manrope',
+            fontSize: 14,
+          ),
+        ),
       ),
       home: home,
     );

@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,6 +13,7 @@ import '../auth/server_selection_screen.dart';
 import '../player/player_provider.dart';
 import '../../shared/widgets/saga_mark.dart' show SagaWordmark, SagaMark;
 import '../../shared/widgets/saga_sheet.dart';
+import '../../shared/widgets/saga_toast.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -30,6 +32,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late bool _autoRewind;
   late bool _wifiOnly;
   late int _markMotion;
+  String _version = '';
 
   @override
   void initState() {
@@ -40,6 +43,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _autoRewind = SettingsStore.autoRewindEnabled;
     _wifiOnly = SettingsStore.downloadWifiOnly;
     _markMotion = SettingsStore.markMotionIndex;
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _version = 'v${info.version}');
+    });
   }
 
   @override
@@ -249,7 +255,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       const SizedBox(height: 12),
                       const SagaWordmark(fontSize: 22),
                       const SizedBox(height: 6),
-                      Text('v1.0.0',
+                      Text(_version,
                           style: TextStyle(
                               color: SagaColors.fgSubtle, fontSize: 12)),
                     ],
@@ -268,16 +274,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       await ProgressBackup.export();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Export failed: $e'),
-          backgroundColor: SagaColors.surface,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(
-              bottom: MediaQuery.of(context).padding.bottom + 8,
-              left: 16, right: 16),
-        ));
-      }
+      if (mounted) showSagaToast(context, 'Export failed: $e');
     }
   }
 
@@ -288,7 +285,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (_) => AlertDialog(
+        builder: (dialogContext) => AlertDialog(
           backgroundColor: SagaColors.surface,
           title: Text('Restore progress',
               style: TextStyle(color: SagaColors.fg)),
@@ -300,11 +297,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(dialogContext, true),
               child: Text('Restore',
                   style: TextStyle(color: SagaColors.accent)),
             ),
@@ -318,34 +315,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ref.read(completionRevisionProvider.notifier).state++;
       ref.read(bookmarkRevisionProvider.notifier).state++;
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Progress restored'),
-          backgroundColor: SagaColors.surface,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(
-              bottom: MediaQuery.of(context).padding.bottom + 8,
-              left: 16, right: 16),
-        ));
-      }
+      if (mounted) showSagaToast(context, 'Progress restored');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Import failed: $e'),
-          backgroundColor: SagaColors.surface,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(
-              bottom: MediaQuery.of(context).padding.bottom + 8,
-              left: 16, right: 16),
-        ));
-      }
+      if (mounted) showSagaToast(context, 'Import failed: $e');
     }
   }
 
   Future<void> _confirmClearProgress() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: SagaColors.surface,
         title: Text('Clear progress',
             style: TextStyle(color: SagaColors.fg)),
@@ -354,11 +333,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             style: TextStyle(color: SagaColors.fgMuted)),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Clear all',
                 style: TextStyle(color: Colors.orangeAccent)),
           ),
@@ -370,16 +349,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       for (final key in positions.keys) {
         await BookmarkStore.delete(key);
       }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Listening progress cleared'),
-          backgroundColor: SagaColors.surface,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(
-              bottom: MediaQuery.of(context).padding.bottom + 8,
-              left: 16, right: 16),
-        ));
-      }
+      if (mounted) showSagaToast(context, 'Listening progress cleared');
     }
   }
 
@@ -505,7 +475,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   showLicensePage(
                     context: context,
                     applicationName: 'Saga',
-                    applicationVersion: 'v1.0.0',
+                    applicationVersion: _version,
                     applicationIcon: const Padding(
                       padding: EdgeInsets.all(12),
                       child: SagaMark(size: 56),

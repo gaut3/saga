@@ -21,6 +21,7 @@ import '../../core/plex/plex_client.dart';
 import '../../core/utils/format.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_sheet.dart';
+import '../../shared/widgets/saga_toast.dart';
 import 'player_provider.dart';
 import 'player_service.dart';
 
@@ -883,15 +884,7 @@ class _BottomActions extends ConsumerWidget {
     ref.read(bookmarkNotifierProvider(key).notifier).add(bm);
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Bookmark added: $label'),
-        duration: const Duration(seconds: 2),
-        backgroundColor: SagaColors.surface,
-        behavior: SnackBarBehavior.floating,
-        margin: EdgeInsets.only(
-            bottom: MediaQuery.of(context).padding.bottom + 8,
-            left: 16, right: 16),
-      ));
+      showSagaToast(context, 'Bookmark added: $label');
     }
   }
 
