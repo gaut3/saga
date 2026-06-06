@@ -20,16 +20,9 @@ saga_handoff/
 ├── 02-mark/           ← THE mark — four spines that double as the play/pause control:
 │                         geometry, triangle⇄spines morph, every playback state,
 │                         app-icon, monochrome, notification assets, Flutter painter
-├── 03-history/        ← Listening History redesign (Direction B, shipped) +
-│                         the as-built reference & transport-control spec
 ├── 04-flutter/        ← drop-in Dart/Flutter implementation of the brand
 └── assets/            ← regenerated 4-spine export set (SVG + PNG), see below
 ```
-
-Plus, at the project root, the **live prototypes** you can open in a browser:
-- `Saga History — As Built.html` — the shipped History (Day/Month/Total) + transport states, all three themes.
-- `Saga Listening History.html` — the original 3-direction exploration (B was chosen).
-- `Saga Marketing.html` — marketing page.
 
 ---
 
@@ -71,15 +64,11 @@ The old 3-spine SVG/PNG exports are archived (`../_archive/gen1-3spine-svgs/`,
 
 ```
 assets/
-├── svg/
-│   ├── mark/         saga-mark-{ink,cream,terra}.svg (transparent) + -bg.svg (app-icon-ready)
-│   ├── wordmark/     saga-wordmark-{ink,cream,terra}.svg  (Manrope 600 + accent triangle)
-│   ├── lockup/       saga-lockup-{ink,cream,terra}.svg    (mark + wordmark)
-│   └── monochrome/   saga-mono-{white,black}.svg          (flat silhouette, no accent)
-└── png/
-    ├── mark/         saga-mark-{ink,cream,terra}-{256,512,1024}.png
-    ├── app-icon/     saga-appicon-ink-1024.png
-    └── monochrome/   saga-mono-{white,black}-1024.png
+└── svg/
+    ├── mark/         saga-mark-{ink,cream,terra}.svg (transparent) + -bg.svg (app-icon-ready)
+    ├── wordmark/     saga-wordmark-{ink,cream,terra}.svg  (Manrope 600 + accent triangle)
+    ├── lockup/       saga-lockup-{ink,cream,terra}.svg    (mark + wordmark)
+    └── monochrome/   saga-mono-{white,black}.svg          (flat silhouette, no accent)
 ```
 
 For the play-triangle / pause-bars / animated states, use `02-mark/` (the canonical
@@ -91,6 +80,6 @@ Manrope available, or convert text→outlines before handing to a tool without t
 ## Where to start, by task
 
 - **Implementing the app (Flutter):** `04-flutter/` for the brand package, `02-mark/`
-  for the mark painter, `03-history/` for the History screen, `01-brand/` for tokens.
+  for the mark painter, `01-brand/` for tokens.
 - **Making a logo/icon/marketing asset:** `assets/` (exports) or `02-mark/` (source + icon).
 - **Changing colours or type:** `01-brand/tokens.css` — and read the deferred-palette note above.

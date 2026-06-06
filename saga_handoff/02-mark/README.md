@@ -177,7 +177,4 @@ Flat single-colour silhouette of the resting 4-spine pose — **no accent bar, n
 - `Saga Pause-bar Option.html` — the Reactive-vs-Pause-bars setting; working toggle, two-tone pause, accent-striped triangle
 - `Saga 4-Spine Audio-reactive.html` — the loudness-reactive playing state, colour treatments, Flutter painter
 - `Saga Player Mark in Context.html` — the mark as the real Now-Playing / mini-player transport (in app colours)
-- `Saga Triangle to 3 Spines.html` — rationale for the triangle⇄spines morph (and why 4 beats 3)
 - `Saga Wordmark and Alignment.html` — Manrope weight ladder (→ 600) + centred-vs-shelf rationale + lockups
-- `Saga State Alignment.html` — buffering / downloading / finished shown centred vs shelf (→ centre all)
-```
