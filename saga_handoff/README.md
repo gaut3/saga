@@ -35,10 +35,6 @@ saga_handoff/
 | **Player control** | mark = "playing" indicator only | mark **is** the transport — paused = triangle, playing = live meter, + buffering / downloading / breathing / finished |
 | **Palette** | ink `#1E1410` · cream `#F4EAD8` · terra `#C25A3A` · amber `#E0A050` | refined: ink `#1C140F` · cream `#F2E7D6` · terra `#C2603C` · amber `#E8A24A` |
 
-### ⚠️ Open decision — palette refresh is deferred
-Gen 2 nudged the four core hexes (table above). Adopting them **app-wide** is a runtime
-theme change to `SagaColors` / `tokens.css` and is **deferred as a separate decision** —
-so `01-brand/tokens.css` still ships the app's *current* (Gen-1) values on purpose.
 
 The regenerated logo exports in `assets/` use the **Gen-2 mark palette** (`#E8A24A`
 amber, etc.), because that's the canonical mark spec in `02-mark/`. So a brand asset
