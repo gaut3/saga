@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Changelog — Saga</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="What's new in Saga — release notes and changelog." />
+
+  <link rel="icon" type="image/svg+xml" href="assets/svg/mark/saga-mark-ink-bg.svg" />
+  <link rel="apple-touch-icon" href="assets/svg/mark/saga-mark-ink-bg.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --ink:    #1E1410;
+      --ink-bg: #150E0A;
+      --cream:  #F4EAD8;
+      --amber:  #E0A050;
+      --terra:  #C25A3A;
+      --sub:    rgba(244,234,216,0.62);
+      --sub2:   rgba(244,234,216,0.35);
+      --border: rgba(244,234,216,0.07);
+      --ff-body:    'Manrope', system-ui, sans-serif;
+      --ff-display: 'Instrument Serif', Georgia, serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--ff-body);
+      background: var(--ink-bg);
+      color: var(--cream);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── NAV ─── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 56px; height: 68px;
+      background: rgba(21,14,10,0.88);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 9px; text-decoration: none;
+    }
+    .nav-wordmark {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-family: var(--ff-body); font-weight: 600; font-size: 19px;
+      letter-spacing: -0.025em; color: var(--cream);
+    }
+    .nav-links { display: flex; gap: 32px; list-style: none; }
+    .nav-links a {
+      font-size: 13px; font-weight: 500;
+      color: var(--sub); text-decoration: none;
+      transition: color .15s;
+    }
+    .nav-links a:hover, .nav-links a.active { color: var(--cream); }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-family: var(--ff-body); font-weight: 700;
+      border-radius: 99px; text-decoration: none; cursor: pointer;
+      transition: opacity .15s, transform .15s;
+      border: none;
+    }
+    .btn:hover { opacity: .88; transform: translateY(-1px); }
+    .btn-amber { background: var(--amber); color: var(--ink); }
+    .btn-sm  { font-size: 13px; padding: 10px 20px; }
+
+    /* ─── PAGE HEADER ─── */
+    .page-header {
+      padding: 80px 56px 56px;
+      border-bottom: 1px solid var(--border);
+    }
+    .page-header-inner {
+      max-width: 760px; margin: 0 auto;
+    }
+    .eyebrow {
+      font-size: 10.5px; font-weight: 600;
+      letter-spacing: .2em; text-transform: uppercase;
+      color: var(--amber); margin-bottom: 14px;
+    }
+    .page-h1 {
+      font-family: var(--ff-display);
+      font-size: clamp(40px, 5vw, 64px);
+      line-height: 1.0; letter-spacing: -.02em;
+      margin-bottom: 14px;
+    }
+    .page-sub {
+      font-size: 16px; line-height: 1.6; color: var(--sub);
+    }
+
+    /* ─── CONTENT ─── */
+    .content {
+      padding: 64px 56px 120px;
+    }
+    .content-inner {
+      max-width: 760px; margin: 0 auto;
+    }
+
+    /* Loading / error states */
+    .state-msg {
+      text-align: center; padding: 80px 0;
+      color: var(--sub2); font-size: 14px;
+    }
+
+    /* ─── MARKDOWN RENDERING ─── */
+    .md h1 { display: none; } /* hide the top-level "# Changelog" title */
+
+    /* Version headers: ## [1.0.3] – 2026-06-06 */
+    .md h2 {
+      font-family: var(--ff-display);
+      font-size: clamp(26px, 3vw, 36px);
+      line-height: 1.1; letter-spacing: -.015em;
+      color: var(--cream);
+      padding-top: 64px;
+      margin-bottom: 28px;
+    }
+    .md h2:first-of-type { padding-top: 0; }
+
+    /* Section headers: ### Fixed / ### Security */
+    .md h3 {
+      font-size: 10.5px; font-weight: 600;
+      letter-spacing: .18em; text-transform: uppercase;
+      color: var(--amber);
+      margin: 32px 0 14px;
+    }
+
+    /* Change entries */
+    .md ul {
+      list-style: none;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .md ul li {
+      font-size: 14px; line-height: 1.65; color: var(--sub);
+      padding-left: 18px; position: relative;
+    }
+    .md ul li::before {
+      content: '–';
+      position: absolute; left: 0;
+      color: var(--sub2);
+    }
+    .md ul li strong {
+      color: var(--cream); font-weight: 600;
+    }
+
+    /* Dividers between versions */
+    .md hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0;
+    }
+
+    /* Code spans */
+    .md code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px; color: var(--amber);
+      background: rgba(224,160,80,0.08);
+      border-radius: 4px; padding: 1px 5px;
+    }
+
+    /* Unreleased badge */
+    .md h2 .unreleased-badge {
+      display: inline-block;
+      font-family: var(--ff-body); font-size: 10px; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase;
+      background: rgba(224,160,80,0.15); color: var(--amber);
+      border: 1px solid rgba(224,160,80,0.25);
+      border-radius: 99px; padding: 2px 9px;
+      vertical-align: middle; margin-left: 10px;
+      position: relative; top: -3px;
+    }
+
+    /* ─── FOOTER ─── */
+    footer {
+      padding: 52px 56px;
+      border-top: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      align-items: center; gap: 18px; text-align: center;
+    }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a {
+      font-size: 13px; color: var(--sub2); text-decoration: none;
+    }
+    .footer-links a:hover { color: var(--sub); }
+    .footer-legal {
+      font-size: 12px; color: var(--sub2);
+      max-width: 580px; line-height: 1.65;
+    }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 860px) {
+      nav { padding: 0 24px; }
+      .nav-links { display: none; }
+      .page-header { padding: 60px 24px 40px; }
+      .content { padding: 48px 24px 80px; }
+      footer { padding: 40px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="index.html">
+    <svg viewBox="0 0 200 200" width="26" height="26" aria-hidden="true">
+      <rect x="41"  y="48" width="22" height="104" rx="5" fill="#F4EAD8"/>
+      <rect x="73"  y="38" width="22" height="124" rx="5" fill="#E0A050"/>
+      <rect x="105" y="56" width="22" height="88"  rx="5" fill="#F4EAD8"/>
+      <rect x="137" y="46" width="22" height="108" rx="5" fill="#F4EAD8"/>
+    </svg>
+    <span class="nav-wordmark">saga<svg width="9" height="9" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4 L34 20 L8 36 Z" fill="#E0A050"/></svg></span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="index.html#features">Features</a></li>
+    <li><a href="index.html#themes">Themes</a></li>
+    <li><a href="index.html#download">Download</a></li>
+    <li><a href="changelog.html" class="active">Changelog</a></li>
+    <li><a href="https://github.com/gaut3/saga" target="_blank" rel="noopener">GitHub</a></li>
+  </ul>
+  <a class="btn btn-amber btn-sm" href="https://github.com/gaut3/saga/releases/latest">&#8595; Download APK</a>
+</nav>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="page-header-inner">
+    <div class="eyebrow">Release history</div>
+    <h1 class="page-h1">What's new.</h1>
+    <p class="page-sub">Every release, documented. Follows <a href="https://keepachangelog.com/" target="_blank" rel="noopener" style="color:var(--amber);text-decoration:none">Keep a Changelog</a> format.</p>
+  </div>
+</div>
+
+<!-- CHANGELOG CONTENT -->
+<div class="content">
+  <div class="content-inner">
+    <div id="md-output" class="md">
+      <p class="state-msg">Loading&hellip;</p>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <a href="index.html" style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;opacity:.4;">
+    <svg viewBox="0 0 200 200" width="18" height="18" aria-hidden="true">
+      <rect x="41"  y="48" width="22" height="104" rx="5" fill="#F4EAD8"/>
+      <rect x="73"  y="38" width="22" height="124" rx="5" fill="#E0A050"/>
+      <rect x="105" y="56" width="22" height="88"  rx="5" fill="#F4EAD8"/>
+      <rect x="137" y="46" width="22" height="108" rx="5" fill="#F4EAD8"/>
+    </svg>
+    <span style="display:inline-flex;align-items:center;gap:4px;font-family:var(--ff-body);font-weight:600;font-size:14px;letter-spacing:-0.025em;color:var(--cream)">saga<svg width="7" height="7" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4 L34 20 L8 36 Z" fill="#E0A050"/></svg></span>
+  </a>
+  <div class="footer-links">
+    <a href="https://github.com/gaut3/saga" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/gaut3/saga/releases" target="_blank" rel="noopener">Releases</a>
+    <a href="changelog.html">Changelog</a>
+    <a href="https://github.com/gaut3/saga/blob/main/PRIVACY_POLICY.md" target="_blank" rel="noopener">Privacy Policy</a>
+    <a href="https://github.com/gaut3/saga/issues" target="_blank" rel="noopener">Issues</a>
+  </div>
+  <p class="footer-legal">
+    Saga is an independent, third-party client. It is not affiliated with, endorsed by,
+    or associated with Plex&nbsp;Inc. &ldquo;Plex&rdquo; is a trademark of Plex&nbsp;Inc.
+  </p>
+  <p class="footer-legal">&copy; 2026 gaut3 &middot; MIT License</p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+(function () {
+  const RAW_URL = 'https://raw.githubusercontent.com/gaut3/saga/main/CHANGELOG.md';
+  const output  = document.getElementById('md-output');
+
+  // Post-process the rendered HTML:
+  // 1. Add an "Unreleased" pill next to the [Unreleased] h2
+  // 2. Linkify version numbers to their GitHub Release
+  function postProcess(html) {
+    // Add badge to Unreleased heading
+    html = html.replace(
+      /(<h2[^>]*>)\[Unreleased\]/i,
+      '$1[Unreleased]<span class="unreleased-badge">In progress</span>'
+    );
+    // Link version headings like [1.0.3] to their GitHub release tag
+    html = html.replace(
+      /(<h2[^>]*>)\[(\d+\.\d+\.\d+)\]/g,
+      (_, tag, ver) =>
+        `${tag}<a href="https://github.com/gaut3/saga/releases/tag/v${ver}" ` +
+        `target="_blank" rel="noopener" style="color:inherit;text-decoration:none">[${ver}]</a>`
+    );
+    return html;
+  }
+
+  fetch(RAW_URL)
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    })
+    .then(md => {
+      const raw = marked.parse(md);
+      output.innerHTML = postProcess(raw);
+    })
+    .catch(() => {
+      output.innerHTML =
+        '<p class="state-msg">Could not load changelog. ' +
+        '<a href="https://github.com/gaut3/saga/blob/main/CHANGELOG.md" ' +
+        'target="_blank" rel="noopener" style="color:var(--amber)">View on GitHub &rarr;</a></p>';
+    });
+})();
+</script>
+</body>
+</html>
