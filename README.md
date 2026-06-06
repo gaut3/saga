@@ -5,7 +5,7 @@
 
 **Saga** is a native Android audiobook player for [Plex Media Server](https://www.plex.tv/), built with Flutter. It picks up where Plex's own app leaves off — a focused listening experience designed around how audiobooks are actually consumed.
 
-> **Vibecoded.** Saga was built entirely through conversational AI-assisted development using [Claude](https://claude.ai). Every screen, every fix, and every architectural decision was written collaboratively in chat — no traditional coding sessions. This is a personal project to make a Plex audiobook app that I can really use.
+> **Vibecoded** — but not blindly. Saga was built through conversational AI-assisted development with Claude: screens, fixes, and architecture worked out collaboratively in chat. Every decision was reviewed and reasoned through, not just accepted — and the result is fully open source, so you can audit exactly what it does. A personal project to make a Plex audiobook app I'd actually want to use.
 
 ---
 
