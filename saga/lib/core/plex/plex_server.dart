@@ -70,6 +70,7 @@ class PlexServerDiscovery {
     final uri = await findReachableUri(server);
     if (uri != null) {
       await _client.saveServerUri(uri);
+      await _client.saveMachineIdentifier(server.machineIdentifier);
     }
   }
 }

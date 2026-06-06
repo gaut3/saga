@@ -506,6 +506,13 @@ class _DownloadBookButton extends ConsumerWidget {
     final total = tracks.length;
     final allDone = downloadedCount == total;
 
+    // Byte-level progress across all in-flight/queued tracks for this book.
+    final bytesInFlight = tracks
+        .map((t) => downloadState.progress[t.ratingKey] ?? 0.0)
+        .fold(0.0, (a, b) => a + b);
+    final markProgress =
+        total > 0 ? (downloadedCount + bytesInFlight) / total : 0.0;
+
     if (allDone) {
       return SizedBox(
         width: double.infinity,
@@ -527,8 +534,9 @@ class _DownloadBookButton extends ConsumerWidget {
     final failedCount =
         tracks.where((t) => downloadState.failed.contains(t.ratingKey)).length;
     final isDownloading = inProgressCount > 0;
+    final pct = (markProgress * 100).round();
     final label = isDownloading
-        ? 'Downloading $downloadedCount / $total…'
+        ? 'Downloading $pct%…'
         : failedCount > 0
             ? 'Retry $failedCount failed'
             : downloadedCount > 0
@@ -553,7 +561,7 @@ class _DownloadBookButton extends ConsumerWidget {
             ? AnimatedSagaMark(
                 size: 18,
                 state: SagaMarkState.downloading,
-                progress: total > 0 ? downloadedCount / total : 0,
+                progress: markProgress,
               )
             : Icon(failedCount > 0 ? Icons.refresh : Icons.download_outlined,
                 size: 18),

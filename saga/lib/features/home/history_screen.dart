@@ -192,8 +192,15 @@ Color _heatTextColor(int ms) =>
   final today = DateTime.now();
   final todayClean = DateTime(today.year, today.month, today.day);
 
+  // If today has no listening yet the streak is still alive — it just hasn't
+  // been extended yet. Start counting from yesterday in that case.
+  final startRaw = ListeningHistoryStore.getMs(todayClean) > 0
+      ? todayClean
+      : todayClean.subtract(const Duration(days: 1));
+  final start = DateTime(startRaw.year, startRaw.month, startRaw.day);
+
   int current = 0;
-  var d = todayClean;
+  var d = start;
   while (ListeningHistoryStore.getMs(d) > 0) {
     current++;
     // Renormalize to midnight after each subtraction — Duration(days:1) is
@@ -1050,7 +1057,7 @@ class _MonthTabState extends ConsumerState<_MonthTab> {
         if (ms > bestDayMs) bestDayMs = ms;
       }
     }
-    final avgDayMs = listenedDays > 0 ? monthMs ~/ listenedDays : 0;
+    final avgDayMs = daysInMonth > 0 ? monthMs ~/ daysInMonth : 0;
 
     // By-week: group days by ISO week (Mon–Sun)
     final weekTotals = <int>[];

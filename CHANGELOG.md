@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Security
+- **Cross-server backup restore now warns before proceeding.** Plex `ratingKey` values are per-server integers — importing a backup from a different server could silently overwrite positions for unrelated books that share the same integer key. The app now persists the connected server's `machineIdentifier` (stored in the Android Keystore alongside the token) and embeds it in every backup export (format v4). On restore, if the backup's server ID is present and differs from the current server's, a warning dialog is shown before any data is written.
+- **Backup temp file is deleted after sharing.** The JSON export was written to the system temp directory and left there after `Share.shareXFiles()` returned. The file is now deleted immediately after the share sheet is dismissed.
+- **CodeQL static analysis added.** `.github/workflows/codeql.yml` runs on every push/PR to `main` and weekly. It analyzes the Android/Kotlin layer (the RMS audio patch, platform channels, native plugins) using the `security-and-quality` query pack, catching taint flows, crypto misuse, and injection risks that Dart-level analysis cannot see.
+
+### Fixed
+- **Streak shows 0 before you've listened today, even if yesterday's streak is intact.** Both `_homeStreak()` (home screen strip) and `_computeStreak()` (history screen) started walking backwards from today — if today has no listening time yet the loop exits immediately, reporting 0. They now start from yesterday when today is empty, so the streak stays visible all day until you either extend it or midnight passes. Also applied the DST midnight-renormalization fix to `_homeStreak()` (missed in 1.0.2).
+- **Download mark no longer stays frozen at the bottom.** The progress passed to `AnimatedSagaMark` was a whole-track count (`downloadedCount / total`), which stays at 0.0 for the entire download of a single-file audiobook. It now incorporates the actual byte-level progress reported by Dio, so the bars fill smoothly from floor to full. The button label also now shows a percentage (`Downloading 34%…`) instead of `Downloading 0 / 1…`.
+- **Playback speed resets to default when resuming from the Continue Listening card.** The home screen's Resume card called `loadBook()` and `play()` without restoring the per-book saved speed, so a book set to 2× would silently drop back to the global default on the next resume. Both the resume-and-play path and the load-only (open player) path now restore speed identically to the book detail Resume button. Same fix applied to the stream-error auto-reload path in `player_provider.dart`.
+- **Today's bar in the home weekly sparkline could show the wrong colour on DST transition days.** The seven `weekDays` entries were built with `Duration(days: N)` additions without renormalizing to midnight. Across a spring-forward boundary the time component drifts to 01:00, causing the `isToday` equality check to fail and today's bar to appear as a past-day colour. Each entry is now renormalized to midnight after the addition (same pattern as the existing `monday` renormalization above it).
+- **"Avg / day" in the Month history tab showed an inflated average.** The stat divided total listening time by the number of days the user actually listened, not by the number of days in the month. A user who listened on 3 of 30 days would see roughly 10× the true daily average. The denominator is now `daysInMonth`, matching what the label says.
+- **Global download indicator added.** A 3 px accent-colored progress bar appears at the top of the bottom bar (above the mini player) on every screen while a download is active, so there is always a visible signal that something is downloading even after leaving the book detail screen.
+
+---
+
 ## [1.0.2] – 2026-06-06
 
 ### Fixed

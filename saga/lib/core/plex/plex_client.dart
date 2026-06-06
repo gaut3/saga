@@ -10,6 +10,7 @@ import 'models/plex_track.dart';
 const _clientIdKey = 'plex_client_id';
 const _tokenKey = 'plex_token';
 const _serverUriKey = 'plex_server_uri';
+const _machineIdKey = 'plex_machine_id';
 
 class PlexClient {
   static PlexClient? _instance;
@@ -20,6 +21,7 @@ class PlexClient {
   String? _token;
   String? _clientId;
   String? _serverUri;
+  String? _machineIdentifier;
 
   void Function()? onUnauthorized;
   bool _handlingUnauthorized = false;
@@ -47,6 +49,8 @@ class PlexClient {
     }
     try { token = await storage.read(key: _tokenKey); } catch (_) {}
     try { serverUri = await storage.read(key: _serverUriKey); } catch (_) {}
+    String? machineId;
+    try { machineId = await storage.read(key: _machineIdKey); } catch (_) {}
 
     final dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 10),
@@ -65,6 +69,7 @@ class PlexClient {
     client._token = token;
     client._clientId = clientId;
     client._serverUri = serverUri;
+    client._machineIdentifier = machineId;
     _instance = client;
 
     dio.interceptors.add(InterceptorsWrapper(
@@ -96,6 +101,7 @@ class PlexClient {
   String get clientId => _clientId!;
   String? get token => _token;
   String? get serverUri => _serverUri;
+  String? get machineIdentifier => _machineIdentifier;
   bool get isAuthenticated => _token != null;
   bool get hasServer => _serverUri != null;
 
@@ -109,6 +115,11 @@ class PlexClient {
   Future<void> saveServerUri(String uri) async {
     _serverUri = uri;
     await _storage.write(key: _serverUriKey, value: uri);
+  }
+
+  Future<void> saveMachineIdentifier(String id) async {
+    _machineIdentifier = id;
+    await _storage.write(key: _machineIdKey, value: id);
   }
 
   Future<void> clearServerUri() async {
@@ -132,9 +143,11 @@ class PlexClient {
     }
     _token = null;
     _serverUri = null;
+    _machineIdentifier = null;
     _dio.options.headers.remove('X-Plex-Token');
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _serverUriKey);
+    await _storage.delete(key: _machineIdKey);
   }
 
   Map<String, String> get authHeaders => {

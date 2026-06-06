@@ -42,6 +42,9 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
         startPositionMs: position?.positionMs ?? 0,
         isAutoReload: true,
       );
+      final savedSpeed = SettingsStore.getBookSpeed(bookRatingKey);
+      await service.setSpeed(savedSpeed);
+      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
       await service.play();
     } catch (_) {
       // Server still unreachable — player stays paused, user can retry manually

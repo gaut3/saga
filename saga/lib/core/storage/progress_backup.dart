@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../plex/plex_client.dart';
 import 'bookmark_store.dart';
 import 'completed_books_store.dart';
 import 'custom_collection_store.dart';
@@ -24,6 +25,8 @@ class ProgressBackupData {
   final Map<String, dynamic> completedDetailed;
   final Map<String, dynamic> listenDays;
   final Map<String, dynamic> playbackLog;
+  // Identifies which Plex server produced the backup. Null for pre-v4 backups.
+  final String? serverMachineIdentifier;
 
   const ProgressBackupData({
     required this.positions,
@@ -34,6 +37,7 @@ class ProgressBackupData {
     this.completedDetailed = const {},
     this.listenDays = const {},
     this.playbackLog = const {},
+    this.serverMachineIdentifier,
   });
 }
 
@@ -51,7 +55,7 @@ class PositionConflict {
 }
 
 class ProgressBackup {
-  static const _version = 3;
+  static const _version = 4;
 
   static Future<void> export() async {
     final positions = BookmarkStore.allPositions();
@@ -63,6 +67,8 @@ class ProgressBackup {
     final data = {
       'version': _version,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
+      if (PlexClient.instance.machineIdentifier != null)
+        'serverMachineIdentifier': PlexClient.instance.machineIdentifier,
       'positions': {
         for (final e in positions.entries) e.key: e.value.toMap(),
       },
@@ -82,6 +88,7 @@ class ProgressBackup {
     final file = File('${dir.path}/saga_progress.json');
     await file.writeAsString(json);
     await Share.shareXFiles([XFile(file.path)], subject: 'Saga progress backup');
+    try { await file.delete(); } catch (_) {}
   }
 
   static Future<ProgressBackupData?> pickAndParse() async {
@@ -106,6 +113,8 @@ class ProgressBackup {
         jsonDecode(content) as Map<String, dynamic>;
     final version = json['version'] as int? ?? 0;
     if (version < 1 || version > _version) return null;
+    final serverMachineIdentifier =
+        json['serverMachineIdentifier'] as String?;
 
     final positionsRaw =
         (json['positions'] as Map<String, dynamic>?) ?? {};
@@ -144,6 +153,7 @@ class ProgressBackup {
       completedDetailed: completedDetailed,
       listenDays: listenDays,
       playbackLog: playbackLog,
+      serverMachineIdentifier: serverMachineIdentifier,
     );
   }
 

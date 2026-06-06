@@ -477,11 +477,18 @@ String _homeFmtMs(int ms) {
 int _homeStreak() {
   final today = DateTime.now();
   final todayClean = DateTime(today.year, today.month, today.day);
+  // If today has no listening yet the streak is still alive — it just hasn't
+  // been extended yet. Start counting from yesterday in that case.
+  final startRaw = ListeningHistoryStore.getMs(todayClean) > 0
+      ? todayClean
+      : todayClean.subtract(const Duration(days: 1));
+  final start = DateTime(startRaw.year, startRaw.month, startRaw.day);
   int streak = 0;
-  var d = todayClean;
+  var d = start;
   while (ListeningHistoryStore.getMs(d) > 0) {
     streak++;
-    d = d.subtract(const Duration(days: 1));
+    final prev = d.subtract(const Duration(days: 1));
+    d = DateTime(prev.year, prev.month, prev.day);
   }
   return streak;
 }
@@ -501,7 +508,12 @@ class _ListeningStrip extends ConsumerWidget {
     // Renormalize: Duration subtraction lands at 23:00 on a DST spring-forward
     // Sunday, shifting every weekday entry one hour early and zeroing bar data.
     final monday = DateTime(mondayRaw.year, mondayRaw.month, mondayRaw.day);
-    final weekDays = List.generate(7, (i) => monday.add(Duration(days: i)));
+    // Renormalize each entry: Duration(days:N) is exactly N×24h and can land at
+    // 01:00 across a spring-forward DST boundary, breaking the isToday comparison.
+    final weekDays = List.generate(7, (i) {
+      final raw = monday.add(Duration(days: i));
+      return DateTime(raw.year, raw.month, raw.day);
+    });
     final weekMs = weekDays.map(ListeningHistoryStore.getMs).toList();
     final weekTotal = weekMs.fold(0, (a, b) => a + b);
     final streak = _homeStreak();
@@ -901,6 +913,9 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
         startPositionMs: savedPos?.positionMs ?? 0,
         applyResumeRewind: true,
       );
+      final savedSpeed = SettingsStore.getBookSpeed(widget.book.ratingKey);
+      await service.setSpeed(savedSpeed);
+      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
     } catch (_) {}
   }
 
@@ -928,6 +943,9 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
         startPositionMs: savedPos?.positionMs ?? 0,
         applyResumeRewind: true,
       );
+      final savedSpeed = SettingsStore.getBookSpeed(widget.book.ratingKey);
+      await service.setSpeed(savedSpeed);
+      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
       await service.play();
     } catch (_) {
     } finally {

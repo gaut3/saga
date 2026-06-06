@@ -4,6 +4,7 @@ import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/mark_motion.dart';
+import '../../core/plex/plex_client.dart';
 import '../../core/utils/format.dart';
 import '../../core/plex/models/plex_library.dart';
 import '../../core/providers.dart';
@@ -288,6 +289,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       final data = await ProgressBackup.pickAndParse();
       if (data == null || !mounted) return;
+
+      // Warn if the backup came from a different Plex server. Plex ratingKeys
+      // are per-server integers — restoring across servers can silently overwrite
+      // positions for unrelated books that happen to share the same integer key.
+      final backupId = data.serverMachineIdentifier;
+      final localId = PlexClient.instance.machineIdentifier;
+      if (backupId != null && localId != null && backupId != localId) {
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            backgroundColor: SagaColors.surface,
+            title: Text('Different server',
+                style: TextStyle(color: SagaColors.fg)),
+            content: Text(
+              'This backup is from a different Plex server. '
+              'Book IDs may overlap, so restoring could overwrite positions '
+              'for unrelated books. Continue anyway?',
+              style: TextStyle(color: SagaColors.fgMuted),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text('Continue',
+                    style: TextStyle(color: SagaColors.accent)),
+              ),
+            ],
+          ),
+        );
+        if (proceed != true || !mounted) return;
+      }
 
       final conflicts = ProgressBackup.detectConflicts(data);
       Set<String>? skipKeys;

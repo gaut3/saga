@@ -167,11 +167,26 @@ class _BottomArea extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final service = ref.watch(playerServiceProvider);
+    final downloadState = ref.watch(downloadNotifierProvider);
     final bottom = MediaQuery.of(context).padding.bottom;
+
+    final activeProgress = downloadState.progress;
+    final dlValue = activeProgress.isEmpty
+        ? null
+        : activeProgress.values.fold(0.0, (a, b) => a + b) /
+            activeProgress.length;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Download progress strip — visible only while downloads are active
+        if (activeProgress.isNotEmpty)
+          LinearProgressIndicator(
+            value: dlValue,
+            backgroundColor: SagaColors.surfaceAlt,
+            valueColor: AlwaysStoppedAnimation<Color>(SagaColors.accent),
+            minHeight: 3,
+          ),
         // Mini player pill — only when something is loaded
         StreamBuilder<MediaItem?>(
           stream: service.mediaItem,
