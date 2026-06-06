@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [1.0.3] – 2026-06-06
 
 ### Security
 - **Cross-server backup restore now warns before proceeding.** Plex `ratingKey` values are per-server integers — importing a backup from a different server could silently overwrite positions for unrelated books that share the same integer key. The app now persists the connected server's `machineIdentifier` (stored in the Android Keystore alongside the token) and embeds it in every backup export (format v4). On restore, if the backup's server ID is present and differs from the current server's, a warning dialog is shown before any data is written.
