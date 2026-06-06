@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **CodeQL: array index out of bounds in `mapOf` helper (vendored just_audio).** The loop guard `i < args.length` would let the final iteration attempt `args[i + 1]` when `args` has an odd number of elements. Changed to `i + 1 < args.length` so the loop exits cleanly on a dangling key. No behaviour change for all existing (even-argument) call sites.
+- **CodeQL: unnecessary boxing of `newIndex` in `updateCurrentIndex` (vendored just_audio).** `getCurrentMediaItemIndex()` returns a primitive `int`; declaring the local as `Integer` caused a redundant autobox that CodeQL flagged as never-null. Changed to `int newIndex` and rewrote the comparison as `currentIndex == null || newIndex != currentIndex` to preserve the nullable-`currentIndex` handling explicitly.
+- **CodeQL: deprecated `FlutterPluginBinding.getFlutterEngine()` call removed (vendored just_audio).** `JustAudioPlugin.onAttachedToEngine` registered an `EngineLifecycleListener` via the deprecated `getFlutterEngine()` solely to call `methodCallHandler.dispose()` on hot restart. Modern Flutter embedding already routes this cleanup through `onDetachedFromEngine`, which is already implemented, so the listener and its two now-unused imports are removed.
+- **CodeQL: dead local variable removed from `enqueuePlaybackEvent` (vendored just_audio).** A `HashMap` was allocated into a local `event` variable that was never read; `pendingPlaybackEvent` was being set from `createPlaybackEvent()` on the very next line. Removed the unused allocation.
+- **`PlexBook` now parses `parentIndex` as `seriesIndex`.** The Plex JSON includes a volume/series index for audiobooks but it was previously discarded. The field is now stored as `int? seriesIndex` on `PlexBook`, making it available for future series-ordering features.
+- **Import backup shows an error toast when the selected file cannot be read.** Previously, if the file picker returned a file with neither a path nor bytes (certain Samsung/MIUI pickers, future platforms), `pickAndParse()` returned `null` silently — indistinguishable from user-cancel. It now throws a `StateError` so the caller can show a specific "Could not read the selected file." error toast.
+- **`PackageInfo.fromPlatform()` in Settings now handles platform-channel failures.** Added `.catchError((_) {})` so a failure (restricted environment, misconfigured plugin) doesn't produce an unhandled exception. The Licenses page now passes `null` instead of an empty string when the version hasn't loaded yet, so Flutter uses its own fallback rather than showing a blank version line.
+- **Toast widget re-reads theme colors on every rebuild.** `_SagaToast` was a plain `StatefulWidget` whose `build()` read `SagaColors.surface`/`.fg` without watching the theme provider. If the user changed theme while a toast was visible, the toast kept its old colors. Converted to `ConsumerStatefulWidget` and added `ref.watch(sagaThemeVariantProvider)` so it rebuilds on theme change.
+- **Server selection screen guards against concurrent taps.** `ServerSelectionScreen` was a stateless `ConsumerWidget`; two rapid taps on different server tiles each opened a loading dialog, and when both resolved the second `Navigator.pop` dismissed the settings screen instead of the dialog. Converted to `ConsumerStatefulWidget` with a `_selecting` bool that blocks re-entry for the duration of the selection.
+
+---
+
 ## [1.0.3] – 2026-06-06
 
 ### Security

@@ -307,10 +307,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     }
 
     private boolean updateCurrentIndex() {
-        Integer newIndex = player.getCurrentMediaItemIndex();
-        // newIndex is never null.
-        // currentIndex is sometimes null.
-        if (!newIndex.equals(currentIndex)) {
+        int newIndex = player.getCurrentMediaItemIndex();
+        if (currentIndex == null || newIndex != currentIndex) {
             currentIndex = newIndex;
             return true;
         }
@@ -981,7 +979,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     // broadcastPendingPlaybackEvent, only the last event is
     // broadcast.
     private void enqueuePlaybackEvent() {
-        final Map<String, Object> event = new HashMap<String, Object>();
         pendingPlaybackEvent = createPlaybackEvent();
     }
 
@@ -1190,7 +1187,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
     static Map<String, Object> mapOf(Object... args) {
         Map<String, Object> map = new HashMap<>();
-        for (int i = 0; i < args.length; i += 2) {
+        for (int i = 0; i + 1 < args.length; i += 2) {
             map.put((String)args[i], args[i + 1]);
         }
         return map;

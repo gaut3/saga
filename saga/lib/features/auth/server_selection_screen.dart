@@ -1,25 +1,33 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../shared/widgets/saga_toast.dart';
 
 import '../../core/providers.dart';
 
-class ServerSelectionScreen extends ConsumerWidget {
+class ServerSelectionScreen extends ConsumerStatefulWidget {
   final bool isSetup;
   const ServerSelectionScreen({super.key, this.isSetup = false});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ServerSelectionScreen> createState() =>
+      _ServerSelectionScreenState();
+}
+
+class _ServerSelectionScreenState extends ConsumerState<ServerSelectionScreen> {
+  bool _selecting = false;
+
+  @override
+  Widget build(BuildContext context) {
     final serversAsync = ref.watch(serverListProvider);
 
     return Scaffold(
       backgroundColor: SagaColors.bg,
       appBar: AppBar(
-        title: Text(isSetup ? 'Connect to Plex' : 'Select Server'),
+        title: Text(widget.isSetup ? 'Connect to Plex' : 'Select Server'),
         backgroundColor: SagaColors.surface,
         foregroundColor: SagaColors.fg,
-        automaticallyImplyLeading: !isSetup,
+        automaticallyImplyLeading: !widget.isSetup,
       ),
       body: serversAsync.when(
         loading: () => Center(
@@ -58,9 +66,9 @@ class ServerSelectionScreen extends ConsumerWidget {
 
           return ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: servers.length + (isSetup ? 1 : 0),
+            itemCount: servers.length + (widget.isSetup ? 1 : 0),
             itemBuilder: (context, index) {
-              if (isSetup && index == 0) {
+              if (widget.isSetup && index == 0) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 20),
                   child: Column(
@@ -78,7 +86,7 @@ class ServerSelectionScreen extends ConsumerWidget {
                   ),
                 );
               }
-              final server = servers[isSetup ? index - 1 : index];
+              final server = servers[widget.isSetup ? index - 1 : index];
               return Card(
                 color: SagaColors.surface,
                 margin: const EdgeInsets.only(bottom: 12),
@@ -96,7 +104,7 @@ class ServerSelectionScreen extends ConsumerWidget {
                     style: TextStyle(color: SagaColors.fgMuted),
                   ),
                   trailing: Icon(Icons.chevron_right, color: SagaColors.fgMuted),
-                  onTap: () => _selectServer(context, ref, server),
+                  onTap: () => _selectServer(context, server),
                 ),
               );
             },
@@ -106,8 +114,10 @@ class ServerSelectionScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _selectServer(
-      BuildContext context, WidgetRef ref, dynamic server) async {
+  Future<void> _selectServer(BuildContext context, dynamic server) async {
+    if (_selecting) return;
+    setState(() => _selecting = true);
+
     final discovery = ref.read(plexServerDiscoveryProvider);
 
     showDialog(
@@ -120,12 +130,15 @@ class ServerSelectionScreen extends ConsumerWidget {
 
     await discovery.selectServer(server);
 
-    if (!context.mounted) return;
+    if (!context.mounted) {
+      if (mounted) setState(() => _selecting = false);
+      return;
+    }
 
     ref.read(activeServerUriProvider.notifier).state =
         ref.read(plexClientProvider).serverUri;
     Navigator.of(context).pop(); // close loading dialog
-    if (!isSetup) Navigator.of(context).pop(); // back to settings (not needed in setup)
+    if (!widget.isSetup) Navigator.of(context).pop(); // back to settings
 
     if (ref.read(plexClientProvider).serverUri == null) {
       if (context.mounted) {
@@ -133,5 +146,7 @@ class ServerSelectionScreen extends ConsumerWidget {
             isError: true, duration: const Duration(seconds: 4));
       }
     }
+
+    if (mounted) setState(() => _selecting = false);
   }
 }

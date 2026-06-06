@@ -52,7 +52,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _markMotion = SettingsStore.markMotionIndex;
     PackageInfo.fromPlatform().then((info) {
       if (mounted) setState(() => _version = 'v${info.version}');
-    });
+    }).catchError((_) {});
   }
 
   @override
@@ -372,6 +372,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ref.read(bookmarkRevisionProvider.notifier).state++;
 
       if (mounted) showSagaToast(context, 'Progress restored');
+    } on StateError {
+      if (mounted) showSagaToast(context, 'Could not read the selected file.', isError: true);
     } catch (e) {
       if (mounted) showSagaToast(context, 'Import failed: $e', isError: true);
     }
@@ -543,7 +545,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   showLicensePage(
                     context: context,
                     applicationName: 'Saga',
-                    applicationVersion: _version,
+                    applicationVersion: _version.isEmpty ? null : _version,
                     applicationIcon: const Padding(
                       padding: EdgeInsets.all(12),
                       child: SagaMark(size: 56),

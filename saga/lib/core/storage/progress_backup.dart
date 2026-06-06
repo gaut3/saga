@@ -106,7 +106,7 @@ class ProgressBackup {
     } else if (picked.bytes != null) {
       content = utf8.decode(picked.bytes!);
     } else {
-      return null;
+      throw StateError('File picker returned a file with no readable path or bytes.');
     }
 
     final Map<String, dynamic> json =

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/providers.dart';
 import '../../core/theme/saga_theme.dart';
 
 /// Show a floating toast anchored below the status bar.
@@ -42,7 +44,7 @@ void showSagaToast(
   overlay.insert(entry);
 }
 
-class _SagaToast extends StatefulWidget {
+class _SagaToast extends ConsumerStatefulWidget {
   final String message;
   final double top;
   final bool isError;
@@ -58,10 +60,10 @@ class _SagaToast extends StatefulWidget {
   });
 
   @override
-  State<_SagaToast> createState() => _SagaToastState();
+  ConsumerState<_SagaToast> createState() => _SagaToastState();
 }
 
-class _SagaToastState extends State<_SagaToast>
+class _SagaToastState extends ConsumerState<_SagaToast>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _opacity;
@@ -96,6 +98,7 @@ class _SagaToastState extends State<_SagaToast>
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(sagaThemeVariantProvider);
     // Error toasts use fixed amber+ink — these are static const values unchanged
     // by theme variants, so the toast always pops regardless of which theme is
     // active (terra surface == terraDeep, so a terra-toned error pill is invisible
