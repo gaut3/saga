@@ -748,6 +748,21 @@
   // easeInOutCubic — spec: cubic-bezier(.66,0,.34,1) ≈ easeInOutCubic
   const eic = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
 
+  // Celebrate keyframes matching the app: 1 → 0.42 → 1.18 → 0.94 → 1
+  // Overshoot at 0.54 pushes bars above their normal height (1.18 = 118%).
+  function celebrate(u) {
+    const pts = [[0,1.0],[0.26,0.42],[0.54,1.18],[0.76,0.94],[1.0,1.0]];
+    for (let i = 0; i < pts.length-1; i++) {
+      const [t0,v0] = pts[i], [t1,v1] = pts[i+1];
+      if (u <= t1) {
+        const f = (u-t0)/(t1-t0);
+        const fe = f<.5 ? 2*f*f : 1-Math.pow(-2*f+2,2)/2; // easeInOut per segment
+        return v0 + (v1-v0)*fe;
+      }
+    }
+    return 1.0;
+  }
+
   // ── Level functions per state (phase in seconds) ─────────────
   const LEVELS = {
     paused:     ()  => [1, 1, 1, 1],
@@ -757,8 +772,22 @@
     downloading: t  => { const p=(t%2.8)/2.8; return [0,1,2,3].map(i => clamp(p*4-i, .14, 1)); },
     breathing:   t  => [0,.15,.30,.45].map(s => 0.82 + 0.18*Math.sin(2*Math.PI*(t-s)/2.4)),
     pausebars:  ()  => [1, 1, 1, 1],
-    finished:    t  => [0,.22,.44,.66].map(s =>
-                         clamp(0.55 + 0.45*((Math.sin(2*Math.PI*(t-s)/1.1)+1)/2), .55, 1))
+    // Matches the app exactly: 4.5s cycle, first half blooms via celebrate()
+    // keyframes (overshoot to 1.18), second half rests on the logo pose heights.
+    // Bell-weight envelope ensures bars start and end exactly on the logo pose.
+    finished:    t  => {
+      const logo = [0.78, 1.0, 0.66, 0.86];
+      const c = (t / 4.5) % 1.0;
+      if (c < 0.5) {
+        const cb = c / 0.5;
+        const w = Math.sin(Math.PI * cb); // bell: 0 at cycle edges, 1 at peak
+        return logo.map((lp, i) => {
+          const u = clamp(cb * 1.12 - i * 0.04, 0, 1);
+          return clamp(lp + (celebrate(u) - lp) * w, 0.12, 1.4);
+        });
+      }
+      return [...logo];
+    },
   };
 
   // ── Morph state ───────────────────────────────────────────────
