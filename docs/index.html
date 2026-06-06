@@ -262,15 +262,15 @@
     #features { background: var(--ink); }
 
     .features-grid {
-      display: grid; grid-template-columns: repeat(3,1fr);
-      gap: 48px; align-items: end;
+      display: grid; grid-template-columns: repeat(4,1fr);
+      gap: 36px; align-items: end;
     }
 
     .feature-card {
       display: flex; flex-direction: column;
       align-items: center; gap: 28px;
     }
-    .feature-card .phone { width: 230px; }
+    .feature-card .phone { width: min(210px, 100%); }
 
     .feature-copy { text-align: center; }
     .feature-copy .feature-eyebrow {
@@ -514,6 +514,7 @@
       <button class="state-btn" data-state="pausebars">Pause bars</button>
       <button class="state-btn" data-state="buffering">Buffering</button>
       <button class="state-btn" data-state="downloading">Downloading</button>
+      <button class="state-btn" data-state="finished">Finished</button>
     </div>
   </div>
 </section>
@@ -549,6 +550,15 @@
           <div class="feature-eyebrow">03 &middot; Stats</div>
           <h3>Every session,<br>logged.</h3>
           <p>Streaks, heatmaps, and a full session log. Three tabs &mdash; Day, Month, Total &mdash; so you can see exactly how much you&rsquo;ve been listening.</p>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="phone"><img src="screens/collections-ink.png" alt="Collections screen" loading="lazy" /></div>
+        <div class="feature-copy">
+          <div class="feature-eyebrow">04 &middot; Collections</div>
+          <h3>Your series,<br>in order.</h3>
+          <p>Build custom collections and drag books into reading order. Saga surfaces the next unstarted book in each series right on your Home screen.</p>
         </div>
       </div>
 
@@ -632,6 +642,7 @@
           preserves your data as long as the app is signed with the same key. Or use
           <code>adb install -r saga.apk</code> from a desktop.
         </p>
+        <p class="download-note">Prefer not to use mobile data? Enable Wi-Fi-only downloads in Settings &mdash; Saga checks your connection before each job and skips metered networks automatically.</p>
         <p class="download-note">
           Prefer to build from source?<br>
           <a href="https://github.com/gaut3/saga" style="color:var(--amber);text-decoration:none">See the README &rarr;</a>
@@ -727,9 +738,9 @@
     [[105,36],[159,36],[159,164],[105,164]]
   ];
 
-  const SHAPES  = { paused:TRI, playing:BAR, buffering:BAR, downloading:BAR, breathing:BAR, pausebars:PB };
+  const SHAPES  = { paused:TRI, playing:BAR, buffering:BAR, downloading:BAR, breathing:BAR, pausebars:PB, finished:BAR };
   // downloading is the one bottom-anchored exception
-  const ORIGINS = { paused:'c', playing:'c', buffering:'c', downloading:'b', breathing:'c', pausebars:'c' };
+  const ORIGINS = { paused:'c', playing:'c', buffering:'c', downloading:'b', breathing:'c', pausebars:'c', finished:'c' };
 
   const clamp = (v,lo,hi) => Math.max(lo, Math.min(hi, v));
   // easeInOutCubic — spec: cubic-bezier(.66,0,.34,1) ≈ easeInOutCubic
@@ -743,7 +754,9 @@
     buffering:   t  => [0,1,2,3].map(i => 0.3 + 0.7*((Math.sin(t*Math.PI*2/1.4 - i*0.5)+1)/2)),
     downloading: t  => { const p=(t%2.8)/2.8; return [0,1,2,3].map(i => clamp(p*4-i, .14, 1)); },
     breathing:   t  => [0,.15,.30,.45].map(s => 0.82 + 0.18*Math.sin(2*Math.PI*(t-s)/2.4)),
-    pausebars:  ()  => [1, 1, 1, 1]
+    pausebars:  ()  => [1, 1, 1, 1],
+    finished:    t  => [0,.22,.44,.66].map(s =>
+                         clamp(0.55 + 0.45*((Math.sin(2*Math.PI*(t-s)/1.1)+1)/2), .55, 1))
   };
 
   // ── Morph state ───────────────────────────────────────────────
@@ -807,7 +820,7 @@
   }
 
   // Cycle order — mirrors the natural app experience
-  const CYCLE = ['breathing', 'paused', 'playing', 'pausebars', 'buffering', 'downloading'];
+  const CYCLE = ['breathing', 'paused', 'playing', 'pausebars', 'buffering', 'downloading', 'finished'];
   let cycleIdx = 0;  // starts at breathing
 
   function setActiveBtn(s) {
