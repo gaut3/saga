@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/audio/audio_level.dart';
 import '../../core/mark_motion.dart';
 import '../../core/plex/plex_client.dart';
@@ -270,6 +271,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   title: 'Acknowledgements',
                   subtitle: 'Open-source licenses & thanks',
                   onTap: () => _showAcknowledgements(context),
+                ),
+                _SettingsTile(
+                  icon: Icons.system_update_outlined,
+                  title: 'Check for updates',
+                  subtitle: 'View releases on GitHub',
+                  onTap: () => launchUrl(
+                    Uri.parse('https://github.com/gaut3/saga/releases'),
+                    mode: LaunchMode.externalApplication,
+                  ),
                 ),
                 const SizedBox(height: 36),
 
