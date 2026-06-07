@@ -59,11 +59,26 @@ class SettingsStore {
 
   static Future<void> setMarkMotionIndex(int i) => _box.put('markMotion', i);
 
+  // Reactive animation sync delay in ms (0 = off). Compensates for Bluetooth
+  // A2DP latency so the bars stay in sync with what the user hears.
+  static int get animationSyncDelayMs =>
+      (_box.get('animationSyncDelay', defaultValue: 0) as num).toInt();
+
+  static Future<void> setAnimationSyncDelayMs(int ms) =>
+      _box.put('animationSyncDelay', ms);
+
   static double get defaultSpeed =>
       (_box.get('defaultSpeed', defaultValue: 1.0) as num).toDouble();
 
   static Future<void> setDefaultSpeed(double speed) =>
       _box.put('defaultSpeed', speed);
+
+  // Default sleep timer: 0 = off, -1 = end of chapter, positive = minutes.
+  static int get defaultSleepTimerMinutes =>
+      (_box.get('defaultSleepTimer', defaultValue: 0) as num).toInt();
+
+  static Future<void> setDefaultSleepTimerMinutes(int minutes) =>
+      _box.put('defaultSleepTimer', minutes);
 
   // 0 = ink, 1 = cream, 2 = terra
   static int get themeIndex =>

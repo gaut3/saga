@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/audio/audio_level.dart';
 import '../../core/mark_motion.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/utils/format.dart';
@@ -32,6 +33,20 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _skipOptions = [15, 30, 45, 60];
   static const _speedOptions = [0.75, 1.0, 1.25, 1.5, 2.0];
+  static const _sleepTimerOptions = [
+    (label: 'Off', minutes: 0),
+    (label: '15 min', minutes: 15),
+    (label: '30 min', minutes: 30),
+    (label: '45 min', minutes: 45),
+    (label: '60 min', minutes: 60),
+    (label: 'End of chapter', minutes: -1),
+  ];
+
+  static String _sleepTimerLabel(int minutes) {
+    if (minutes == 0) return 'Off';
+    if (minutes == -1) return 'End of chapter';
+    return '$minutes min';
+  }
 
   late int _skipForward;
   late int _skipBackward;
@@ -39,6 +54,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late bool _autoRewind;
   late bool _wifiOnly;
   late int _markMotion;
+  late int _animationSyncDelay;
+  late int _defaultSleepTimer;
   String _version = '';
 
   @override
@@ -50,6 +67,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _autoRewind = SettingsStore.autoRewindEnabled;
     _wifiOnly = SettingsStore.downloadWifiOnly;
     _markMotion = SettingsStore.markMotionIndex;
+    _animationSyncDelay = SettingsStore.animationSyncDelayMs;
+    _defaultSleepTimer = SettingsStore.defaultSleepTimerMinutes;
     PackageInfo.fromPlatform().then((info) {
       if (mounted) setState(() => _version = 'v${info.version}');
     }).catchError((_) {});
@@ -137,14 +156,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ref.read(playbackSpeedProvider.notifier).state = v;
                   },
                 ),
-                _SegmentedTile(
-                  icon: Icons.graphic_eq_rounded,
-                  title: 'Player animation',
-                  options: const ['Reactive', 'Gentle', 'Pause'],
-                  selectedIndex: _markMotion.clamp(0, 2),
-                  onChanged: (i) async {
+                _PlayerAnimationTile(
+                  markMotion: _markMotion.clamp(0, 2),
+                  animationSyncDelay: _animationSyncDelay,
+                  onMarkMotionChanged: (i) async {
                     await setMarkMotion(MarkMotion.values[i]);
                     setState(() => _markMotion = i);
+                  },
+                  onSyncDelayChanged: (ms) async {
+                    await SettingsStore.setAnimationSyncDelayMs(ms);
+                    AudioLevel.instance.setDelay(ms);
+                    setState(() => _animationSyncDelay = ms);
                   },
                 ),
                 _SwitchTile(
@@ -156,6 +178,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     await SettingsStore.setAutoRewindEnabled(v);
                     setState(() => _autoRewind = v);
                   },
+                ),
+                _SettingsTile(
+                  icon: Icons.bedtime_outlined,
+                  title: 'Default sleep timer',
+                  subtitle: _sleepTimerLabel(_defaultSleepTimer),
+                  onTap: () => _showDefaultSleepTimerPicker(context),
                 ),
                 const SizedBox(height: 16),
 
@@ -448,6 +476,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await ref.read(plexClientProvider).clearAuth();
       ref.read(isAuthenticatedProvider.notifier).state = false;
     }
+  }
+
+  void _showDefaultSleepTimerPicker(BuildContext context) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    showSagaSheet(context, (ctx) => Padding(
+      padding: EdgeInsets.only(bottom: bottomPad),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              'Default sleep timer',
+              style: TextStyle(
+                  color: SagaColors.fg,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16),
+            ),
+          ),
+          ..._sleepTimerOptions.map((opt) => ListTile(
+                title: Text(opt.label, style: TextStyle(color: SagaColors.fg)),
+                trailing: _defaultSleepTimer == opt.minutes
+                    ? Icon(Icons.check_rounded, color: SagaColors.accent)
+                    : null,
+                onTap: () async {
+                  await SettingsStore.setDefaultSleepTimerMinutes(opt.minutes);
+                  if (mounted) setState(() => _defaultSleepTimer = opt.minutes);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+              )),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ));
   }
 
   void _showInfoSheet(BuildContext context, String title, String body) {
@@ -754,6 +817,157 @@ class _SegmentedTile extends StatelessWidget {
             constraints:
                 const BoxConstraints(minWidth: 44, minHeight: 32),
             children: options
+                .map((o) => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Text(o, style: const TextStyle(fontSize: 12)),
+                    ))
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlayerAnimationTile extends StatelessWidget {
+  final int markMotion;
+  final int animationSyncDelay;
+  final ValueChanged<int> onMarkMotionChanged;
+  final ValueChanged<int> onSyncDelayChanged;
+
+  const _PlayerAnimationTile({
+    required this.markMotion,
+    required this.animationSyncDelay,
+    required this.onMarkMotionChanged,
+    required this.onSyncDelayChanged,
+  });
+
+  static const _options = ['Reactive', 'Gentle', 'Pause'];
+  static const _descriptions = [
+    'Bars track real loudness via audio tap',
+    'Bars use a smooth synthetic envelope',
+    'Shows a static pause glyph while playing',
+  ];
+
+  void _openSheet(BuildContext context) {
+    int localDelay = animationSyncDelay;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    showSagaSheet(context, (ctx) => StatefulBuilder(
+      builder: (ctx, setLocal) => Padding(
+        padding: EdgeInsets.only(bottom: bottomPad),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text('Player animation',
+                  style: TextStyle(
+                      color: SagaColors.fg,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16)),
+            ),
+            ..._options.asMap().entries.map((e) {
+              final selected = markMotion == e.key;
+              return ListTile(
+                title: Text(e.value, style: TextStyle(color: SagaColors.fg)),
+                subtitle: Text(_descriptions[e.key],
+                    style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12)),
+                trailing: selected
+                    ? Icon(Icons.check_rounded, color: SagaColors.accent)
+                    : null,
+                onTap: () {
+                  onMarkMotionChanged(e.key);
+                  Navigator.pop(ctx);
+                },
+              );
+            }),
+            if (markMotion == 0) ...[
+              Divider(color: SagaColors.border, height: 24),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.bluetooth_rounded,
+                        color: SagaColors.fgSubtle, size: 16),
+                    const SizedBox(width: 8),
+                    Text('Animation sync delay',
+                        style: TextStyle(
+                            color: SagaColors.fg, fontSize: 14)),
+                    const Spacer(),
+                    Text(
+                      localDelay == 0 ? 'Off' : '$localDelay ms',
+                      style: TextStyle(
+                          color: SagaColors.accent,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+                child: Slider(
+                  value: localDelay.toDouble(),
+                  min: 0,
+                  max: 400,
+                  divisions: 40,
+                  activeColor: SagaColors.accent,
+                  inactiveColor: SagaColors.surfaceAlt,
+                  onChanged: (v) => setLocal(() => localDelay = v.round()),
+                  onChangeEnd: (v) => onSyncDelayChanged(v.round()),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Text(
+                  'Increase if the animation leads the audio — common on Bluetooth (try 100–200 ms).',
+                  style: TextStyle(
+                      color: SagaColors.fgMuted, fontSize: 12, height: 1.4),
+                ),
+              ),
+            ] else
+              const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: SagaColors.surface,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _openSheet(context),
+            child: Row(
+              children: [
+                Icon(Icons.graphic_eq_rounded, color: SagaColors.accent, size: 22),
+                const SizedBox(width: 16),
+                Text('Player animation',
+                    style: TextStyle(color: SagaColors.fg, fontSize: 16)),
+                const SizedBox(width: 6),
+                Icon(Icons.info_outline_rounded,
+                    color: SagaColors.fgSubtle, size: 14),
+              ],
+            ),
+          ),
+          const Spacer(),
+          ToggleButtons(
+            isSelected: List.generate(_options.length, (i) => i == markMotion),
+            onPressed: onMarkMotionChanged,
+            borderColor: SagaColors.border,
+            selectedBorderColor: SagaColors.accent,
+            selectedColor: SagaColors.accentFg,
+            fillColor: SagaColors.accent,
+            color: SagaColors.fgMuted,
+            borderRadius: BorderRadius.circular(8),
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 32),
+            children: _options
                 .map((o) => Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 6),
                       child: Text(o, style: const TextStyle(fontSize: 12)),

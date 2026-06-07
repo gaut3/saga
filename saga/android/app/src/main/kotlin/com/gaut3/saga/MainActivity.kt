@@ -1,6 +1,8 @@
 package com.gaut3.saga
 
 import android.app.AlertDialog
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
@@ -49,6 +51,24 @@ class MainActivity : AudioServiceActivity() {
         castContext?.sessionManager?.addSessionManagerListener(
             sessionListener, CastSession::class.java
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            AlertDialog.Builder(this)
+                .setTitle("Playback controls")
+                .setMessage(
+                    "Saga shows a notification with playback controls so you can pause, " +
+                    "skip, and see what's playing from your lock screen and notification shade. " +
+                    "Without it, the notification may not appear reliably."
+                )
+                .setPositiveButton("Allow") { _, _ ->
+                    requestPermissions(
+                        arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 0
+                    )
+                }
+                .setNegativeButton("Not now", null)
+                .show()
+        }
     }
 
     override fun onDestroy() {

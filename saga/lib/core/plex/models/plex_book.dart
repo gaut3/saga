@@ -10,6 +10,7 @@ class PlexBook {
   final String? studio;
   final List<String> collectionTags;
   final int? seriesIndex;
+  final String? sortTitle;
 
   const PlexBook({
     required this.ratingKey,
@@ -23,6 +24,7 @@ class PlexBook {
     this.studio,
     this.collectionTags = const [],
     this.seriesIndex,
+    this.sortTitle,
   });
 
   factory PlexBook.fromJson(Map<String, dynamic> json) {
@@ -43,6 +45,7 @@ class PlexBook {
       studio: json['studio'] as String?,
       collectionTags: tags,
       seriesIndex: json['parentIndex'] as int?,
+      sortTitle: json['titleSort'] as String?,
     );
   }
 }

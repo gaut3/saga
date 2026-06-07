@@ -5,7 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [1.0.4] – 2026-06-07
+
+### Added
+- **Sort by duration.** Browse screen now offers a "Duration" sort (shortest first), making it easy to find a book that fits a commute or flight.
+- **Default sleep timer.** Settings → Playback → "Default sleep timer" lets you pick a preferred duration (Off / 15 min / 30 min / 45 min / 60 min / End of chapter). Once set, tapping the moon icon in the player starts the timer immediately — no sheet needed. If a timer is already running, tapping opens the picker so you can change the duration or cancel. The default option is always marked with a moon icon in the picker for reference.
+- **Scrubber drag tooltip.** A small floating label appears above the seek thumb while dragging, showing exactly where you'll land before you release.
+- **Reactive animation sync delay.** Tap the "Player animation" label in Settings → Playback to open a detail sheet. When Reactive mode is selected, a slider (0–400 ms, 10 ms steps) lets you delay the RMS animation to match Bluetooth audio latency. The delay is applied in real time as you drag and persists across launches. Try 100–200 ms for typical Bluetooth headphones.
 
 ### Fixed
 - **CodeQL: array index out of bounds in `mapOf` helper (vendored just_audio).** The loop guard `i < args.length` would let the final iteration attempt `args[i + 1]` when `args` has an odd number of elements. Changed to `i + 1 < args.length` so the loop exits cleanly on a dangling key. No behaviour change for all existing (even-argument) call sites.
@@ -13,6 +19,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **CodeQL: deprecated `FlutterPluginBinding.getFlutterEngine()` call removed (vendored just_audio).** `JustAudioPlugin.onAttachedToEngine` registered an `EngineLifecycleListener` via the deprecated `getFlutterEngine()` solely to call `methodCallHandler.dispose()` on hot restart. Modern Flutter embedding already routes this cleanup through `onDetachedFromEngine`, which is already implemented, so the listener and its two now-unused imports are removed.
 - **CodeQL: dead local variable removed from `enqueuePlaybackEvent` (vendored just_audio).** A `HashMap` was allocated into a local `event` variable that was never read; `pendingPlaybackEvent` was being set from `createPlaybackEvent()` on the very next line. Removed the unused allocation.
 - **`PlexBook` now parses `parentIndex` as `seriesIndex`.** The Plex JSON includes a volume/series index for audiobooks but it was previously discarded. The field is now stored as `int? seriesIndex` on `PlexBook`, making it available for future series-ordering features.
+- **`PlexBook` now parses `titleSort` from Plex.** The Plex `titleSort` field (e.g. "Name of the Wind" for "The Name of the Wind") is now used by the A→Z and Z→A sorts in Browse, falling back to `title` when absent. This matches how Plex's own clients order books.
+- **`POST_NOTIFICATIONS` permission declared for Android 13+.** The permission is now declared in the manifest and requested at runtime on first launch. An explanation dialog appears first — "Saga shows a notification with playback controls so you can pause, skip, and see what's playing from your lock screen and notification shade. Without it, the notification may not appear reliably." — so the system prompt isn't unexpected.
 - **Import backup shows an error toast when the selected file cannot be read.** Previously, if the file picker returned a file with neither a path nor bytes (certain Samsung/MIUI pickers, future platforms), `pickAndParse()` returned `null` silently — indistinguishable from user-cancel. It now throws a `StateError` so the caller can show a specific "Could not read the selected file." error toast.
 - **`PackageInfo.fromPlatform()` in Settings now handles platform-channel failures.** Added `.catchError((_) {})` so a failure (restricted environment, misconfigured plugin) doesn't produce an unhandled exception. The Licenses page now passes `null` instead of an empty string when the version hasn't loaded yet, so Flutter uses its own fallback rather than showing a blank version line.
 - **Toast widget re-reads theme colors on every rebuild.** `_SagaToast` was a plain `StatefulWidget` whose `build()` read `SagaColors.surface`/`.fg` without watching the theme provider. If the user changed theme while a toast was visible, the toast kept its old colors. Converted to `ConsumerStatefulWidget` and added `ref.watch(sagaThemeVariantProvider)` so it rebuilds on theme change.

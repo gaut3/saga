@@ -15,7 +15,7 @@ import '../../core/utils/format.dart';
 import '../../shared/widgets/saga_sheet.dart';
 import '../../shared/widgets/saga_toast.dart';
 
-enum _SortOption { defaultOrder, titleAsc, titleDesc, byAuthor }
+enum _SortOption { defaultOrder, titleAsc, titleDesc, byAuthor, byDuration }
 
 class BrowseScreen extends ConsumerWidget {
   const BrowseScreen({super.key});
@@ -231,17 +231,23 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
     switch (_sort) {
       case _SortOption.titleAsc:
         list = [...list]
-          ..sort(
-              (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+          ..sort((a, b) => (a.sortTitle ?? a.title)
+              .toLowerCase()
+              .compareTo((b.sortTitle ?? b.title).toLowerCase()));
       case _SortOption.titleDesc:
         list = [...list]
-          ..sort(
-              (a, b) => b.title.toLowerCase().compareTo(a.title.toLowerCase()));
+          ..sort((a, b) => (b.sortTitle ?? b.title)
+              .toLowerCase()
+              .compareTo((a.sortTitle ?? a.title).toLowerCase()));
       case _SortOption.byAuthor:
         list = [...list]
           ..sort((a, b) => (a.authorName ?? '')
               .toLowerCase()
               .compareTo((b.authorName ?? '').toLowerCase()));
+      case _SortOption.byDuration:
+        list = [...list]
+          ..sort((a, b) =>
+              (a.totalDurationMs ?? 0).compareTo(b.totalDurationMs ?? 0));
       case _SortOption.defaultOrder:
         break;
     }
@@ -423,6 +429,13 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                                             _sort == _SortOption.byAuthor,
                                         onTap: () => setState(() =>
                                             _sort = _SortOption.byAuthor),
+                                      ),
+                                      _SortChip(
+                                        label: 'Duration',
+                                        selected:
+                                            _sort == _SortOption.byDuration,
+                                        onTap: () => setState(() =>
+                                            _sort = _SortOption.byDuration),
                                       ),
                                     ],
                                   ),

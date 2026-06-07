@@ -651,26 +651,66 @@ class _ProgressBarState extends State<_ProgressBar> {
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             children: [
-              SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 3,
-                  thumbShape:
-                      const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  overlayShape:
-                      const RoundSliderOverlayShape(overlayRadius: 14),
-                  activeTrackColor: SagaColors.accent,
-                  inactiveTrackColor: SagaColors.surfaceAlt,
-                  thumbColor: SagaColors.accent,
-                ),
-                child: Slider(
-                  value: displayValue,
-                  onChanged: (v) => setState(() => _dragValue = v),
-                  onChangeEnd: (v) {
-                    setState(() => _dragValue = null);
-                    widget.service.seekAbsolute(
-                        Duration(milliseconds: (v * totalMs).round()));
-                  },
-                ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  // Slider internal padding equals the overlay radius (14 px)
+                  // on each side — thumb center travels from edge to (width-edge).
+                  const edge = 14.0;
+                  final thumbX = edge +
+                      displayValue * (constraints.maxWidth - 2 * edge);
+                  const labelW = 62.0;
+                  final labelLeft =
+                      (thumbX - labelW / 2).clamp(0.0, constraints.maxWidth - labelW);
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 3,
+                          thumbShape:
+                              const RoundSliderThumbShape(enabledThumbRadius: 6),
+                          overlayShape:
+                              const RoundSliderOverlayShape(overlayRadius: 14),
+                          activeTrackColor: SagaColors.accent,
+                          inactiveTrackColor: SagaColors.surfaceAlt,
+                          thumbColor: SagaColors.accent,
+                        ),
+                        child: Slider(
+                          value: displayValue,
+                          onChanged: (v) => setState(() => _dragValue = v),
+                          onChangeEnd: (v) {
+                            setState(() => _dragValue = null);
+                            widget.service.seekAbsolute(
+                                Duration(milliseconds: (v * totalMs).round()));
+                          },
+                        ),
+                      ),
+                      if (_dragValue != null)
+                        Positioned(
+                          left: labelLeft,
+                          top: -28,
+                          child: Container(
+                            width: labelW,
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: SagaColors.surface,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              fmtDuration(displayPos),
+                              style: TextStyle(
+                                color: SagaColors.fg,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -817,11 +857,36 @@ class _BottomActions extends ConsumerWidget {
           _SleepTimerButton(
             service: service,
             timerEnd: timerEnd,
-            onTap: () => _showSleepTimer(context, ref, timerEnd != null),
+            onTap: () {
+              final isActive = timerEnd != null;
+              final defaultMinutes = SettingsStore.defaultSleepTimerMinutes;
+              if (!isActive && defaultMinutes != 0) {
+                _startDefaultSleepTimer(context, ref, defaultMinutes);
+              } else {
+                _showSleepTimer(context, ref, isActive);
+              }
+            },
           ),
         ],
       ),
     );
+  }
+
+  void _startDefaultSleepTimer(BuildContext context, WidgetRef ref, int minutes) {
+    if (minutes == -1) {
+      final tracks = service.currentTracks;
+      final m4bParam = tracks.length == 1
+          ? PlexClient.instance.resolveM4bParam(tracks[0])
+          : null;
+      final m4bChapters = m4bParam != null
+          ? ref.read(m4bChaptersProvider(m4bParam)).valueOrNull
+          : null;
+      ref.read(sleepTimerProvider.notifier).setEndOfChapter(m4bChapters: m4bChapters);
+      showSagaToast(context, 'Sleep timer: end of chapter');
+    } else {
+      ref.read(sleepTimerProvider.notifier).set(Duration(minutes: minutes));
+      showSagaToast(context, 'Sleep timer: $minutes min');
+    }
   }
 
   Future<void> _addBookmark(BuildContext context, WidgetRef ref) async {
@@ -906,11 +971,12 @@ class _BottomActions extends ConsumerWidget {
               : null;
 
           const timedOptions = [
-            (label: '15 min', duration: Duration(minutes: 15)),
-            (label: '30 min', duration: Duration(minutes: 30)),
-            (label: '45 min', duration: Duration(minutes: 45)),
-            (label: '60 min', duration: Duration(minutes: 60)),
+            (label: '15 min', duration: Duration(minutes: 15), minutes: 15),
+            (label: '30 min', duration: Duration(minutes: 30), minutes: 30),
+            (label: '45 min', duration: Duration(minutes: 45), minutes: 45),
+            (label: '60 min', duration: Duration(minutes: 60), minutes: 60),
           ];
+          final defaultMinutes = SettingsStore.defaultSleepTimerMinutes;
 
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -928,6 +994,10 @@ class _BottomActions extends ConsumerWidget {
                       color: SagaColors.accent),
                   title: Text('End of chapter',
                       style: TextStyle(color: SagaColors.fg)),
+                  trailing: defaultMinutes == -1
+                      ? Icon(Icons.bedtime_outlined,
+                          color: SagaColors.accent, size: 18)
+                      : null,
                   onTap: () {
                     ref
                         .read(sleepTimerProvider.notifier)
@@ -939,6 +1009,10 @@ class _BottomActions extends ConsumerWidget {
                 ...timedOptions.map((opt) => ListTile(
                       title: Text(opt.label,
                           style: TextStyle(color: SagaColors.fg)),
+                      trailing: defaultMinutes == opt.minutes
+                          ? Icon(Icons.bedtime_outlined,
+                              color: SagaColors.accent, size: 18)
+                          : null,
                       onTap: () {
                         ref
                             .read(sleepTimerProvider.notifier)

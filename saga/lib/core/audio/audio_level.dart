@@ -22,6 +22,19 @@ class AudioLevel {
   StreamSubscription<dynamic>? _sub;
   DateTime _lastAt = DateTime.fromMillisecondsSinceEpoch(0);
 
+  // Delay buffer: holds (timestamp, rms) pairs when _delayMs > 0.
+  // Incoming RMS is queued; values older than _delayMs are emitted.
+  // This compensates for Bluetooth A2DP latency (typically 100–300 ms).
+  int _delayMs = 0;
+  final _buffer = <(DateTime, double)>[];
+
+  /// Set how many milliseconds to delay the RMS signal before emitting it.
+  /// 0 = no delay (default). Clears the buffer when changed.
+  void setDelay(int ms) {
+    _delayMs = ms;
+    _buffer.clear();
+  }
+
   /// Whether a fresh sample arrived recently (the tap is actively producing).
   bool get isLive =>
       DateTime.now().difference(_lastAt).inMilliseconds < 350;
@@ -39,7 +52,18 @@ class AudioLevel {
         if (event is num && event.isFinite && event >= 0) {
           _lastAt = DateTime.now();
           // Speech RMS sits low (~0.03–0.25); lift it into a lively bar range.
-          level.value = (event.toDouble() * 3.2).clamp(0.0, 1.0);
+          final rms = (event.toDouble() * 3.2).clamp(0.0, 1.0);
+          if (_delayMs == 0) {
+            level.value = rms;
+          } else {
+            _buffer.add((_lastAt, rms));
+            final cutoff =
+                _lastAt.subtract(Duration(milliseconds: _delayMs));
+            while (_buffer.isNotEmpty &&
+                _buffer.first.$1.isBefore(cutoff)) {
+              level.value = _buffer.removeAt(0).$2;
+            }
+          }
         }
       },
       // Stream error → stop updating; isLive lapses → synthetic fallback.

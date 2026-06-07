@@ -67,6 +67,7 @@ Future<void> main() async {
     setPlayerServiceInstance(service);
 
     // Start listening for the real-loudness tap (drives the playing visualizer).
+    AudioLevel.instance.setDelay(SettingsStore.animationSyncDelayMs);
     AudioLevel.instance.start();
 
     _reconcileDanglingSessions();
