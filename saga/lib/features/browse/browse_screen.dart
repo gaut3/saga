@@ -450,7 +450,8 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                                 onPressed: () =>
                                     setState(() => _isList = !_isList),
                                 padding: const EdgeInsets.only(right: 12),
-                                constraints: const BoxConstraints(),
+                                constraints: const BoxConstraints(
+                                    minWidth: 44, minHeight: 44),
                               ),
                             ],
                           ),
@@ -659,7 +660,7 @@ class _SortChip extends StatelessWidget {
         child: Container(
           alignment: Alignment.center,
           padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: selected
                 ? SagaColors.accent

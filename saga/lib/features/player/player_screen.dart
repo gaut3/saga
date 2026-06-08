@@ -683,6 +683,8 @@ class _ProgressBarState extends State<_ProgressBar> {
                             widget.service.seekAbsolute(
                                 Duration(milliseconds: (v * totalMs).round()));
                           },
+                          semanticFormatterCallback: (v) => fmtDuration(
+                              Duration(milliseconds: (v * totalMs).round())),
                         ),
                       ),
                       if (_dragValue != null)
@@ -758,12 +760,15 @@ class _Controls extends StatelessWidget {
               iconSize: 36,
               icon: const Icon(Icons.skip_previous_rounded),
               color: SagaColors.fgMuted,
+              tooltip: 'Skip to previous',
               onPressed: service.skipToPrevious,
             ),
             IconButton(
               iconSize: 28,
               icon: const Icon(Icons.replay_30_rounded),
               color: SagaColors.fgMuted,
+              tooltip:
+                  'Rewind ${SettingsStore.skipBackwardSeconds} seconds',
               onPressed: () async {
                 final pos = await service.positionStream.first;
                 final skip = SettingsStore.skipBackwardSeconds * 1000;
@@ -773,15 +778,20 @@ class _Controls extends StatelessWidget {
               },
             ),
             const SizedBox(width: 8),
-            GestureDetector(
-              onTap: playing ? service.pause : service.play,
-              child: AnimatedSagaMark(
-                size: 56,
-                state: loading
-                    ? SagaMarkState.buffering
-                    : playing
-                        ? SagaMarkState.playing
-                        : SagaMarkState.paused,
+            Semantics(
+              label: playing ? 'Pause' : 'Play',
+              button: true,
+              excludeSemantics: true,
+              child: GestureDetector(
+                onTap: playing ? service.pause : service.play,
+                child: AnimatedSagaMark(
+                  size: 56,
+                  state: loading
+                      ? SagaMarkState.buffering
+                      : playing
+                          ? SagaMarkState.playing
+                          : SagaMarkState.paused,
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -789,6 +799,8 @@ class _Controls extends StatelessWidget {
               iconSize: 28,
               icon: const Icon(Icons.forward_30_rounded),
               color: SagaColors.fgMuted,
+              tooltip:
+                  'Skip forward ${SettingsStore.skipForwardSeconds} seconds',
               onPressed: () async {
                 final totalMs = service.totalBookDurationMs;
                 final skip = SettingsStore.skipForwardSeconds * 1000;
@@ -801,6 +813,7 @@ class _Controls extends StatelessWidget {
               iconSize: 36,
               icon: const Icon(Icons.skip_next_rounded),
               color: SagaColors.fgMuted,
+              tooltip: 'Skip to next',
               onPressed: service.skipToNext,
             ),
           ],
@@ -825,49 +838,62 @@ class _BottomActions extends ConsumerWidget {
     final speed = ref.watch(playbackSpeedProvider);
     final timerEnd = ref.watch(sleepTimerProvider);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _ActionButton(
-            label: '${speed}x',
-            icon: Icons.speed,
-            active: speed != 1.0,
-            onTap: () {
-              final idx = _speeds.indexOf(speed);
-              final next = _speeds[(idx + 1) % _speeds.length];
-              ref.read(playbackSpeedProvider.notifier).state = next;
-              service.setSpeed(next);
-              if (bookKey != null) {
-                SettingsStore.setBookSpeed(bookKey!, next);
-              }
-            },
-          ),
-          _ActionButton(
-            label: 'Bookmark',
-            icon: Icons.bookmark_add_outlined,
-            onTap: () => _addBookmark(context, ref),
-          ),
-          _ActionButton(
-            label: 'Cast',
-            icon: Icons.cast,
-            onTap: () => _showCastSheet(context),
-          ),
-          _SleepTimerButton(
-            service: service,
-            timerEnd: timerEnd,
-            onTap: () {
-              final isActive = timerEnd != null;
-              final defaultMinutes = SettingsStore.defaultSleepTimerMinutes;
-              if (!isActive && defaultMinutes != 0) {
-                _startDefaultSleepTimer(context, ref, defaultMinutes);
-              } else {
-                _showSleepTimer(context, ref, isActive);
-              }
-            },
-          ),
-        ],
+    return ValueListenableBuilder<bool>(
+      valueListenable: service.canUndoSeekNotifier,
+      builder: (_, canUndo, _) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _ActionButton(
+              label: '${speed}x',
+              icon: Icons.speed,
+              active: speed != 1.0,
+              semanticLabel: 'Playback speed: $speed×',
+              onTap: () {
+                final idx = _speeds.indexOf(speed);
+                final next = _speeds[(idx + 1) % _speeds.length];
+                ref.read(playbackSpeedProvider.notifier).state = next;
+                service.setSpeed(next);
+                if (bookKey != null) {
+                  SettingsStore.setBookSpeed(bookKey!, next);
+                }
+              },
+            ),
+            _ActionButton(
+              label: 'Bookmark',
+              icon: Icons.bookmark_add_outlined,
+              semanticLabel: 'Add bookmark',
+              onTap: () => _addBookmark(context, ref),
+            ),
+            _ActionButton(
+              label: 'Cast',
+              icon: Icons.cast,
+              semanticLabel: 'Cast to device',
+              onTap: () => _showCastSheet(context),
+            ),
+            _SleepTimerButton(
+              service: service,
+              timerEnd: timerEnd,
+              onTap: () {
+                final isActive = timerEnd != null;
+                final defaultMinutes = SettingsStore.defaultSleepTimerMinutes;
+                if (!isActive && defaultMinutes != 0) {
+                  _startDefaultSleepTimer(context, ref, defaultMinutes);
+                } else {
+                  _showSleepTimer(context, ref, isActive);
+                }
+              },
+            ),
+            _ActionButton(
+              label: 'Undo',
+              icon: Icons.undo,
+              active: canUndo,
+              semanticLabel: 'Undo seek',
+              onTap: canUndo ? service.undoSeek : () {},
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1112,6 +1138,8 @@ class _SleepTimerButtonState extends State<_SleepTimerButton> {
       label: _label(),
       icon: Icons.bedtime_outlined,
       active: widget.timerEnd != null,
+      semanticLabel:
+          widget.timerEnd != null ? 'Sleep timer: active' : 'Set sleep timer',
       onTap: widget.onTap,
     );
   }
@@ -1122,29 +1150,36 @@ class _ActionButton extends StatelessWidget {
   final IconData icon;
   final bool active;
   final VoidCallback onTap;
+  final String? semanticLabel;
 
   const _ActionButton({
     required this.label,
     required this.icon,
     required this.onTap,
     this.active = false,
+    this.semanticLabel,
   });
 
   @override
   Widget build(BuildContext context) {
     final color = active ? SagaColors.accent : SagaColors.fgMuted;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 4),
-            Text(label, style: TextStyle(color: color, fontSize: 10)),
-          ],
+    return Semantics(
+      label: semanticLabel ?? label,
+      button: true,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 22),
+              const SizedBox(height: 4),
+              Text(label, style: TextStyle(color: color, fontSize: 10)),
+            ],
+          ),
         ),
       ),
     );

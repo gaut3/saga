@@ -135,7 +135,7 @@ class _SegControl extends StatelessWidget {
             onTap: () => onChanged(t),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: selected ? SagaColors.accent : Colors.transparent,
                 borderRadius: BorderRadius.circular(99),

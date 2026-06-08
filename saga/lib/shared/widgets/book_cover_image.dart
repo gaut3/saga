@@ -19,12 +19,17 @@ class BookCoverImage extends StatefulWidget {
   final String? thumbPath;
   final int cacheWidth;
   final BoxFit fit;
+  /// Accessible label for screen readers. Pass the book title + " cover art".
+  /// Omit (or pass null) for purely decorative uses — the image is then
+  /// excluded from the semantics tree.
+  final String? semanticLabel;
 
   const BookCoverImage({
     super.key,
     required this.thumbPath,
     this.cacheWidth = 200,
     this.fit = BoxFit.cover,
+    this.semanticLabel,
   });
 
   @override
@@ -58,24 +63,28 @@ class _BookCoverImageState extends State<BookCoverImage> {
         PlexClient.instance.buildArtUri(widget.thumbPath)?.toString();
     if (url == null) return _placeholder();
 
-    return CachedNetworkImage(
-      key: ValueKey('$url-$_attempt'),
-      imageUrl: url,
-      fit: widget.fit,
-      memCacheWidth: widget.cacheWidth,
-      fadeInDuration: Duration.zero,
-      fadeOutDuration: Duration.zero,
-      placeholder: (_, _) => _placeholder(),
-      errorWidget: (_, _, _) {
-        if (_attempt < _maxRetries) {
-          _scheduleRetry();
-          return _placeholder();
-        }
-        return GestureDetector(
-          onTap: () => setState(() => _attempt = 0),
-          child: _errorPlaceholder(),
-        );
-      },
+    return Semantics(
+      label: widget.semanticLabel,
+      excludeSemantics: widget.semanticLabel == null,
+      child: CachedNetworkImage(
+        key: ValueKey('$url-$_attempt'),
+        imageUrl: url,
+        fit: widget.fit,
+        memCacheWidth: widget.cacheWidth,
+        fadeInDuration: Duration.zero,
+        fadeOutDuration: Duration.zero,
+        placeholder: (_, _) => _placeholder(),
+        errorWidget: (_, _, _) {
+          if (_attempt < _maxRetries) {
+            _scheduleRetry();
+            return _placeholder();
+          }
+          return GestureDetector(
+            onTap: () => setState(() => _attempt = 0),
+            child: _errorPlaceholder(),
+          );
+        },
+      ),
     );
   }
 

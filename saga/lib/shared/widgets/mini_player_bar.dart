@@ -47,7 +47,7 @@ class MiniPlayerBar extends ConsumerWidget {
                         height: 68,
                         child: Row(
                           children: [
-                            _ArtThumbnail(artUri: item.artUri),
+                            _ArtThumbnail(artUri: item.artUri, title: item.title),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
@@ -77,17 +77,24 @@ class MiniPlayerBar extends ConsumerWidget {
                                 ],
                               ),
                             ),
-                            GestureDetector(
-                              onTap: () => playing ? service.pause() : service.play(),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                child: AnimatedSagaMark(
-                                  size: 32,
-                                  state: loading
-                                      ? SagaMarkState.buffering
-                                      : playing
-                                          ? SagaMarkState.playing
-                                          : SagaMarkState.paused,
+                            Semantics(
+                              label: playing ? 'Pause' : 'Play',
+                              button: true,
+                              excludeSemantics: true,
+                              child: GestureDetector(
+                                onTap: () =>
+                                    playing ? service.pause() : service.play(),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12),
+                                  child: AnimatedSagaMark(
+                                    size: 32,
+                                    state: loading
+                                        ? SagaMarkState.buffering
+                                        : playing
+                                            ? SagaMarkState.playing
+                                            : SagaMarkState.paused,
+                                  ),
                                 ),
                               ),
                             ),
@@ -113,7 +120,8 @@ class MiniPlayerBar extends ConsumerWidget {
 
 class _ArtThumbnail extends StatelessWidget {
   final Uri? artUri;
-  const _ArtThumbnail({this.artUri});
+  final String title;
+  const _ArtThumbnail({this.artUri, required this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -125,23 +133,27 @@ class _ArtThumbnail extends StatelessWidget {
   }
 
   Widget _buildImage(Uri uri) {
-    if (uri.scheme == 'file') {
-      return Image.file(
-        File(uri.toFilePath()),
-        fit: BoxFit.cover,
-        cacheWidth: 112,
-        errorBuilder: (_, _, _) => _placeholder(),
-      );
-    }
-    return Image.network(
-      uri.toString(),
-      fit: BoxFit.cover,
-      cacheWidth: 112,
-      frameBuilder: (_, child, frame, syncLoad) {
-        if (syncLoad || frame != null) return child;
-        return _placeholder();
-      },
-      errorBuilder: (_, _, _) => _placeholder(),
+    final image = uri.scheme == 'file'
+        ? Image.file(
+            File(uri.toFilePath()),
+            fit: BoxFit.cover,
+            cacheWidth: 112,
+            errorBuilder: (_, _, _) => _placeholder(),
+          )
+        : Image.network(
+            uri.toString(),
+            fit: BoxFit.cover,
+            cacheWidth: 112,
+            frameBuilder: (_, child, frame, syncLoad) {
+              if (syncLoad || frame != null) return child;
+              return _placeholder();
+            },
+            errorBuilder: (_, _, _) => _placeholder(),
+          );
+    return Semantics(
+      label: '$title cover art',
+      excludeSemantics: true,
+      child: image,
     );
   }
 

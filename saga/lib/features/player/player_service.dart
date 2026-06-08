@@ -39,6 +39,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   bool _reloadInProgress = false;
   int _lastChapterIndex = -1; // for chapter-aware notification title (single M4B)
   bool _completedThisSession = false; // guards the per-listen completion count
+  int _previousAbsolutePositionMs = -1; // -1 = no saved position for undo
+  final ValueNotifier<bool> canUndoSeekNotifier = ValueNotifier(false);
   String? _lastListenDay; // in-memory guard: mark a listen-day at most once/day
   // Set to a book's key the instant it finishes (natural end / 95%); the player
   // screen shows the finished panel while this matches the current book. Cleared
@@ -127,6 +129,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _lastChapterIndex = -1; // recompute chapter title for the new book
     _completedThisSession = false; // a fresh listen can be counted again
     justFinishedBook.value = null; // any (re)load dismisses the finished panel
+    _previousAbsolutePositionMs = -1;
+    canUndoSeekNotifier.value = false;
     // Only reset the reload guard on user-initiated loads. Auto-reloads keep it
     // true so that if the freshly-loaded stream also errors, we don't loop.
     if (!isAutoReload) _reloadInProgress = false;
@@ -263,12 +267,16 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> seek(Duration position) async {
+    _previousAbsolutePositionMs = absolutePositionMs;
+    canUndoSeekNotifier.value = true;
     await _player.seek(position);
   }
 
   /// Seek to [position] and record it in the playback log (used by the slider
   /// on drag-end only, so drags don't spam the history).
   Future<void> seekAndLog(Duration position) async {
+    _previousAbsolutePositionMs = absolutePositionMs;
+    canUndoSeekNotifier.value = true;
     _logEvent('seek', overridePositionMs: position.inMilliseconds);
     await _player.seek(position);
   }
@@ -413,9 +421,33 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   int get absolutePositionMs =>
       _absolutePositionMs(_player.position.inMilliseconds);
 
+  /// Whether there is a previous position that [undoSeek] can restore.
+  bool get canUndoSeek => _previousAbsolutePositionMs >= 0;
+
+  /// Restore the position that existed before the most recent [seekAbsolute]
+  /// call. Single undo level — a second call is a no-op. Seeks directly
+  /// without re-saving, so undo cannot itself be undone.
+  Future<void> undoSeek() async {
+    if (_previousAbsolutePositionMs < 0) return;
+    final target = _previousAbsolutePositionMs;
+    _previousAbsolutePositionMs = -1;
+    canUndoSeekNotifier.value = false;
+    var ms = target.clamp(0, totalBookDurationMs);
+    for (var i = 0; i < _tracks.length; i++) {
+      final dur = _tracks[i].durationMs;
+      if (ms <= dur || i == _tracks.length - 1) {
+        await _player.seek(Duration(milliseconds: ms), index: i);
+        return;
+      }
+      ms -= dur;
+    }
+  }
+
   /// Seek to [absolutePosition] within the book, resolving the correct
   /// track index and intra-track offset automatically.
   Future<void> seekAbsolute(Duration absolutePosition) async {
+    _previousAbsolutePositionMs = absolutePositionMs;
+    canUndoSeekNotifier.value = true;
     var ms = absolutePosition.inMilliseconds.clamp(0, totalBookDurationMs);
     for (var i = 0; i < _tracks.length; i++) {
       final dur = _tracks[i].durationMs;

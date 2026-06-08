@@ -267,7 +267,7 @@ class _NavPill extends StatelessWidget {
                   Text(
                     item.label,
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 12,
                       color: selected ? SagaColors.accent : SagaColors.fgSubtle,
                       fontWeight:
                           selected ? FontWeight.w600 : FontWeight.normal,

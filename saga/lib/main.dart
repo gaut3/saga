@@ -57,8 +57,7 @@ Future<void> main() async {
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.gaut3.saga.channel.audio',
         androidNotificationChannelName: 'Saga Playback',
-        androidNotificationOngoing: true,
-        androidStopForegroundOnPause: true,
+        androidStopForegroundOnPause: false,
         androidResumeOnClick: true,
         androidNotificationIcon: 'drawable/ic_launcher_monochrome',
       ),

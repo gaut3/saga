@@ -9,6 +9,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 - **Check for updates.** Settings → About → "Check for updates" opens the GitHub Releases page in the system browser. No background network activity — just a shortcut for users who want to see if a new version is available.
+- **Undo seek.** After scrubbing the timeline or jumping to a chapter, bookmark, or history entry, an Undo button appears in the player action row. Tapping it jumps back to exactly where you were before the seek. One undo level — the button clears after use or after loading a new book.
+
+### Fixed
+- **Media notification stops working after extended playback (shows "Saga is running").** With `androidStopForegroundOnPause: true`, pausing stopped the foreground service and detached the notification. On Android 13+ this could leave the service in a state where Android replaced the media notification with its own generic foreground notification, requiring an app restart to recover. Changed to `androidStopForegroundOnPause: false` so the foreground service runs continuously and the media notification is always owned and controlled by audio_service.
+- **RMS animation bars lag ~46 ms behind audio on top of the configured A2DP delay.** The IIR smoothing factor was 0.55, giving ~46 ms for bars to reach 90 % of the target level at 60 fps. Increased to 0.72, cutting the smoothing lag to ~29 ms — particularly noticeable for users who set a precise Bluetooth sync delay.
+- **TalkBack: play/pause control (AnimatedSagaMark) had no semantic label.** The play/pause gesture area in both the full player and mini player now announces "Play" or "Pause" to screen readers.
+- **TalkBack: player transport buttons had no accessibility labels.** Skip previous/next, rewind, and skip forward buttons now have tooltips read by TalkBack. Speed, Bookmark, Sleep Timer, and Undo buttons are also labelled.
+- **TalkBack: progress slider announced raw fraction instead of time.** The slider now formats its value as human-readable time (e.g. "1h 23m 45s") when focused by a screen reader.
+- **TalkBack: now-playing cover art in the mini player had no label.** The art thumbnail now announces "&lt;title&gt; cover art".
+- **Touch targets below 44 dp.** Browse sort chips, the grid/list toggle icon, and the History Day / Month / Total segment selector all increased vertical padding to meet the minimum tap-area guideline.
+- **Nav bar label text too small.** Labels were 10 dp — below the legibility floor on most devices. Increased to 12 dp.
 
 ---
 

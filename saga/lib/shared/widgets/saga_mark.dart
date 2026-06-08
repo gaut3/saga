@@ -162,8 +162,10 @@ class _AnimatedSagaMarkState extends State<AnimatedSagaMark>
             markMotionListenable.value == MarkMotion.reactive && live.isLive;
         if (reactive) {
           // Follow the real output loudness. Higher factor = tighter tracking
-          // (less lag) at the cost of a touch more jitter; tune 0.3–0.7.
-          _master += (live.level.value - _master) * 0.55;
+          // (less lag) at the cost of a touch more jitter; tune 0.3–0.8.
+          // 0.72 keeps ~29 ms lag at 60fps, vs ~46 ms at 0.55 — important for
+          // sync-delay users where the smoothing adds on top of the A2DP offset.
+          _master += (live.level.value - _master) * 0.72;
         } else {
           // Gentle mode (or reactive with no live sample): a slow, calm drift.
           if (_rng.nextDouble() < 0.02) _mTarget = 0.5 + _rng.nextDouble() * 0.4;
