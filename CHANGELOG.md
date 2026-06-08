@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [1.0.5] - 2026-06-08
 
 ### Added
 - **Check for updates.** Settings → About → "Check for updates" opens the GitHub Releases page in the system browser. No background network activity — just a shortcut for users who want to see if a new version is available.
