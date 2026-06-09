@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [1.0.7] - 2026-06-09
 
 ### Added
 - **Bookmark edit sheet in All Bookmarks screen.** Tapping a bookmark in the Home → All Bookmarks screen now opens the same bottom sheet used in the player: position (read-only), editable label and note, with **Jump to**, **Cancel**, and **Save** buttons. Previously tapping opened a broken `AlertDialog` whose Save left the dialog open and Cancel did nothing (same navigator-layer bug as the player, now fixed in both places).
