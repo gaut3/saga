@@ -5,6 +5,8 @@ import '../../core/plex/models/plex_book.dart';
 import '../../core/providers.dart';
 import '../../core/storage/named_bookmark_store.dart';
 import '../../core/theme/saga_theme.dart';
+import '../../core/utils/format.dart';
+import '../../shared/widgets/saga_sheet.dart';
 import '../player/player_provider.dart';
 import '../player/player_screen.dart';
 
@@ -197,8 +199,7 @@ class _BookmarkTile extends ConsumerWidget {
           _fmtDate(bookmark.createdAt),
           style: TextStyle(color: SagaColors.fgSubtle, fontSize: 11),
         ),
-        onTap: () => _jumpTo(context, ref),
-        onLongPress: () => _showEditDialog(context, ref),
+        onTap: () => _showBookmarkSheet(context, ref),
       ),
     );
   }
@@ -229,75 +230,129 @@ class _BookmarkTile extends ConsumerWidget {
     } catch (_) {}
   }
 
-  Future<void> _showEditDialog(BuildContext context, WidgetRef ref) async {
+  void _showBookmarkSheet(BuildContext context, WidgetRef ref) {
     final labelCtrl = TextEditingController(text: bookmark.label);
     final noteCtrl = TextEditingController(text: bookmark.note ?? '');
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: SagaColors.surface,
-        title: Text('Edit bookmark',
-            style: TextStyle(color: SagaColors.fg)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: labelCtrl,
-              style: TextStyle(color: SagaColors.fg),
-              decoration: InputDecoration(
-                labelText: 'Label',
-                labelStyle: TextStyle(color: SagaColors.fgMuted),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide:
-                        BorderSide(color: SagaColors.border)),
-                focusedBorder: UnderlineInputBorder(
-                    borderSide:
-                        BorderSide(color: SagaColors.accent)),
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+
+    showSagaSheet<void>(context, (_) => StatefulBuilder(
+      builder: (sheetCtx, _) {
+        final keyboardInset = MediaQuery.of(sheetCtx).viewInsets.bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomPad + keyboardInset),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 4),
+                child: Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: SagaColors.fgSubtle,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: noteCtrl,
-              style: TextStyle(color: SagaColors.fg),
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Note (optional)',
-                labelStyle: TextStyle(color: SagaColors.fgMuted),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide:
-                        BorderSide(color: SagaColors.border)),
-                focusedBorder: UnderlineInputBorder(
-                    borderSide:
-                        BorderSide(color: SagaColors.accent)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text('Bookmark',
+                    style: TextStyle(
+                        color: SagaColors.fg,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold)),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel',
-                style: TextStyle(color: SagaColors.fgMuted)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: Text(
+                  fmtDuration(Duration(milliseconds: bookmark.positionMs)),
+                  style: TextStyle(color: SagaColors.fgSubtle, fontSize: 13),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: TextField(
+                  controller: labelCtrl,
+                  autofocus: false,
+                  style: TextStyle(color: SagaColors.fg),
+                  decoration: InputDecoration(
+                    labelText: 'Label',
+                    labelStyle: TextStyle(color: SagaColors.fgMuted),
+                    enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: SagaColors.border)),
+                    focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: SagaColors.accent)),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: TextField(
+                  controller: noteCtrl,
+                  maxLines: 3,
+                  style: TextStyle(color: SagaColors.fg),
+                  decoration: InputDecoration(
+                    labelText: 'Note (optional)',
+                    labelStyle: TextStyle(color: SagaColors.fgMuted),
+                    enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: SagaColors.border)),
+                    focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: SagaColors.accent)),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(sheetCtx);
+                        _jumpTo(context, ref);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: SagaColors.accent,
+                        side: BorderSide(color: SagaColors.accent),
+                      ),
+                      child: const Text('Jump to'),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () => Navigator.pop(sheetCtx),
+                      child: Text('Cancel',
+                          style: TextStyle(color: SagaColors.fgMuted)),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        final label = labelCtrl.text.trim();
+                        if (label.isEmpty) return;
+                        final note = noteCtrl.text.trim();
+                        final updated = bookmark.copyWith(
+                          label: label,
+                          note: note.isEmpty ? null : note,
+                        );
+                        NamedBookmarkStore.update(updated);
+                        ref.read(bookmarkRevisionProvider.notifier).state++;
+                        Navigator.pop(sheetCtx);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: SagaColors.accent,
+                        foregroundColor: SagaColors.bg,
+                      ),
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child:
-                Text('Save', style: TextStyle(color: SagaColors.accent)),
-          ),
-        ],
-      ),
-    );
-    if (saved == true) {
-      final label = labelCtrl.text.trim();
-      final note = noteCtrl.text.trim();
-      if (label.isEmpty) return;
-      final updated = bookmark.copyWith(
-        label: label,
-        note: note.isEmpty ? null : note,
-      );
-      NamedBookmarkStore.update(updated);
-      ref.read(bookmarkRevisionProvider.notifier).state++;
-    }
+        );
+      },
+    ));
   }
 
   String _fmtDate(DateTime dt) {

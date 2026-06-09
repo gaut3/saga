@@ -577,12 +577,14 @@ class _SheetHandle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 12, bottom: 4),
-      child: Container(
-        width: 40,
-        height: 4,
-        decoration: BoxDecoration(
-          color: SagaColors.fgSubtle,
-          borderRadius: BorderRadius.circular(2),
+      child: Center(
+        child: Container(
+          width: 40,
+          height: 4,
+          decoration: BoxDecoration(
+            color: SagaColors.fgSubtle,
+            borderRadius: BorderRadius.circular(2),
+          ),
         ),
       ),
     );

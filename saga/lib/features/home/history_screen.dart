@@ -562,7 +562,7 @@ class _WeekCardState extends State<_WeekCard>
 
 // ── Day row ───────────────────────────────────────────────────────────────────
 
-class _DayRow extends StatefulWidget {
+class _DayRow extends StatelessWidget {
   final DateTime date;
   final int ms;
   final int bestDayMs;
@@ -581,253 +581,7 @@ class _DayRow extends StatefulWidget {
     this.initialExpanded = false,
   });
 
-  @override
-  State<_DayRow> createState() => _DayRowState();
-}
-
-class _DayRowState extends State<_DayRow> {
-  late bool _expanded;
-
-  @override
-  void initState() {
-    super.initState();
-    _expanded = widget.initialExpanded;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final empty = widget.ms == 0;
-    final hasDetail = widget.dayBooks.isNotEmpty;
-
-    // Primary book: most events that day
-    String? primaryKey;
-    int maxEvents = 0;
-    for (final entry in widget.dayBooks.entries) {
-      if (entry.value.length > maxEvents) {
-        maxEvents = entry.value.length;
-        primaryKey = entry.key;
-      }
-    }
-    final primaryBook = primaryKey != null ? widget.bookMap[primaryKey] : null;
-
-    // Book completion % for progress bar.
-    // Today: use current bookmark (absolutePositionMs is accurate and reflects
-    // any ongoing session). Past days: use the last logged event's intra-track
-    // positionMs as a proxy — exact for single-file M4B, approximate for
-    // multi-track books (no absolute position is stored in the event log).
-    double bookPct = 0.0;
-    if (primaryKey != null) {
-      final total = primaryBook?.totalDurationMs ??
-          BookmarkStore.load(primaryKey)?.totalDurationMs;
-      if (total != null && total > 0) {
-        if (widget.isToday) {
-          final saved = BookmarkStore.load(primaryKey);
-          if (saved != null) {
-            bookPct = (saved.absolutePositionMs / total).clamp(0.0, 1.0);
-          }
-        } else {
-          final events = widget.dayBooks[primaryKey] ?? [];
-          if (events.isNotEmpty) {
-            final last = events.reduce(
-              (a, b) => a.timestamp.isAfter(b.timestamp) ? a : b,
-            );
-            bookPct = (last.positionMs / total).clamp(0.0, 1.0);
-          }
-        }
-      }
-    }
-
-    return Opacity(
-      opacity: empty ? 0.5 : 1.0,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: !empty && hasDetail
-                ? () => setState(() => _expanded = !_expanded)
-                : null,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Date column
-                  SizedBox(
-                    width: 42,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '${widget.date.day}',
-                          style: TextStyle(
-                            color: widget.isToday
-                                ? SagaColors.accent
-                                : SagaColors.fg,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            height: 1,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          _weekdayShort(widget.date).toUpperCase(),
-                          style: TextStyle(
-                            color: SagaColors.fgSubtle,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.6,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 13),
-                  if (empty)
-                    Expanded(
-                      child: Container(
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: SagaColors.heatEmpty,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    )
-                  else ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(7),
-                      child: SizedBox(
-                        width: 38,
-                        height: 38,
-                        child: primaryBook != null
-                            ? BookCoverImage(
-                                thumbPath: primaryBook.thumbPath,
-                                cacheWidth: 76)
-                            : Container(color: SagaColors.heatEmpty),
-                      ),
-                    ),
-                    const SizedBox(width: 13),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.dayBooks.length > 1
-                                ? '${primaryBook?.title ?? 'Unknown'} +${widget.dayBooks.length - 1} more'
-                                : primaryBook?.title ?? 'Unknown',
-                            style: TextStyle(
-                              color: SagaColors.fg,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(3),
-                                  child: LinearProgressIndicator(
-                                    value: bookPct,
-                                    backgroundColor: SagaColors.heatEmpty,
-                                    valueColor: AlwaysStoppedAnimation(
-                                        SagaColors.accent),
-                                    minHeight: 5,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '${(bookPct * 100).round()}%',
-                                style: TextStyle(
-                                    color: SagaColors.fgSubtle, fontSize: 10),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      _fmtMs(widget.ms),
-                      style: TextStyle(
-                        color: SagaColors.fg,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (hasDetail)
-                      AnimatedRotation(
-                        turns: _expanded ? 0.5 : 0,
-                        duration: const Duration(milliseconds: 200),
-                        child: Icon(Icons.expand_more,
-                            color: SagaColors.fgSubtle, size: 16),
-                      ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeInOut,
-            child: _expanded && hasDetail
-                ? _SessionPanel(
-                    dayBooks: widget.dayBooks,
-                    bookMap: widget.bookMap,
-                  )
-                : const SizedBox.shrink(),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Session panel (expanded day log) ─────────────────────────────────────────
-
-class _SessionPanel extends ConsumerWidget {
-  final Map<String, List<AudioLogEvent>> dayBooks;
-  final Map<String, PlexBook> bookMap;
-  const _SessionPanel({required this.dayBooks, required this.bookMap});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // One group per book played that day (ordered by each book's first event),
-    // so two different books on the same day don't get merged under one title.
-    final entries = dayBooks.entries
-        .where((e) =>
-            e.value.any((ev) => ev.type == 'play' || ev.type == 'pause'))
-        .toList()
-      ..sort((a, b) => _firstEventMs(a.value).compareTo(_firstEventMs(b.value)));
-
-    return Container(
-      margin: const EdgeInsets.only(top: 6, bottom: 2),
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-      decoration: BoxDecoration(
-        color: SagaColors.surface,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var g = 0; g < entries.length; g++) ...[
-            if (g > 0)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Divider(color: SagaColors.border, height: 1),
-              ),
-            _bookGroup(context, ref, entries[g].key, entries[g].value),
-          ],
-        ],
-      ),
-    );
-  }
-
-  int _firstEventMs(List<AudioLogEvent> events) {
+  static int _firstEventMs(List<AudioLogEvent> events) {
     var min = 1 << 62;
     for (final e in events) {
       if (e.type == 'play' || e.type == 'pause') {
@@ -838,15 +592,279 @@ class _SessionPanel extends ConsumerWidget {
     return min;
   }
 
-  Widget _bookGroup(BuildContext context, WidgetRef ref, String bookKey,
-      List<AudioLogEvent> events) {
-    final book = bookMap[bookKey];
+  @override
+  Widget build(BuildContext context) {
+    final empty = ms == 0;
+
+    final sortedEntries = dayBooks.entries
+        .where((e) => e.value.any((ev) => ev.type == 'play' || ev.type == 'pause'))
+        .toList()
+      ..sort((a, b) => _firstEventMs(a.value).compareTo(_firstEventMs(b.value)));
+
+    return Opacity(
+      opacity: empty ? 0.5 : 1.0,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 42,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${date.day}',
+                        style: TextStyle(
+                          color: isToday ? SagaColors.accent : SagaColors.fg,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          height: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _weekdayShort(date).toUpperCase(),
+                        style: TextStyle(
+                          color: SagaColors.fgSubtle,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 13),
+                if (empty)
+                  Expanded(
+                    child: Container(
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: SagaColors.heatEmpty,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  )
+                else ...[
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: bestDayMs > 0 ? (ms / bestDayMs).clamp(0.0, 1.0) : 0,
+                        backgroundColor: SagaColors.heatEmpty,
+                        valueColor: AlwaysStoppedAnimation(
+                            SagaColors.accent.withValues(alpha: 0.35)),
+                        minHeight: 4,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    _fmtMs(ms),
+                    style: TextStyle(
+                      color: SagaColors.fg,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (!empty && sortedEntries.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 55),
+              child: Column(
+                children: [
+                  for (var i = 0; i < sortedEntries.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 4),
+                    _DayBookEntry(
+                      bookKey: sortedEntries[i].key,
+                      events: sortedEntries[i].value,
+                      book: bookMap[sortedEntries[i].key],
+                      initialExpanded: initialExpanded,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Day book entry ────────────────────────────────────────────────────────────
+
+class _DayBookEntry extends ConsumerStatefulWidget {
+  final String bookKey;
+  final List<AudioLogEvent> events;
+  final PlexBook? book;
+  final bool initialExpanded;
+
+  const _DayBookEntry({
+    required this.bookKey,
+    required this.events,
+    required this.book,
+    this.initialExpanded = false,
+  });
+
+  @override
+  ConsumerState<_DayBookEntry> createState() => _DayBookEntryState();
+}
+
+class _DayBookEntryState extends ConsumerState<_DayBookEntry> {
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.initialExpanded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final book = widget.book;
+
+    // Use saved absolute position for accurate progress regardless of day.
+    double bookPct = 0.0;
+    final saved = BookmarkStore.load(widget.bookKey);
+    final total = book?.totalDurationMs ?? saved?.totalDurationMs;
+    if (saved != null && total != null && total > 0) {
+      bookPct = (saved.absolutePositionMs / total).clamp(0.0, 1.0);
+    }
+
+    // Listened time for this book: sum of play→pause spans.
+    final chrono = widget.events
+        .where((e) => e.type == 'play' || e.type == 'pause')
+        .toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    int listenedMs = 0;
+    for (var i = 0; i < chrono.length - 1; i++) {
+      if (chrono[i].type == 'play' && chrono[i + 1].type == 'pause') {
+        listenedMs += chrono[i + 1]
+            .timestamp
+            .difference(chrono[i].timestamp)
+            .inMilliseconds;
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(7),
+                  child: SizedBox(
+                    width: 38,
+                    height: 38,
+                    child: book != null
+                        ? BookCoverImage(
+                            thumbPath: book.thumbPath, cacheWidth: 76)
+                        : Container(color: SagaColors.heatEmpty),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        book?.title ?? 'Unknown',
+                        style: TextStyle(
+                          color: SagaColors.fg,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(3),
+                              child: LinearProgressIndicator(
+                                value: bookPct,
+                                backgroundColor: SagaColors.heatEmpty,
+                                valueColor:
+                                    AlwaysStoppedAnimation(SagaColors.accent),
+                                minHeight: 4,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${(bookPct * 100).round()}%',
+                            style: TextStyle(
+                                color: SagaColors.fgSubtle, fontSize: 10),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (listenedMs > 0)
+                  Text(
+                    _fmtMs(listenedMs),
+                    style: TextStyle(
+                      color: SagaColors.fgMuted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                const SizedBox(width: 6),
+                AnimatedRotation(
+                  turns: _expanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(Icons.expand_more,
+                      color: SagaColors.fgSubtle, size: 16),
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          child: _expanded
+              ? _BookSessionPanel(events: widget.events, book: book)
+              : const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Book session panel (expanded book log) ────────────────────────────────────
+
+class _BookSessionPanel extends ConsumerWidget {
+  final List<AudioLogEvent> events;
+  final PlexBook? book;
+
+  const _BookSessionPanel({required this.events, required this.book});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final chrono = events
         .where((e) => e.type == 'play' || e.type == 'pause')
         .toList()
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-    // Duration for each play = gap to the next pause within THIS book.
     final durations = List<String?>.filled(chrono.length, null);
     for (var i = 0; i < chrono.length - 1; i++) {
       if (chrono[i].type == 'play' && chrono[i + 1].type == 'pause') {
@@ -857,89 +875,96 @@ class _SessionPanel extends ConsumerWidget {
     }
     final playCount = chrono.where((e) => e.type == 'play').length;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '$playCount session${playCount == 1 ? '' : 's'}'
-          '${book != null ? ' · ${book.title}' : ''}',
-          style: TextStyle(color: SagaColors.fgMuted, fontSize: 12.5),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        // Newest first
-        ...List.generate(chrono.length, (i) => chrono.length - 1 - i).map((i) {
-          final e = chrono[i];
-          final isPlay = e.type == 'play';
-          final dur = durations[i];
-          return InkWell(
-            onTap: isPlay ? () => _jumpTo(context, ref, e, book) : null,
-            borderRadius: BorderRadius.circular(6),
-            child: Padding(
-              padding: const EdgeInsets.only(top: 9),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: isPlay
-                          ? SagaColors.accent.withValues(alpha: 0.15)
-                          : SagaColors.surface,
-                      borderRadius: BorderRadius.circular(8),
+    return Container(
+      margin: const EdgeInsets.only(top: 4, bottom: 4),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      decoration: BoxDecoration(
+        color: SagaColors.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$playCount session${playCount == 1 ? '' : 's'}',
+            style: TextStyle(color: SagaColors.fgMuted, fontSize: 12.5),
+          ),
+          ...List.generate(chrono.length, (i) => chrono.length - 1 - i).map((i) {
+            final e = chrono[i];
+            final isPlay = e.type == 'play';
+            final dur = durations[i];
+            return InkWell(
+              onTap: isPlay ? () => _jumpTo(context, ref, e) : null,
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 9),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: isPlay
+                            ? SagaColors.accent.withValues(alpha: 0.15)
+                            : SagaColors.surface,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        isPlay ? Icons.play_arrow : Icons.pause,
+                        color:
+                            isPlay ? SagaColors.accent : SagaColors.fgSubtle,
+                        size: 18,
+                      ),
                     ),
-                    child: Icon(
-                      isPlay ? Icons.play_arrow : Icons.pause,
-                      color: isPlay ? SagaColors.accent : SagaColors.fgSubtle,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isPlay ? 'Started' : 'Paused',
-                          style: TextStyle(
-                            color: SagaColors.fg,
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (dur != null)
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            dur,
+                            isPlay ? 'Started' : 'Paused',
                             style: TextStyle(
-                                color: SagaColors.fgSubtle, fontSize: 12.5),
+                              color: SagaColors.fg,
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                      ],
+                          if (dur != null)
+                            Text(
+                              dur,
+                              style: TextStyle(
+                                  color: SagaColors.fgSubtle, fontSize: 12.5),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  Text(
-                    fmtTime(e.timestamp),
-                    style: TextStyle(color: SagaColors.fgSubtle, fontSize: 13),
-                  ),
-                  if (isPlay) ...[
-                    const SizedBox(width: 4),
-                    Icon(Icons.chevron_right,
-                        color: SagaColors.fgSubtle, size: 14),
+                    Text(
+                      fmtTime(e.timestamp),
+                      style:
+                          TextStyle(color: SagaColors.fgSubtle, fontSize: 13),
+                    ),
+                    if (isPlay) ...[
+                      const SizedBox(width: 4),
+                      Icon(Icons.chevron_right,
+                          color: SagaColors.fgSubtle, size: 14),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-          );
-        }),
-      ],
+            );
+          }),
+        ],
+      ),
     );
   }
 
-  Future<void> _jumpTo(BuildContext context, WidgetRef ref,
-      AudioLogEvent event, PlexBook? book) async {
+  Future<void> _jumpTo(
+      BuildContext context, WidgetRef ref, AudioLogEvent event) async {
     if (book == null) return;
     try {
-      final tracks = await ref.read(tracksProvider(book.ratingKey).future);
+      final tracks =
+          await ref.read(tracksProvider(book!.ratingKey).future);
       if (!context.mounted) return;
       final idx =
           tracks.indexWhere((t) => t.ratingKey == event.trackRatingKey);
@@ -948,7 +973,7 @@ class _SessionPanel extends ConsumerWidget {
           .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
       final service = ref.read(playerServiceProvider);
       await service.loadBook(
-        bookRatingKey: book.ratingKey,
+        bookRatingKey: book!.ratingKey,
         tracks: tracks,
         startTrackIndex: idx,
         startPositionMs: event.positionMs,

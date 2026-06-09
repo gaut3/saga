@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Bookmark edit sheet in All Bookmarks screen.** Tapping a bookmark in the Home → All Bookmarks screen now opens the same bottom sheet used in the player: position (read-only), editable label and note, with **Jump to**, **Cancel**, and **Save** buttons. Previously tapping opened a broken `AlertDialog` whose Save left the dialog open and Cancel did nothing (same navigator-layer bug as the player, now fixed in both places).
+
+### Fixed
+- **Bookmark sheet drag handle was left-aligned.** The 40 px pill handle inside bookmark and chapter sheets sat flush against the left edge because the `Padding` wrapper had no `Center`. Added `Center` so it sits correctly in the middle of the sheet.
+- **Day tab: multi-book days collapsed to a single row.** When two books were listened to on the same day, both were grouped under one expandable entry showing the primary book's cover and "+ N more", making it impossible to see the second book's progress without expanding. Each book on a given day now has its own expandable row under the date header. The date header shows the total listening time for the day with a relative-intensity bar (this day vs. your best day).
+- **Day tab: progress bar showed the wrong percentage for multi-track books.** The bar was computed from the last log event's `positionMs`, which is a track-relative offset. For a book that had just started track 3, this could show 2% even though you were 70% through the book overall. The bar now reads `absolutePositionMs` from `BookmarkStore`, which is always the true book-wide position.
+- **Browse: Duration sort only moved one book.** Plex does not populate the `duration` field in library listings for all books, leaving most with `null` or `0`. Only the one book with a real Plex duration moved; the rest were treated as equal and stayed in place. The sort now falls back to `BookmarkStore` (which records total duration the first time a book is played), and treats `0` the same as absent. Books with no duration data from either source sort to the end.
+- **Browse: A→Z and Z→A were separate chips.** Replaced with a single **A→Z** chip that toggles to **Z→A** on a second tap — same behaviour as a standard sort toggle, one fewer chip in the row.
+
 ## [1.0.6] - 2026-06-09
 
 ### Added

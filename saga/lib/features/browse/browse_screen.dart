@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/plex/models/plex_book.dart';
 import '../../core/providers.dart';
+import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/custom_collection_store.dart';
 import '../../shared/widgets/book_cover_image.dart';
 import '../home/home_screen.dart' show BookProgressOverlay;
@@ -246,12 +247,24 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
               .compareTo((b.authorName ?? '').toLowerCase()));
       case _SortOption.byDuration:
         list = [...list]
-          ..sort((a, b) =>
-              (a.totalDurationMs ?? 0).compareTo(b.totalDurationMs ?? 0));
+          ..sort((a, b) {
+            final aMs = _durationMs(a);
+            final bMs = _durationMs(b);
+            if (aMs == null && bMs == null) return 0;
+            if (aMs == null) return 1;
+            if (bMs == null) return -1;
+            return bMs.compareTo(aMs); // longest first
+          });
       case _SortOption.defaultOrder:
         break;
     }
     return list;
+  }
+
+  static int? _durationMs(PlexBook book) {
+    final fromPlex = book.totalDurationMs;
+    if (fromPlex != null && fromPlex > 0) return fromPlex;
+    return BookmarkStore.load(book.ratingKey)?.totalDurationMs;
   }
 
   @override
@@ -410,18 +423,17 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                                             _sort = _SortOption.defaultOrder),
                                       ),
                                       _SortChip(
-                                        label: 'A → Z',
-                                        selected:
-                                            _sort == _SortOption.titleAsc,
-                                        onTap: () => setState(() =>
-                                            _sort = _SortOption.titleAsc),
-                                      ),
-                                      _SortChip(
-                                        label: 'Z → A',
-                                        selected:
+                                        label: _sort == _SortOption.titleDesc
+                                            ? 'Z → A'
+                                            : 'A → Z',
+                                        selected: _sort ==
+                                                _SortOption.titleAsc ||
                                             _sort == _SortOption.titleDesc,
-                                        onTap: () => setState(() =>
-                                            _sort = _SortOption.titleDesc),
+                                        onTap: () => setState(() {
+                                          _sort = _sort == _SortOption.titleAsc
+                                              ? _SortOption.titleDesc
+                                              : _SortOption.titleAsc;
+                                        }),
                                       ),
                                       _SortChip(
                                         label: 'Author',
