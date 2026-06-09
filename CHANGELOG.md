@@ -8,13 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **CI release pipeline.** Every `v*` tag push now automatically builds a signed release APK, generates a SHA-256 checksum, attests build provenance via Sigstore, and publishes both to GitHub Releases. To release: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 - **Navigate to book detail from player.** The accent-colored book title below the cover art is now tappable (indicated by a small chevron). Tapping opens the full book detail screen — chapters, download controls, collections, and metadata — without leaving the player stack.
 - **Bookmark detail/edit sheet.** Tapping a bookmark in the Bookmarks list now opens a bottom sheet showing the timestamp, an editable title, and an editable note. The sheet has **Save**, **Cancel**, and **Jump to** buttons. Jump to seeks to the bookmark position and closes both the edit sheet and the bookmark list in one tap. Previously, editing was via a long-press dialog that had navigator bugs causing save to leave the dialog open and cancel to close the wrong layer.
+- **Delete downloaded books.** The "Downloaded" button in book detail is now tappable. Tapping shows a confirmation dialog; confirming removes the audio files from disk and resets the download state so the book can be re-downloaded. Previously the button was permanently disabled and there was no way to free the storage.
 
 ### Fixed
 - **Bookmark edit/cancel had no effect.** The old `AlertDialog` used `Navigator.pop(outerContext)` for both Save and Cancel, which popped the bookmark list sheet (a different navigator layer) rather than the dialog. Save appeared stuck; Cancel did nothing. Replaced with a `showSagaSheet` bottom sheet where all navigation uses the sheet's own context.
+- **Downloaded book files were never deleted from disk.** `DownloadStore.remove()` and `BookDownloadStore.removeDownload()` only cleared Hive metadata; the audio files remained as orphans. The new `deleteBook()` method collects file paths before clearing metadata, then deletes the files.
 
 ### Changed
+- **Download indicator wraps the nav pill.** The 3 px flat progress strip above the mini player is replaced by a thin accent-colored arc that traces the perimeter of the nav pill while downloads are active, keeping the indicator visually anchored to the bar it represents.
 - **Day tab: multi-book day rows show "+N more".** When more than one book was listened to on a given day, the collapsed day row now shows e.g. "The Hobbit +1 more" instead of only the primary book title. Session panel book-group headers are also slightly more legible (bumped from `fgSubtle` 12px to `fgMuted` 12.5px).
 
 ---

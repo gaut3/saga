@@ -514,10 +514,43 @@ class _DownloadBookButton extends ConsumerWidget {
         total > 0 ? (downloadedCount + bytesInFlight) / total : 0.0;
 
     if (allDone) {
+      Future<void> confirmDelete() async {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: SagaColors.surface,
+            title: Text('Delete offline copy?',
+                style: TextStyle(color: SagaColors.fg)),
+            content: Text(
+              'Remove the downloaded audio from your device. '
+              'You can download it again any time.',
+              style: TextStyle(color: SagaColors.fgSubtle),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text('Cancel',
+                    style: TextStyle(color: SagaColors.fgMuted)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Delete',
+                    style: TextStyle(color: Color(0xFFC25A3A))),
+              ),
+            ],
+          ),
+        );
+        if (confirmed == true && context.mounted) {
+          await ref
+              .read(downloadNotifierProvider.notifier)
+              .deleteBook(book.ratingKey, tracks);
+        }
+      }
+
       return SizedBox(
         width: double.infinity,
         child: OutlinedButton.icon(
-          onPressed: null,
+          onPressed: confirmDelete,
           icon: const Icon(Icons.download_done, size: 18),
           label: const Text('Downloaded'),
           style: OutlinedButton.styleFrom(

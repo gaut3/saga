@@ -179,14 +179,6 @@ class _BottomArea extends ConsumerWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Download progress strip — visible only while downloads are active
-        if (activeProgress.isNotEmpty)
-          LinearProgressIndicator(
-            value: dlValue,
-            backgroundColor: SagaColors.surfaceAlt,
-            valueColor: AlwaysStoppedAnimation<Color>(SagaColors.accent),
-            minHeight: 3,
-          ),
         // Mini player pill — only when something is loaded
         StreamBuilder<MediaItem?>(
           stream: service.mediaItem,
@@ -213,6 +205,7 @@ class _BottomArea extends ConsumerWidget {
             selectedIndex: selectedIndex,
             onTap: onTap,
             navItems: navItems,
+            downloadProgress: dlValue,
           ),
         ),
       ],
@@ -224,16 +217,18 @@ class _NavPill extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onTap;
   final List<({IconData icon, IconData activeIcon, String label})> navItems;
+  final double? downloadProgress;
 
   const _NavPill({
     required this.selectedIndex,
     required this.onTap,
     required this.navItems,
+    this.downloadProgress,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final pill = Container(
       height: 60,
       decoration: BoxDecoration(
         color: SagaColors.surface,
@@ -280,5 +275,48 @@ class _NavPill extends StatelessWidget {
         }),
       ),
     );
+
+    if (downloadProgress == null) return pill;
+
+    return CustomPaint(
+      foregroundPainter: _NavProgressPainter(
+        progress: downloadProgress!,
+        color: SagaColors.accent,
+      ),
+      child: pill,
+    );
   }
+}
+
+class _NavProgressPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+
+  const _NavProgressPainter({required this.progress, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const strokeWidth = 2.5;
+    const inset = strokeWidth / 2;
+    final rrect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(inset, inset, size.width - strokeWidth, size.height - strokeWidth),
+      const Radius.circular(30 - inset),
+    );
+    final path = Path()..addRRect(rrect);
+    final metric = path.computeMetrics().first;
+    final drawn = metric.extractPath(
+        0, metric.length * progress.clamp(0.0, 1.0));
+    canvas.drawPath(
+      drawn,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round
+        ..isAntiAlias = true,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_NavProgressPainter old) => old.progress != progress;
 }

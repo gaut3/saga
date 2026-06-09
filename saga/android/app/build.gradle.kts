@@ -12,6 +12,9 @@ if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
 
+val ciKeystorePath = System.getenv("KEYSTORE_PATH")
+val hasSigningConfig = ciKeystorePath != null || keystorePropertiesFile.exists()
+
 android {
     namespace = "com.gaut3.saga"
     compileSdk = flutter.compileSdkVersion
@@ -35,19 +38,19 @@ android {
     }
 
     signingConfigs {
-        if (keystorePropertiesFile.exists()) {
+        if (hasSigningConfig) {
             create("release") {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = file(keystoreProperties["storeFile"] as String)
-                storePassword = keystoreProperties["storePassword"] as String
+                storeFile = file(ciKeystorePath ?: (keystoreProperties["storeFile"] as String))
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: (keystoreProperties["storePassword"] as String)
+                keyAlias = System.getenv("KEY_ALIAS") ?: (keystoreProperties["keyAlias"] as String)
+                keyPassword = System.getenv("KEY_PASSWORD") ?: (keystoreProperties["keyPassword"] as String)
             }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists()) {
+            signingConfig = if (hasSigningConfig) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")

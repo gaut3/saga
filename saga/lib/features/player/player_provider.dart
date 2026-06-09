@@ -220,6 +220,35 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
     return dir;
   }
 
+  Future<void> deleteBook(String bookRatingKey, List<PlexTrack> tracks) async {
+    // Collect paths before removing from store.
+    final paths = tracks
+        .map((t) => DownloadStore.getPath(t.ratingKey))
+        .whereType<String>()
+        .toList();
+
+    // Update UI state immediately so the button reacts before file I/O finishes.
+    final keys = tracks.map((t) => t.ratingKey).toSet();
+    state = state.copyWith(
+      completed: Set<String>.from(state.completed)..removeAll(keys),
+      downloadedBooks: Set<String>.from(state.downloadedBooks)
+        ..remove(bookRatingKey),
+      failed: {...state.failed}..removeAll(keys),
+    );
+
+    // Clean up store metadata.
+    for (final track in tracks) {
+      await DownloadStore.remove(track.ratingKey);
+      BookDownloadStore.removeDownload(bookRatingKey, track.ratingKey);
+    }
+
+    // Delete the actual files.
+    for (final path in paths) {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    }
+  }
+
   Future<void> deleteTrack(PlexTrack track, String bookRatingKey) async {
     final path = DownloadStore.getPath(track.ratingKey);
     if (path != null) {
