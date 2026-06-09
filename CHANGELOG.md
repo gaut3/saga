@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [1.0.6] - 2026-06-09
 
 ### Added
 - **CI release pipeline.** Every `v*` tag push now automatically builds a signed release APK, generates a SHA-256 checksum, attests build provenance via Sigstore, and publishes both to GitHub Releases. To release: `git tag vX.Y.Z && git push origin vX.Y.Z`.
