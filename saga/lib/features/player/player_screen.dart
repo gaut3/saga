@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/audio/m4b_chapter_reader.dart';
 import '../../core/plex/models/plex_book.dart';
+import '../library/book_detail_screen.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/storage/completed_books_store.dart';
 import '../../core/storage/listen_days_store.dart';
@@ -31,6 +32,17 @@ class PlayerScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final service = ref.watch(playerServiceProvider);
+    final bookKey = service.currentBookRatingKey;
+    final libraryKey = ref.watch(activeLibraryKeyProvider).valueOrNull;
+    final books = libraryKey != null
+        ? ref.watch(booksProvider(libraryKey)).valueOrNull
+        : null;
+    PlexBook? currentBook;
+    try {
+      if (books != null && bookKey != null) {
+        currentBook = books.firstWhere((b) => b.ratingKey == bookKey);
+      }
+    } catch (_) {}
 
     return Scaffold(
       backgroundColor: SagaColors.bg,
@@ -43,7 +55,6 @@ class PlayerScreen extends ConsumerWidget {
         stream: service.mediaItem,
         builder: (context, snap) {
           final item = snap.data;
-          final bookKey = service.currentBookRatingKey;
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -73,7 +84,17 @@ class PlayerScreen extends ConsumerWidget {
                   },
                 ),
               ),
-              _TrackInfo(item: item),
+              _TrackInfo(
+                item: item,
+                onBookTap: currentBook != null
+                    ? () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  BookDetailScreen(book: currentBook!)),
+                        )
+                    : null,
+              ),
               const SizedBox(height: 4),
               _ProgressBar(service: service),
               _Controls(service: service),
@@ -273,13 +294,8 @@ class _TopPills extends ConsumerWidget {
                                       .remove(bm.id);
                                 },
                               ),
-                              onTap: () {
-                                service.seek(
-                                    Duration(milliseconds: bm.positionMs));
-                                Navigator.pop(ctx);
-                              },
-                              onLongPress: () =>
-                                  _editBookmark(ctx, innerRef, bookKey, bm),
+                              onTap: () => _showBookmarkSheet(
+                                  ctx, innerRef, bookKey, bm),
                             );
                           },
                         ),
@@ -292,69 +308,118 @@ class _TopPills extends ConsumerWidget {
     );
   }
 
-  Future<void> _editBookmark(BuildContext context, WidgetRef ref,
-      String bookKey, NamedBookmark bm) async {
+  void _showBookmarkSheet(BuildContext context, WidgetRef ref,
+      String bookKey, NamedBookmark bm) {
     final labelCtrl = TextEditingController(text: bm.label);
     final noteCtrl = TextEditingController(text: bm.note ?? '');
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: SagaColors.surface,
-        title: Text('Edit bookmark', style: TextStyle(color: SagaColors.fg)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: labelCtrl,
-              style: TextStyle(color: SagaColors.fg),
-              decoration: InputDecoration(
-                labelText: 'Label',
-                labelStyle: TextStyle(color: SagaColors.fgMuted),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: SagaColors.border)),
-                focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: SagaColors.accent)),
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+
+    showSagaSheet<void>(context, (_) => StatefulBuilder(
+      builder: (sheetCtx, _) {
+        final keyboardInset = MediaQuery.of(sheetCtx).viewInsets.bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomPad + keyboardInset),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _SheetHandle(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text('Bookmark',
+                    style: TextStyle(
+                        color: SagaColors.fg,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold)),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: noteCtrl,
-              style: TextStyle(color: SagaColors.fg),
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Note (optional)',
-                labelStyle: TextStyle(color: SagaColors.fgMuted),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: SagaColors.border)),
-                focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: SagaColors.accent)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text(
+                  fmtDuration(Duration(milliseconds: bm.positionMs)),
+                  style:
+                      TextStyle(color: SagaColors.fgSubtle, fontSize: 13),
+                ),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child:
-                Text('Cancel', style: TextStyle(color: SagaColors.fgMuted)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: TextField(
+                  controller: labelCtrl,
+                  style: TextStyle(color: SagaColors.fg),
+                  decoration: InputDecoration(
+                    labelText: 'Title',
+                    labelStyle: TextStyle(color: SagaColors.fgMuted),
+                    enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: SagaColors.border)),
+                    focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: SagaColors.accent)),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: TextField(
+                  controller: noteCtrl,
+                  style: TextStyle(color: SagaColors.fg),
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: 'Note (optional)',
+                    labelStyle: TextStyle(color: SagaColors.fgMuted),
+                    enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: SagaColors.border)),
+                    focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: SagaColors.accent)),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                child: Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        service.seek(Duration(milliseconds: bm.positionMs));
+                        Navigator.of(sheetCtx)
+                          ..pop()
+                          ..pop();
+                      },
+                      icon: const Icon(Icons.play_arrow, size: 16),
+                      label: const Text('Jump to'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: SagaColors.accent,
+                        side: BorderSide(
+                            color: SagaColors.accent.withValues(alpha: 0.5)),
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () => Navigator.pop(sheetCtx),
+                      child: Text('Cancel',
+                          style: TextStyle(color: SagaColors.fgMuted)),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () {
+                        final label = labelCtrl.text.trim();
+                        if (label.isEmpty) return;
+                        final note = noteCtrl.text.trim();
+                        ref
+                            .read(bookmarkNotifierProvider(bookKey).notifier)
+                            .update(bm.copyWith(
+                                label: label,
+                                note: note.isEmpty ? null : note));
+                        Navigator.pop(sheetCtx);
+                      },
+                      child: Text('Save',
+                          style: TextStyle(color: SagaColors.accent)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('Save', style: TextStyle(color: SagaColors.accent)),
-          ),
-        ],
-      ),
-    );
-    if (saved == true) {
-      final label = labelCtrl.text.trim();
-      final note = noteCtrl.text.trim();
-      if (label.isEmpty) return;
-      final updated = bm.copyWith(
-        label: label,
-        note: note.isEmpty ? null : note,
-      );
-      ref.read(bookmarkNotifierProvider(bookKey).notifier).update(updated);
-    }
+        );
+      },
+    ));
   }
 
   void _showSessions(BuildContext context, String bookKey) {
@@ -576,7 +641,8 @@ class _CoverArt extends StatelessWidget {
 
 class _TrackInfo extends StatelessWidget {
   final MediaItem? item;
-  const _TrackInfo({this.item});
+  final VoidCallback? onBookTap;
+  const _TrackInfo({this.item, this.onBookTap});
 
   @override
   Widget build(BuildContext context) {
@@ -595,11 +661,27 @@ class _TrackInfo extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 2),
-          Text(
-            item?.album ?? '',
-            style: TextStyle(color: SagaColors.accent, fontSize: 13),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          GestureDetector(
+            onTap: onBookTap,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    item?.album ?? '',
+                    style: TextStyle(color: SagaColors.accent, fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (onBookTap != null) ...[
+                  const SizedBox(width: 2),
+                  Icon(Icons.chevron_right,
+                      color: SagaColors.fgSubtle, size: 12),
+                ],
+              ],
+            ),
           ),
           if (item?.artist != null)
             Text(item!.artist!,

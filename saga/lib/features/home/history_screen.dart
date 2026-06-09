@@ -711,7 +711,9 @@ class _DayRowState extends State<_DayRow> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            primaryBook?.title ?? 'Unknown',
+                            widget.dayBooks.length > 1
+                                ? '${primaryBook?.title ?? 'Unknown'} +${widget.dayBooks.length - 1} more'
+                                : primaryBook?.title ?? 'Unknown',
                             style: TextStyle(
                               color: SagaColors.fg,
                               fontSize: 14,
@@ -861,7 +863,7 @@ class _SessionPanel extends ConsumerWidget {
         Text(
           '$playCount session${playCount == 1 ? '' : 's'}'
           '${book != null ? ' · ${book.title}' : ''}',
-          style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12),
+          style: TextStyle(color: SagaColors.fgMuted, fontSize: 12.5),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),

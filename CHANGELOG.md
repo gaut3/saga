@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Navigate to book detail from player.** The accent-colored book title below the cover art is now tappable (indicated by a small chevron). Tapping opens the full book detail screen — chapters, download controls, collections, and metadata — without leaving the player stack.
+- **Bookmark detail/edit sheet.** Tapping a bookmark in the Bookmarks list now opens a bottom sheet showing the timestamp, an editable title, and an editable note. The sheet has **Save**, **Cancel**, and **Jump to** buttons. Jump to seeks to the bookmark position and closes both the edit sheet and the bookmark list in one tap. Previously, editing was via a long-press dialog that had navigator bugs causing save to leave the dialog open and cancel to close the wrong layer.
+
+### Fixed
+- **Bookmark edit/cancel had no effect.** The old `AlertDialog` used `Navigator.pop(outerContext)` for both Save and Cancel, which popped the bookmark list sheet (a different navigator layer) rather than the dialog. Save appeared stuck; Cancel did nothing. Replaced with a `showSagaSheet` bottom sheet where all navigation uses the sheet's own context.
+
+### Changed
+- **Day tab: multi-book day rows show "+N more".** When more than one book was listened to on a given day, the collapsed day row now shows e.g. "The Hobbit +1 more" instead of only the primary book title. Session panel book-group headers are also slightly more legible (bumped from `fgSubtle` 12px to `fgMuted` 12.5px).
+
+---
+
 ## [1.0.5] - 2026-06-08
 
 ### Added
