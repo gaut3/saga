@@ -5,25 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [1.0.9] - 2026-06-10
 
 ### Added
 - **"Want to Read" list.** Books can now be starred for later via a tappable chip in the metadata row (alongside year, duration, chapters). Amber star + tinted background when active. A "Want to Read" shelf appears on the Home screen when the list is non-empty, and a "Saved" filter chip in Browse shows only those books.
 - **Collection index shows total count.** Book positions in a collection now display as "3 / 10" instead of just "3", so you can see where a book sits relative to the full collection at a glance.
 - **Storage manager in Settings.** A new "Storage" section under Downloads shows the total size of downloaded books. Tapping opens a sheet listing each downloaded book with its size; individual books can be deleted from the device with a single tap.
 
+### Infrastructure
+- **Immutable releases enabled.** GitHub releases are now published immutable — assets can't be modified or replaced after publish. Release notes are extracted directly from `CHANGELOG.md` by the CI workflow at publish time, so the release is born complete and never edited afterward.
+
 ### Fixed
 - **Storage manager: delete confirmation closed the sheet instead of the dialog.** The `Navigator.pop(ctx, ...)` calls inside the `AlertDialog` were using the sheet's context rather than the dialog's own context, so tapping "Delete" or "Cancel" dismissed the bottom sheet and left the dialog open. Fixed to use `dialogCtx` for all dialog-internal pops.
 - **Want to Read chip moved to the metadata pill row.** After initially landing in Row 2 alongside Collection and Download, it was relocated to the chips row (year / duration / chapters) where it sits more naturally as a lightweight toggle rather than a full button.
 - **Book detail title overflowed off the right edge of the screen.** `FlexibleSpaceBar` had no right padding, so long titles were clipped. Added 16 px end padding so the title stays within the screen in both the expanded and collapsed (toolbar) states.
 - **Settings page had excessive bottom padding.** The gap below the wordmark / version number was ~160 px too tall on top of the system inset that's already encoded in `MediaQuery.padding.bottom`.
-
-## [1.0.8] - 2026-06-10
-
-### Infrastructure
-- **Immutable releases enabled.** GitHub releases are now published immutable — assets can't be modified or replaced after publish. Release notes are extracted directly from `CHANGELOG.md` by the CI workflow at publish time, so the release is born complete and never edited afterward.
-
-### Fixed
 - **Auto-complete fired at 95%.** The periodic save timer checked `position >= duration * 0.95` on the last track every 10 seconds and marked the book complete before it actually finished. Removed — the existing `processingStateStream` listener already calls `_markBookCompleted()` when `ProcessingState.completed` fires (true end of audio).
 - **Bookmark note field: underline was far below any text.** `maxLines: 3` reserved 3 lines of height even when empty, so the underline border sat well below the cursor. Changed to `minLines: 1, maxLines: 3` in both the player screen and All Bookmarks screen bookmark sheets.
 - **Day tab: book rows had no background.** Books within a day (and across adjacent days) had no visual separation — everything ran together. Each book entry is now wrapped in a `Material` card (`SagaColors.surface`, 10 px radius) matching the session panel's existing style.
