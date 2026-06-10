@@ -495,15 +495,6 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     onBookCompleted?.call();
   }
 
-  void _checkAutoComplete() {
-    final index = _player.currentIndex;
-    if (index == null || index != _tracks.length - 1) return;
-    final duration = _player.duration?.inMilliseconds;
-    final position = _player.position.inMilliseconds;
-    if (duration == null || duration <= 0) return;
-    if (position >= duration * 0.95) _markBookCompleted();
-  }
-
   void _startProgressTimer() {
     _progressTimer?.cancel();
     _progressTimer = Timer.periodic(const Duration(seconds: 10), (_) {
@@ -513,7 +504,6 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         return;
       }
       _saveAndReportPosition(state: 'playing');
-      _checkAutoComplete();
     });
   }
 

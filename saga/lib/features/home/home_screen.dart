@@ -11,6 +11,7 @@ import '../../core/storage/chapter_store.dart';
 import '../../core/storage/completed_books_store.dart';
 import '../../core/storage/custom_collection_store.dart';
 import '../../core/storage/listening_history_store.dart';
+import '../../core/storage/want_to_read_store.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../shared/widgets/saga_mark.dart'
     show SagaWordmark, AnimatedSagaMark, SagaMarkState;
@@ -112,6 +113,7 @@ class _HomeContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(sagaThemeVariantProvider);
+    ref.watch(wantToReadRevisionProvider);
     final continueAsync = ref.watch(continueListeningProvider(libraryKey));
     final upNextAsync = ref.watch(upNextSeriesQueuesProvider(libraryKey));
     final recentAsync = ref.watch(recentlyAddedProvider(libraryKey));
@@ -186,6 +188,26 @@ class _HomeContent extends ConsumerWidget {
             );
           },
         ),
+
+        Builder(builder: (_) {
+          final wantedKeys = WantToReadStore.all;
+          if (wantedKeys.isEmpty) {
+            return const SliverToBoxAdapter(child: SizedBox.shrink());
+          }
+          final allBooks = recentAsync.valueOrNull ?? [];
+          // Pull from booksProvider if recently-added doesn't cover all wanted
+          final booksAsync = ref.watch(booksProvider(libraryKey));
+          final fullList = booksAsync.valueOrNull ?? allBooks;
+          final wanted = fullList
+              .where((b) => wantedKeys.contains(b.ratingKey))
+              .toList();
+          if (wanted.isEmpty) {
+            return const SliverToBoxAdapter(child: SizedBox.shrink());
+          }
+          return SliverToBoxAdapter(
+            child: _Section(title: 'Want to Read', books: wanted),
+          );
+        }),
 
         SliverPadding(
             padding: EdgeInsets.only(

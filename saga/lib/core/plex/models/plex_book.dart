@@ -41,7 +41,7 @@ class PlexBook {
       year: json['year'] as int?,
       leafCount: json['leafCount'] as int?,
       summary: json['summary'] as String?,
-      totalDurationMs: json['duration'] as int?,
+      totalDurationMs: (json['duration'] as num?)?.toInt(),
       studio: json['studio'] as String?,
       collectionTags: tags,
       seriesIndex: json['parentIndex'] as int?,

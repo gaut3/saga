@@ -360,6 +360,7 @@ class _TopPills extends ConsumerWidget {
                 child: TextField(
                   controller: noteCtrl,
                   style: TextStyle(color: SagaColors.fg),
+                  minLines: 1,
                   maxLines: 3,
                   decoration: InputDecoration(
                     labelText: 'Note (optional)',
@@ -1398,6 +1399,7 @@ class _M4bChapterList extends StatelessWidget {
         final activeIdx = _activeIndex(pos);
         return ListView.builder(
           controller: scrollController,
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
           itemCount: chapters.length,
           itemBuilder: (context, i) {
             final chapter = chapters[i];
@@ -1460,6 +1462,7 @@ class _PlexTrackList extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView.builder(
       controller: scrollController,
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
       itemCount: tracks.length,
       itemBuilder: (context, i) {
         final track = tracks[i];

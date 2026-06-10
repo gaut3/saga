@@ -247,6 +247,9 @@ final completedBooksListProvider =
   return allBooks.where((b) => completedKeys.contains(b.ratingKey)).toList();
 });
 
+/// Incremented every time a book is added to / removed from the Want to Read list.
+final wantToReadRevisionProvider = StateProvider<int>((_) => 0);
+
 /// Incremented when any custom collection is created, deleted, or modified.
 final customCollectionRevisionProvider = StateProvider<int>((_) => 0);
 

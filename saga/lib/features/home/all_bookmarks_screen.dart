@@ -292,6 +292,7 @@ class _BookmarkTile extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: TextField(
                   controller: noteCtrl,
+                  minLines: 1,
                   maxLines: 3,
                   style: TextStyle(color: SagaColors.fg),
                   decoration: InputDecoration(

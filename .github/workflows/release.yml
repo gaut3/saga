@@ -58,10 +58,14 @@ jobs:
         with:
           subject-path: saga/dist/saga.apk
 
+      - name: Extract changelog section
+        run: awk '/^## /{n++; next} n==1' ../CHANGELOG.md > ../RELEASE_NOTES.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: RELEASE_NOTES.md
+          make_latest: true
           files: |
             saga/dist/saga.apk
             saga/dist/saga.apk.sha256
-          generate_release_notes: true

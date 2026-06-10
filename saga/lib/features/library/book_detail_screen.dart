@@ -11,6 +11,7 @@ import '../../shared/widgets/book_cover_image.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/completed_books_store.dart';
 import '../../core/storage/custom_collection_store.dart';
+import '../../core/storage/want_to_read_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../player/player_provider.dart';
 import '../player/player_screen.dart';
@@ -29,12 +30,19 @@ class BookDetailScreen extends ConsumerStatefulWidget {
 
 class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   late bool _isCompleted;
+  late bool _isWanted;
 
   @override
   void initState() {
     super.initState();
-    _isCompleted =
-        CompletedBooksStore.isCompleted(widget.book.ratingKey);
+    _isCompleted = CompletedBooksStore.isCompleted(widget.book.ratingKey);
+    _isWanted = WantToReadStore.isWanted(widget.book.ratingKey);
+  }
+
+  Future<void> _toggleWantToRead() async {
+    await WantToReadStore.toggle(widget.book.ratingKey);
+    setState(() => _isWanted = WantToReadStore.isWanted(widget.book.ratingKey));
+    ref.read(wantToReadRevisionProvider.notifier).state++;
   }
 
   Future<void> _toggleCompleted() async {
@@ -172,6 +180,8 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
             backgroundColor: SagaColors.surface,
             foregroundColor: SagaColors.fg,
             flexibleSpace: FlexibleSpaceBar(
+              titlePadding: const EdgeInsetsDirectional.only(
+                  start: 56, end: 16, bottom: 14),
               title: Text(
                 book.title,
                 style: const TextStyle(fontSize: 14),
@@ -244,6 +254,43 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                         _MetaChip(
                             Icons.replay_rounded,
                             'Listened ${CompletedBooksStore.completionCount(book.ratingKey)}×'),
+                      GestureDetector(
+                        onTap: _toggleWantToRead,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: _isWanted
+                                ? SagaColors.amber.withValues(alpha: 0.15)
+                                : SagaColors.surface,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _isWanted
+                                    ? Icons.star_rounded
+                                    : Icons.star_border_rounded,
+                                size: 12,
+                                color: _isWanted
+                                    ? SagaColors.amber
+                                    : SagaColors.fgSubtle,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Want to read',
+                                style: TextStyle(
+                                  color: _isWanted
+                                      ? SagaColors.amber
+                                      : SagaColors.fgMuted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
 
@@ -360,7 +407,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
 
                   const SizedBox(height: 8),
 
-                  // Row 2: add to collection + download
+                  // Row 2: add to collection + want to read + download
                   Row(
                     children: [
                       Expanded(
@@ -433,7 +480,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
               savedPosition: savedPosition,
             ),
           ),
-          const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
+          SliverPadding(padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 16)),
         ],
       ),
     );

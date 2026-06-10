@@ -218,7 +218,7 @@ class _CollectionDetailScreenState
                                     160),
                             itemCount: books.length,
                             itemBuilder: (context, i) =>
-                                _BookTile(book: books[i], collectionId: widget.collection.id, ref: ref),
+                                _BookTile(book: books[i], collectionId: widget.collection.id, ref: ref, total: rawBooks.length),
                           )
                         : ReorderableListView.builder(
                             buildDefaultDragHandles: false,
@@ -234,6 +234,7 @@ class _CollectionDetailScreenState
                                 collectionId: widget.collection.id,
                                 ref: ref,
                                 index: i,
+                                total: rawBooks.length,
                                 trailing: ReorderableDragStartListener(
                                   index: i,
                                   child: Icon(Icons.drag_handle,
@@ -271,6 +272,7 @@ class _BookTile extends StatelessWidget {
   final WidgetRef ref;
   final Widget? trailing;
   final int? index;
+  final int? total;
 
   const _BookTile({
     super.key,
@@ -279,6 +281,7 @@ class _BookTile extends StatelessWidget {
     required this.ref,
     this.trailing,
     this.index,
+    this.total,
   });
 
   @override
@@ -298,13 +301,13 @@ class _BookTile extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 SizedBox(
-                  width: 24,
+                  width: 48,
                   child: Text(
-                    '${index! + 1}',
+                    total != null ? '${index! + 1} / $total' : '${index! + 1}',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: SagaColors.fgSubtle,
-                      fontSize: 13,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

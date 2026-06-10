@@ -8,6 +8,7 @@ import '../../core/plex/models/plex_book.dart';
 import '../../core/providers.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/custom_collection_store.dart';
+import '../../core/storage/want_to_read_store.dart';
 import '../../shared/widgets/book_cover_image.dart';
 import '../home/home_screen.dart' show BookProgressOverlay;
 import '../library/book_detail_screen.dart';
@@ -16,7 +17,15 @@ import '../../core/utils/format.dart';
 import '../../shared/widgets/saga_sheet.dart';
 import '../../shared/widgets/saga_toast.dart';
 
-enum _SortOption { defaultOrder, titleAsc, titleDesc, byAuthor, byDuration }
+enum _SortOption {
+  defaultOrder,
+  titleAsc,
+  titleDesc,
+  byAuthorAsc,
+  byAuthorDesc,
+  byDurationAsc,
+  byDurationDesc,
+}
 
 class BrowseScreen extends ConsumerWidget {
   const BrowseScreen({super.key});
@@ -65,6 +74,7 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
   final _searchController = TextEditingController();
 
   bool _isList = false;
+  bool _onlyWanted = false;
   bool _selectMode = false;
   final Set<String> _selectedKeys = {};
 
@@ -229,6 +239,11 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                     false))
             .toList();
 
+    if (_onlyWanted) {
+      final wanted = WantToReadStore.all;
+      list = list.where((b) => wanted.contains(b.ratingKey)).toList();
+    }
+
     switch (_sort) {
       case _SortOption.titleAsc:
         list = [...list]
@@ -240,12 +255,27 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
           ..sort((a, b) => (b.sortTitle ?? b.title)
               .toLowerCase()
               .compareTo((a.sortTitle ?? a.title).toLowerCase()));
-      case _SortOption.byAuthor:
+      case _SortOption.byAuthorAsc:
         list = [...list]
           ..sort((a, b) => (a.authorName ?? '')
               .toLowerCase()
               .compareTo((b.authorName ?? '').toLowerCase()));
-      case _SortOption.byDuration:
+      case _SortOption.byAuthorDesc:
+        list = [...list]
+          ..sort((a, b) => (b.authorName ?? '')
+              .toLowerCase()
+              .compareTo((a.authorName ?? '').toLowerCase()));
+      case _SortOption.byDurationAsc:
+        list = [...list]
+          ..sort((a, b) {
+            final aMs = _durationMs(a);
+            final bMs = _durationMs(b);
+            if (aMs == null && bMs == null) return 0;
+            if (aMs == null) return 1;
+            if (bMs == null) return -1;
+            return aMs.compareTo(bMs); // shortest first
+          });
+      case _SortOption.byDurationDesc:
         list = [...list]
           ..sort((a, b) {
             final aMs = _durationMs(a);
@@ -269,6 +299,7 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(wantToReadRevisionProvider);
     final booksAsync = ref.watch(booksProvider(widget.libraryKey));
 
     final bottomPad = MediaQuery.of(context).padding.bottom;
@@ -416,6 +447,12 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                                     scrollDirection: Axis.horizontal,
                                     children: [
                                       _SortChip(
+                                        label: 'Saved',
+                                        selected: _onlyWanted,
+                                        onTap: () => setState(
+                                            () => _onlyWanted = !_onlyWanted),
+                                      ),
+                                      _SortChip(
                                         label: 'Default',
                                         selected: _sort ==
                                             _SortOption.defaultOrder,
@@ -436,18 +473,34 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                                         }),
                                       ),
                                       _SortChip(
-                                        label: 'Author',
-                                        selected:
-                                            _sort == _SortOption.byAuthor,
-                                        onTap: () => setState(() =>
-                                            _sort = _SortOption.byAuthor),
+                                        label: _sort == _SortOption.byAuthorDesc
+                                            ? 'Z → A'
+                                            : 'Author',
+                                        selected: _sort ==
+                                                _SortOption.byAuthorAsc ||
+                                            _sort == _SortOption.byAuthorDesc,
+                                        onTap: () => setState(() {
+                                          _sort = _sort ==
+                                                  _SortOption.byAuthorAsc
+                                              ? _SortOption.byAuthorDesc
+                                              : _SortOption.byAuthorAsc;
+                                        }),
                                       ),
                                       _SortChip(
-                                        label: 'Duration',
-                                        selected:
-                                            _sort == _SortOption.byDuration,
-                                        onTap: () => setState(() =>
-                                            _sort = _SortOption.byDuration),
+                                        label: _sort == _SortOption.byDurationAsc
+                                            ? 'Duration ↑'
+                                            : _sort == _SortOption.byDurationDesc
+                                                ? 'Duration ↓'
+                                                : 'Duration',
+                                        selected: _sort ==
+                                                _SortOption.byDurationAsc ||
+                                            _sort == _SortOption.byDurationDesc,
+                                        onTap: () => setState(() {
+                                          _sort = _sort ==
+                                                  _SortOption.byDurationAsc
+                                              ? _SortOption.byDurationDesc
+                                              : _SortOption.byDurationAsc;
+                                        }),
                                       ),
                                     ],
                                   ),

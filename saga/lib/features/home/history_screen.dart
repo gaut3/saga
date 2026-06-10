@@ -681,7 +681,7 @@ class _DayRow extends StatelessWidget {
               child: Column(
                 children: [
                   for (var i = 0; i < sortedEntries.length; i++) ...[
-                    if (i > 0) const SizedBox(height: 4),
+                    if (i > 0) const SizedBox(height: 6),
                     _DayBookEntry(
                       bookKey: sortedEntries[i].key,
                       events: sortedEntries[i].value,
@@ -731,14 +731,6 @@ class _DayBookEntryState extends ConsumerState<_DayBookEntry> {
   Widget build(BuildContext context) {
     final book = widget.book;
 
-    // Use saved absolute position for accurate progress regardless of day.
-    double bookPct = 0.0;
-    final saved = BookmarkStore.load(widget.bookKey);
-    final total = book?.totalDurationMs ?? saved?.totalDurationMs;
-    if (saved != null && total != null && total > 0) {
-      bookPct = (saved.absolutePositionMs / total).clamp(0.0, 1.0);
-    }
-
     // Listened time for this book: sum of play→pause spans.
     final chrono = widget.events
         .where((e) => e.type == 'play' || e.type == 'pause')
@@ -754,7 +746,19 @@ class _DayBookEntryState extends ConsumerState<_DayBookEntry> {
       }
     }
 
-    return Column(
+    // Per-day progress: last event's positionMs (track-relative, but day-specific).
+    double bookPct = 0.0;
+    final total = book?.totalDurationMs ?? BookmarkStore.load(widget.bookKey)?.totalDurationMs;
+    if (chrono.isNotEmpty && total != null && total > 0) {
+      bookPct = (chrono.last.positionMs / total).clamp(0.0, 1.0);
+    }
+
+    return Material(
+      color: SagaColors.surface,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
@@ -846,6 +850,8 @@ class _DayBookEntryState extends ConsumerState<_DayBookEntry> {
               : const SizedBox.shrink(),
         ),
       ],
+        ),
+      ),
     );
   }
 }

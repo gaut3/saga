@@ -1,5 +1,8 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:io';
+
+import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -202,6 +205,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 16),
 
+                // ── Storage ───────────────────────────────────────────────────
+                _SectionHeader('Storage'),
+                const _StorageTile(),
+                const SizedBox(height: 16),
+
                 // ── Server ─────────────────────────────────────────────────────
                 _SectionHeader('Server'),
                 _SettingsTile(
@@ -306,7 +314,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: MediaQuery.of(context).padding.bottom + 160),
+                SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
               ],
             ),
           ),
@@ -1343,6 +1351,186 @@ class _ConflictResolutionDialogState
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Storage manager ───────────────────────────────────────────────────────────
+
+class _StorageResult {
+  final int bookCount;
+  final int totalBytes;
+  final List<_BookStorageInfo> books;
+  const _StorageResult({
+    required this.bookCount,
+    required this.totalBytes,
+    required this.books,
+  });
+}
+
+class _BookStorageInfo {
+  final String title;
+  final String path;
+  final int bytes;
+  const _BookStorageInfo({
+    required this.title,
+    required this.path,
+    required this.bytes,
+  });
+}
+
+class _StorageTile extends StatefulWidget {
+  const _StorageTile();
+
+  @override
+  State<_StorageTile> createState() => _StorageTileState();
+}
+
+class _StorageTileState extends State<_StorageTile> {
+  late Future<_StorageResult> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _scan();
+  }
+
+  Future<_StorageResult> _scan() async {
+    final base = await getApplicationDocumentsDirectory();
+    final downloadsDir = Directory('${base.path}/downloads');
+    if (!downloadsDir.existsSync()) {
+      return const _StorageResult(bookCount: 0, totalBytes: 0, books: []);
+    }
+    final books = <_BookStorageInfo>[];
+    for (final entry in downloadsDir.listSync()) {
+      if (entry is Directory) {
+        int size = 0;
+        for (final file in entry.listSync(recursive: true)) {
+          if (file is File) size += file.statSync().size;
+        }
+        final name = entry.uri.pathSegments
+            .lastWhere((s) => s.isNotEmpty, orElse: () => entry.path);
+        books.add(_BookStorageInfo(title: name, path: entry.path, bytes: size));
+      }
+    }
+    books.sort((a, b) => b.bytes.compareTo(a.bytes));
+    final total = books.fold(0, (sum, b) => sum + b.bytes);
+    return _StorageResult(bookCount: books.length, totalBytes: total, books: books);
+  }
+
+  void _refresh() => setState(() => _future = _scan());
+
+  void _showSheet(BuildContext context, _StorageResult result) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    showSagaSheet(context, (ctx) => StatefulBuilder(
+      builder: (ctx, setSheet) => Padding(
+        padding: EdgeInsets.only(bottom: bottomPad),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'Downloaded books',
+                style: TextStyle(
+                    color: SagaColors.fg,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16),
+              ),
+            ),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.55),
+              child: ListView(
+                shrinkWrap: true,
+                children: result.books.map((book) {
+                  final mb = (book.bytes / 1048576).toStringAsFixed(1);
+                  return ListTile(
+                    title: Text(book.title,
+                        style: TextStyle(color: SagaColors.fg, fontSize: 14)),
+                    subtitle: Text('$mb MB',
+                        style: TextStyle(
+                            color: SagaColors.fgSubtle, fontSize: 12)),
+                    trailing: IconButton(
+                      icon: Icon(Icons.delete_outline,
+                          color: SagaColors.fgSubtle),
+                      onPressed: () async {
+                        if (!ctx.mounted) return;
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogCtx) => AlertDialog(
+                            backgroundColor: SagaColors.surface,
+                            title: Text('Delete download',
+                                style: TextStyle(color: SagaColors.fg)),
+                            content: Text(
+                              'Remove "${book.title}" from this device?',
+                              style: TextStyle(color: SagaColors.fgMuted),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.pop(dialogCtx, false),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.pop(dialogCtx, true),
+                                child: const Text('Delete',
+                                    style: TextStyle(
+                                        color: Colors.redAccent)),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true) return;
+                        Directory(book.path).deleteSync(recursive: true);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        _refresh();
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_StorageResult>(
+      future: _future,
+      builder: (context, snap) {
+        final String subtitle;
+        final VoidCallback onTap;
+
+        if (snap.connectionState == ConnectionState.waiting) {
+          subtitle = 'Scanning…';
+          onTap = () {};
+        } else {
+          final result = snap.data;
+          if (result == null || result.bookCount == 0) {
+            subtitle = 'No books downloaded';
+            onTap = () {};
+          } else {
+            final mb = (result.totalBytes / 1048576).toStringAsFixed(1);
+            subtitle =
+                '${result.bookCount} ${result.bookCount == 1 ? 'book' : 'books'} · $mb MB';
+            onTap = () => _showSheet(context, result);
+          }
+        }
+
+        return _SettingsTile(
+          icon: Icons.storage_outlined,
+          title: 'Downloaded books',
+          subtitle: subtitle,
+          onTap: onTap,
+        );
+      },
     );
   }
 }
