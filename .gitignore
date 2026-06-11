@@ -24,3 +24,4 @@ build/debug-info/
 SAGA_NOTES_ADDENDUM.md
 SAGA_NOTES_STILL_MISSING.md
 SAGA_CI_RELEASE_SETUP.md
+/assets

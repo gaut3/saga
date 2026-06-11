@@ -1,4 +1,4 @@
-﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 200" width="640" height="200">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 200" width="640" height="200">
   <g transform="translate(0,0)">
   <rect x="41" y="48" width="22" height="104" rx="5" fill="#F2E7D6"></rect>
   <rect x="73" y="38" width="22" height="124" rx="5" fill="#E8A24A"></rect>
@@ -7,6 +7,6 @@
   </g>
   <g transform="translate(206, 40)">
     <text x="0" y="92" font-family="Manrope, system-ui, sans-serif" font-weight="600" font-size="120" letter-spacing="-3" fill="#F2E7D6">saga</text>
-    <polygon points="258,42 300,68 258,94" fill="#E8A24A"></polygon>
+    <polygon points="281,35.4 320.1,58.7 281,82" fill="#E8A24A"></polygon>
   </g>
 </svg>
