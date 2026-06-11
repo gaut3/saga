@@ -5,12 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Storage manager moved under Downloads.** The "Downloaded books" tile was in its own "Storage" section; moved under the existing Downloads section since both are about downloads.
+
 ## [1.0.9] - 2026-06-10
 
 ### Added
 - **"Want to Read" list.** Books can now be starred for later via a tappable chip in the metadata row (alongside year, duration, chapters). Amber star + tinted background when active. A "Want to Read" shelf appears on the Home screen when the list is non-empty, and a "Saved" filter chip in Browse shows only those books.
 - **Collection index shows total count.** Book positions in a collection now display as "3 / 10" instead of just "3", so you can see where a book sits relative to the full collection at a glance.
-- **Storage manager in Settings.** A new "Storage" section under Downloads shows the total size of downloaded books. Tapping opens a sheet listing each downloaded book with its size; individual books can be deleted from the device with a single tap.
+- **Storage manager in Settings.** A "Downloaded books" tile shows the total size of downloaded books. Tapping opens a sheet listing each book with its size; individual books can be deleted from the device with a single tap.
 
 ### Infrastructure
 - **Immutable releases enabled.** GitHub releases are now published immutable — assets can't be modified or replaced after publish. Release notes are extracted directly from `CHANGELOG.md` by the CI workflow at publish time, so the release is born complete and never edited afterward.

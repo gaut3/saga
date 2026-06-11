@@ -203,10 +203,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     setState(() => _wifiOnly = v);
                   },
                 ),
-                const SizedBox(height: 16),
-
-                // ── Storage ───────────────────────────────────────────────────
-                _SectionHeader('Storage'),
                 const _StorageTile(),
                 const SizedBox(height: 16),
 
