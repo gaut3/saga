@@ -19,8 +19,15 @@ class PlexAuth {
 
   PlexAuth(this._client);
 
+  // connectTimeout fails fast on an unreachable host; without it a stalled
+  // TCP connect hangs the request (and the poll loop below) indefinitely.
+  static final _dioOptions = BaseOptions(
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 15),
+  );
+
   Future<PlexPinResult> requestPin() async {
-    final response = await Dio().post<Map<String, dynamic>>(
+    final response = await Dio(_dioOptions).post<Map<String, dynamic>>(
       '$_plexTvBase/api/v2/pins',
       queryParameters: {
         'strong': true,
@@ -62,7 +69,7 @@ class PlexAuth {
       onTick?.call();
 
       try {
-        final response = await Dio().get<Map<String, dynamic>>(
+        final response = await Dio(_dioOptions).get<Map<String, dynamic>>(
           '$_plexTvBase/api/v2/pins/${pin.id}',
           queryParameters: {
             'X-Plex-Client-Identifier': _client.clientId,

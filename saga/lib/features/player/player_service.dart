@@ -6,6 +6,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/plex/plex_api.dart';
 import '../../core/plex/plex_client.dart';
@@ -37,6 +38,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   void Function()? onHistoryRecorded;
   Future<void> Function(String bookRatingKey, BookPosition? position)? onStreamError;
   bool _reloadInProgress = false;
+  // Incremented on every loadBook; lets an in-flight load detect that a newer
+  // load has superseded it across an await gap, so a stale failure can't
+  // clobber the new book's state (which would silently drop position saves).
+  int _loadGeneration = 0;
   int _lastChapterIndex = -1; // for chapter-aware notification title (single M4B)
   bool _completedThisSession = false; // guards the per-listen completion count
   int _previousAbsolutePositionMs = -1; // -1 = no saved position for undo
@@ -55,6 +60,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         // a transparent reload so the user doesn't need to restart the app.
         // Guard behind ready: if the error fires during loading, _player.position
         // is Duration.zero and writing that would overwrite the real resume point.
+        AppLog.log('playback', 'stream error: $e');
         _progressTimer?.cancel();
         if (_player.processingState == ProcessingState.ready) {
           _saveAndReportPosition(state: 'paused');
@@ -66,27 +72,31 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         }
       },
     );
+    // All listeners carry a no-op onError: an unhandled stream error would
+    // cancel the subscription silently, killing e.g. completion detection or
+    // chapter titles for the rest of the session.
     _player.currentIndexStream.listen((index) {
       if (index != null && index < _tracks.length) {
         final track = _tracks[index];
         mediaItem.add(_trackToMediaItem(track));
         _prefetchArtwork(track);
       }
-    });
-    _player.positionStream.listen(_updateChapterMediaItem);
+    }, onError: (Object e, StackTrace st) {});
+    _player.positionStream
+        .listen(_updateChapterMediaItem, onError: (Object e, StackTrace st) {});
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
         _markBookCompleted();
         stop();
       }
-    });
+    }, onError: (Object e, StackTrace st) {});
 
     // Pause when headphones are unplugged (ACTION_AUDIO_BECOMING_NOISY).
     // audio_service does not handle this automatically.
     AudioSession.instance.then((session) {
       session.becomingNoisyEventStream.listen((_) {
         if (_player.playing) pause();
-      });
+      }, onError: (Object e, StackTrace st) {});
 
       // Duck volume on transient interruptions (nav prompts, notifications);
       // pause on longer interruptions. Don't auto-resume after pause — user
@@ -109,7 +119,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
               break;
           }
         }
-      });
+      }, onError: (Object e, StackTrace st) {});
     });
   }
 
@@ -123,6 +133,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   }) async {
     if (tracks.isEmpty) throw ArgumentError('Cannot load a book with no tracks');
 
+    final gen = ++_loadGeneration;
     _bookRatingKey = bookRatingKey;
     _tracks = tracks;
     _pausedAt = null; // new book — don't rewind on first play
@@ -168,11 +179,18 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     try {
       _playlist = ConcatenatingAudioSource(children: sources);
       await _player.setAudioSource(_playlist, initialIndex: startTrackIndex);
-    } catch (_) {
-      _bookRatingKey = null;
-      _tracks = [];
+    } catch (e) {
+      AppLog.log('playback', 'setAudioSource failed for book $bookRatingKey: $e');
+      // Only clear state if no newer load has taken over: a failed stale load
+      // (e.g. interrupted because the user tapped another book) must not wipe
+      // the new book's key/tracks — that would silently drop its saves.
+      if (gen == _loadGeneration) {
+        _bookRatingKey = null;
+        _tracks = [];
+      }
       rethrow;
     }
+    if (gen != _loadGeneration) return; // superseded by a newer load
 
     // Seek atomically after the source is confirmed ready so that callers
     // reading _player.position after loadBook() see the correct resume point.
@@ -181,6 +199,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         Duration(milliseconds: resumePositionMs),
         index: startTrackIndex,
       );
+      if (gen != _loadGeneration) return;
     }
 
     final queue = tracks.map(_trackToMediaItem).toList();
@@ -238,7 +257,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // for the 10-second progress timer to fire. Skip when the source is still
     // loading — position is not meaningful and would overwrite the resume point.
     if (_player.processingState == ProcessingState.ready) {
-      _saveAndReportPosition(state: 'playing');
+      await _saveAndReportPosition(state: 'playing');
     }
     _trackingFrom = DateTime.now();
     _startProgressTimer();
@@ -252,7 +271,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _pausedAt = DateTime.now();
     _logEvent('pause');
     await _player.pause();
-    _saveAndReportPosition(state: 'paused');
+    await _saveAndReportPosition(state: 'paused');
   }
 
   @override
@@ -260,7 +279,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _progressTimer?.cancel();
     _sleepTimer?.cancel();
     _pausedAt = DateTime.now();
-    _saveAndReportPosition(state: 'stopped');
+    await _saveAndReportPosition(state: 'stopped');
     await _player.stop();
     await super.stop();
   }
@@ -376,9 +395,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   /// Saves the current position immediately. Called by the periodic 10-s timer;
   /// skips when the player is not fully ready to avoid writing a stale position.
-  void savePosition() {
+  Future<void> savePosition() async {
     if (_player.processingState == ProcessingState.ready) {
-      _saveAndReportPosition(state: _player.playing ? 'playing' : 'paused');
+      await _saveAndReportPosition(state: _player.playing ? 'playing' : 'paused');
     }
   }
 
@@ -386,10 +405,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// (background, detach) so the position is never lost when Android kills the app
   /// while the player is buffering on a slow connection.
   /// _player.position remains valid during ProcessingState.buffering.
-  void savePositionForLifecycle() {
+  Future<void> savePositionForLifecycle() async {
     final ps = _player.processingState;
     if (ps == ProcessingState.idle || ps == ProcessingState.completed) return;
-    _saveAndReportPosition(state: _player.playing ? 'playing' : 'paused');
+    await _saveAndReportPosition(state: _player.playing ? 'playing' : 'paused');
   }
 
   @override
@@ -476,7 +495,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     );
   }
 
-  void _markBookCompleted() {
+  Future<void> _markBookCompleted() async {
     final bookKey = _bookRatingKey;
     if (bookKey == null) return;
     // Guard against double-counting within one listen (the 95% auto-complete and
@@ -484,7 +503,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // re-listen counts as a new completion — that drives the listen count.
     if (_completedThisSession) return;
     _completedThisSession = true;
-    CompletedBooksStore.markCompleted(bookKey);
+    await CompletedBooksStore.markCompleted(bookKey);
     final track = _tracks.firstOrNull;
     ListeningHistoryStore.recordCompleted(
       ratingKey: bookKey,
@@ -507,7 +526,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     });
   }
 
-  void _saveAndReportPosition({required String state}) {
+  Future<void> _saveAndReportPosition({required String state}) async {
     final track = _currentTrack;
     if (track == null || _bookRatingKey == null) return;
 
@@ -542,7 +561,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     final positionMs = _player.position.inMilliseconds;
     final absolutePositionMs = _absolutePositionMs(positionMs);
 
-    BookmarkStore.save(
+    // Awaited so the write is durable before this future completes — the
+    // lifecycle save path (app backgrounded/killed) depends on it.
+    await BookmarkStore.save(
       _bookRatingKey!,
       BookPosition(
         trackRatingKey: track.ratingKey,
@@ -563,13 +584,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     ).then((_) {
       // Success — opportunistically flush anything queued while offline.
       _flushTimelineQueue();
-    }, onError: (_) {
+    }, onError: (_) async {
       // Server unreachable — persist the latest position for this book so it
       // survives a kill and syncs to Plex's "Continue" on the next success or
       // app foreground. Last-write-wins: one pending entry per book.
       final bookKey = _bookRatingKey;
       if (bookKey != null) {
-        TimelineQueueStore.enqueue(
+        await TimelineQueueStore.enqueue(
           bookKey,
           PendingTimeline(
             ratingKey: track.ratingKey,

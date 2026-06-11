@@ -1,6 +1,7 @@
 ﻿import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../core/theme/saga_theme.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/audio/audio_level.dart';
+import '../../core/diagnostics/app_log.dart';
 import '../../core/mark_motion.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/utils/format.dart';
@@ -131,6 +133,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: (i) async {
                     final v = _skipOptions[i];
                     await SettingsStore.setSkipBackward(v);
+                    if (!mounted) return;
                     setState(() => _skipBackward = v);
                   },
                 ),
@@ -143,6 +146,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: (i) async {
                     final v = _skipOptions[i];
                     await SettingsStore.setSkipForward(v);
+                    if (!mounted) return;
                     setState(() => _skipForward = v);
                   },
                 ),
@@ -155,6 +159,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: (i) async {
                     final v = _speedOptions[i];
                     await SettingsStore.setDefaultSpeed(v);
+                    if (!mounted) return;
                     setState(() => _defaultSpeed = v);
                     // Apply immediately if player is active
                     final service = ref.read(playerServiceProvider);
@@ -172,6 +177,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onSyncDelayChanged: (ms) async {
                     await SettingsStore.setAnimationSyncDelayMs(ms);
                     AudioLevel.instance.setDelay(ms);
+                    if (!mounted) return;
                     setState(() => _animationSyncDelay = ms);
                   },
                 ),
@@ -182,6 +188,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   value: _autoRewind,
                   onChanged: (v) async {
                     await SettingsStore.setAutoRewindEnabled(v);
+                    if (!mounted) return;
                     setState(() => _autoRewind = v);
                   },
                 ),
@@ -202,6 +209,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   value: _wifiOnly,
                   onChanged: (v) async {
                     await SettingsStore.setDownloadWifiOnly(v);
+                    if (!mounted) return;
                     setState(() => _wifiOnly = v);
                   },
                 ),
@@ -231,6 +239,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   value: _redactServer,
                   onChanged: (v) async {
                     await SettingsStore.setRedactServerAddress(v);
+                    if (!mounted) return;
                     setState(() => _redactServer = v);
                   },
                 ),
@@ -300,6 +309,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     Uri.parse('https://github.com/gaut3/saga/releases'),
                     mode: LaunchMode.externalApplication,
                   ),
+                ),
+                _SettingsTile(
+                  icon: Icons.bug_report_outlined,
+                  title: 'Copy diagnostics',
+                  subtitle: 'Recent errors, redacted — for bug reports',
+                  onTap: () async {
+                    final dump = AppLog.dump();
+                    if (dump.isEmpty) {
+                      showSagaToast(context, 'No diagnostics recorded yet');
+                      return;
+                    }
+                    await Clipboard.setData(ClipboardData(text: dump));
+                    if (!mounted) return;
+                    showSagaToast(this.context,
+                        'Diagnostics copied — server address and token are redacted');
+                  },
                 ),
                 const SizedBox(height: 36),
 
@@ -484,18 +509,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _confirmSignOut(WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      // Pop with the dialog's own context: the settings screen sits in a tab
+      // navigator while the dialog is on the root navigator, so popping with
+      // the outer context targets the wrong stack.
+      builder: (dialogCtx) => AlertDialog(
         backgroundColor: SagaColors.surface,
         title: Text('Sign out', style: TextStyle(color: SagaColors.fg)),
         content: Text('Sign out of your Plex account?',
             style: TextStyle(color: SagaColors.fgMuted)),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogCtx, false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogCtx, true),
             child: const Text('Sign out',
                 style: TextStyle(color: Colors.redAccent)),
           ),
@@ -1120,10 +1148,11 @@ class _LibraryPickerTile extends ConsumerWidget {
                     : null,
                 onTap: () async {
                   await SettingsStore.setSelectedLibraryKey(lib.key);
+                  if (!context.mounted) return;
                   ref.read(selectedLibraryKeyProvider.notifier).state =
                       lib.key;
                   ref.invalidate(activeLibraryKeyProvider);
-                  if (context.mounted) Navigator.pop(context);
+                  Navigator.pop(context);
                 },
               );
             }),

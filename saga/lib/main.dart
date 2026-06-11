@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:audio_service/audio_service.dart';
@@ -8,6 +9,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import 'app.dart';
 import 'core/audio/audio_level.dart';
+import 'core/diagnostics/app_log.dart';
 import 'core/mark_motion.dart';
 import 'core/plex/plex_api.dart';
 import 'core/plex/plex_client.dart';
@@ -29,7 +31,25 @@ import 'features/player/player_provider.dart';
 import 'features/player/player_service.dart';
 
 Future<void> main() async {
+  // Everything (including ensureInitialized and runApp) must live in the same
+  // zone, so the guarded zone wraps the whole startup. Uncaught errors are
+  // written to the local diagnostics log — never transmitted anywhere.
+  await runZonedGuarded(_run, (Object e, StackTrace st) {
+    AppLog.log('uncaught', '$e\n$st');
+  });
+}
+
+Future<void> _run() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Framework errors: keep Flutter's default console reporting, and append a
+  // redacted copy to the local diagnostics log for "Copy diagnostics".
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    AppLog.log('flutter', '${details.exception}\n${details.stack ?? ''}');
+  };
+
+  await AppLog.init();
 
   try {
     await Hive.initFlutter();
@@ -74,7 +94,8 @@ Future<void> main() async {
     _reconcileDanglingSessions();
 
     runApp(const ProviderScope(child: App()));
-  } catch (_) {
+  } catch (e, st) {
+    AppLog.log('startup', 'failed to start: $e\n$st');
     runApp(const _ErrorApp());
   }
 }

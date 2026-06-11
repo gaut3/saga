@@ -135,6 +135,7 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
 
   Future<void> _runDownload(PlexTrack track, String bookRatingKey) async {
     final key = track.ratingKey;
+    String? filePath;
     try {
       // Respect the "download on Wi-Fi only" setting: skip (and surface as a
       // retryable failure) when on a metered connection.
@@ -161,7 +162,7 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
       final rawExt = (track.partFile?.split('.').last ?? '').toLowerCase();
       final ext = audioExtensions.contains(rawExt) ? rawExt : 'mp3';
       final dir = await _downloadDir(track);
-      final filePath = '${dir.path}/$key.$ext';
+      filePath = '${dir.path}/$key.$ext';
 
       // connectTimeout fails fast on an unreachable server; receiveTimeout is an
       // inactivity timeout (no bytes for the duration) so a stalled connection
@@ -193,6 +194,14 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
         downloadedBooks: {...state.downloadedBooks, bookRatingKey},
       );
     } catch (_) {
+      // Remove the partially-written file: it's never played (playback is
+      // gated on DownloadStore metadata) but would sit invisibly on disk —
+      // the storage manager only lists completed downloads.
+      if (filePath != null) {
+        try {
+          await File(filePath).delete();
+        } catch (_) {}
+      }
       _markFailed(key);
     } finally {
       _active--;
@@ -389,7 +398,7 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
           _pausedRemaining = null;
         }
       }
-    });
+    }, onError: (Object e, StackTrace st) {});
   }
 
   void _cancelAll() {

@@ -47,7 +47,9 @@ class PlexServerDiscovery {
     }
 
     for (final connection in server.connections) {
-      Dio()
+      // connectTimeout covers the TCP connect phase, which send/receive
+      // timeouts do not — without it an unresponsive host hangs the probe.
+      Dio(BaseOptions(connectTimeout: const Duration(seconds: 5)))
           .get<dynamic>(
             '${connection.uri}/identity',
             options: Options(

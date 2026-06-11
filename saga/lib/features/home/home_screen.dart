@@ -1016,6 +1016,7 @@ class _UpNextSectionState extends ConsumerState<_UpNextSection> {
         onCreate: () => ref.read(tabIndexProvider.notifier).state = 3,
         onDismiss: () async {
           await SettingsStore.setUpNextNudgeDismissed(true);
+          if (!mounted) return;
           setState(() => _nudgeDismissed = true);
         },
       );

@@ -20,10 +20,28 @@ class M4bChapterReader {
     try {
       final file = File(path);
       if (!await file.exists()) return [];
-      final bytes = await file.readAsBytes();
-      final result = _parse(bytes);
-      if (result.isNotEmpty) return result;
-      return _scanForMoov(bytes);
+      // Read at most 8 MB from the head (fast-start files, moov first) and, if
+      // needed, 8 MB from the tail (standard files, moov after mdat) — never
+      // the whole file. An M4B audiobook is routinely hundreds of MB; loading
+      // it all into RAM to find one atom risks an OOM kill on small devices.
+      final total = await file.length();
+      final raf = await file.open();
+      try {
+        final head = await raf.read(_readSize.clamp(0, total));
+        final result = _parse(head);
+        if (result.isNotEmpty) return result;
+        var scanned = _scanForMoov(head);
+        if (scanned.isNotEmpty) return scanned;
+        if (total > _readSize) {
+          await raf.setPosition(total - _readSize);
+          final tail = await raf.read(_readSize);
+          scanned = _scanForMoov(tail);
+          if (scanned.isNotEmpty) return scanned;
+        }
+        return [];
+      } finally {
+        await raf.close();
+      }
     } catch (_) {
       return [];
     }
@@ -34,7 +52,8 @@ class M4bChapterReader {
     Map<String, String>? headers,
   }) async {
     try {
-      final dio = Dio();
+      final dio =
+          Dio(BaseOptions(connectTimeout: const Duration(seconds: 10)));
 
       // Probe first 512 bytes to determine moov/mdat order and get file size
       final probe = await dio.get<List<int>>(
@@ -215,7 +234,10 @@ class M4bChapterReader {
     for (var i = 0; i < 8; i++) {
       v = (v << 8) | d[o + i];
     }
-    return v;
+    // A timestamp with the top bit set overflows Dart's signed 64-bit int into
+    // a negative value; treat it as malformed rather than producing a negative
+    // chapter start.
+    return v < 0 ? 0 : v;
   }
 
   static String _cc(Uint8List d, int o) =>

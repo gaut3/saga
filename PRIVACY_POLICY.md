@@ -39,7 +39,11 @@ Your Plex account is subject to [Plex's own Privacy Policy](https://www.plex.tv/
 
 ### Note on notification artwork
 
-Android's `MediaSession` API fetches notification and lock-screen artwork using a plain URL — custom HTTP headers are not supported. To authorise this request, Saga appends your Plex token as a URL query parameter (`?X-Plex-Token=…`) to the artwork URL sent to the system. This is the only context in which your token appears in a URL rather than an HTTP header. The request goes to your own Plex server.
+Android's `MediaSession` API fetches notification and lock-screen artwork using a plain URL — custom HTTP headers are not supported. To authorise this request, Saga appends your Plex token as a URL query parameter (`?X-Plex-Token=…`) to the artwork URL sent to the system. The request goes to your own Plex server.
+
+### Note on Chromecast
+
+When you cast a book, the Chromecast device fetches the audio stream (and cover art) directly from your Plex server — the audio does not pass through the phone. Like the notification artwork above, a Cast device cannot send custom HTTP headers, so the stream URL handed to it includes your Plex token as a query parameter. The URL is delivered to the Cast device on your local network and the request goes to your own Plex server. These two cases — notification artwork and casting — are the only contexts in which your token appears in a URL rather than an HTTP header.
 
 ---
 

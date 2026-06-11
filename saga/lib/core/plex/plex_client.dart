@@ -193,6 +193,15 @@ class PlexClient {
     return Uri.parse('$_serverUri$thumbPath?X-Plex-Token=$_token');
   }
 
+  // Used only for Chromecast playback. The Cast device fetches the stream
+  // itself and cannot send custom headers, so — like buildArtUri — the token
+  // must be in the query string for this one case. Always the server URL,
+  // never a local file path (the Cast device can't reach the phone's storage).
+  String? buildCastUrl(String partKey) {
+    if (_serverUri == null || _token == null) return null;
+    return '$_serverUri$partKey?X-Plex-Token=$_token';
+  }
+
   String? resolveTrackUrl(PlexTrack track) {
     final localPath = DownloadStore.getPath(track.ratingKey);
     if (localPath != null && File(localPath).existsSync()) {

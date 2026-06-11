@@ -40,7 +40,8 @@ class ArtworkCache {
     final file = File(filePath);
     if (await file.exists()) return file.uri;
     try {
-      await Dio().download(
+      await Dio(BaseOptions(connectTimeout: const Duration(seconds: 10)))
+          .download(
         '$serverUri$thumbPath',
         filePath,
         options: Options(

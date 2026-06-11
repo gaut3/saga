@@ -189,15 +189,14 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                             for (final key in keys) {
                               await CustomCollectionStore.addBook(col.id, key);
                             }
+                            if (!mounted) return;
                             ref
                                 .read(customCollectionRevisionProvider.notifier)
                                 .state++;
                             navigator.pop();
                             _cancelSelect();
-                            if (mounted) {
-                              showSagaToast(this.context,
-                                  'Added ${keys.length} book${keys.length == 1 ? '' : 's'} to "${col.name}"');
-                            }
+                            showSagaToast(this.context,
+                                'Added ${keys.length} book${keys.length == 1 ? '' : 's'} to "${col.name}"');
                           },
                         )),
                     const SizedBox(height: 8),

@@ -1016,7 +1016,7 @@ class _BottomActions extends ConsumerWidget {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         backgroundColor: SagaColors.surface,
         title: Text('Add bookmark',
             style: TextStyle(color: SagaColors.fg, fontSize: 16)),
@@ -1035,11 +1035,11 @@ class _BottomActions extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogCtx, false),
             child: Text('Cancel', style: TextStyle(color: SagaColors.fgMuted)),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogCtx, true),
             child: Text('Save', style: TextStyle(color: SagaColors.accent)),
           ),
         ],
@@ -1273,14 +1273,96 @@ class _ActionButton extends StatelessWidget {
 
 // ── Cast sheet ────────────────────────────────────────────────────────────────
 
-class _CastSheet extends ConsumerWidget {
+class _CastSheet extends ConsumerStatefulWidget {
   final AudioPlayerService service;
   const _CastSheet({required this.service});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final castService = ref.watch(castServiceProvider);
+  ConsumerState<_CastSheet> createState() => _CastSheetState();
+}
 
+class _CastSheetState extends ConsumerState<_CastSheet> {
+  late final CastService _cast;
+  StreamSubscription<CastState>? _stateSub;
+  StreamSubscription<String>? _errorSub;
+  // Set when the user picks a device; the media handoff fires once the
+  // session reports connected.
+  bool _pendingLoad = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cast = ref.read(castServiceProvider);
+    _cast.startDiscovery();
+    _stateSub = _cast.stateStream.listen((s) {
+      if (s == CastState.connected && _pendingLoad) {
+        _pendingLoad = false;
+        _castCurrentTrack();
+      }
+    });
+    // Surface session failures — without this the sheet silently snaps back
+    // to the device list with no explanation of what went wrong.
+    _errorSub = _cast.errorStream.listen((reason) {
+      _pendingLoad = false;
+      if (mounted) {
+        showSagaToast(context, 'Cast connection failed: $reason',
+            isError: true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _stateSub?.cancel();
+    _errorSub?.cancel();
+    _cast.stopDiscovery(); // active scanning costs battery — only while open
+    super.dispose();
+  }
+
+  /// Hands the current track to the Cast device: pauses local playback, then
+  /// loads the server stream URL (token in query — the device can't send
+  /// headers, and can't reach a downloaded file on the phone) at the current
+  /// position with the correct MIME type.
+  Future<void> _castCurrentTrack() async {
+    final service = widget.service;
+    final track = service.currentTrackInfo;
+    if (track == null) return;
+    final client = PlexClient.instance;
+    final url = client.buildCastUrl(track.partKey);
+    if (url == null) {
+      if (mounted) {
+        showSagaToast(context, 'Casting needs your Plex server to be reachable.',
+            isError: true);
+      }
+      return;
+    }
+    final positionMs = service.player.position.inMilliseconds;
+    await service.pause();
+    await _cast.loadMedia(
+      url: url,
+      title: track.bookTitle ?? track.title,
+      artist: track.authorName ?? '',
+      artwork: client.buildArtUri(track.thumbPath)?.toString() ?? '',
+      contentType: castContentTypeFor(track.partFile),
+      positionMs: positionMs,
+    );
+  }
+
+  /// Pulls the playback position back from the Cast device, ends the session,
+  /// and seeks the (paused) local player there so resuming continues
+  /// seamlessly from where the cast left off.
+  Future<void> _disconnect() async {
+    final posMs = await _cast.getCastPosition();
+    await _cast.stopCasting();
+    if (posMs > 0) {
+      await widget.service.player.seek(Duration(milliseconds: posMs));
+      await widget.service.savePosition();
+    }
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
       child: Column(
@@ -1294,8 +1376,8 @@ class _CastSheet extends ConsumerWidget {
                   fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           StreamBuilder<CastState>(
-            stream: castService.stateStream,
-            initialData: castService.state,
+            stream: _cast.stateStream,
+            initialData: _cast.state,
             builder: (context, snap) {
               final state = snap.data ?? CastState.idle;
 
@@ -1315,10 +1397,7 @@ class _CastSheet extends ConsumerWidget {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        onPressed: () async {
-                          await castService.stopCasting();
-                          if (context.mounted) Navigator.pop(context);
-                        },
+                        onPressed: _disconnect,
                         icon: const Icon(Icons.cast_outlined),
                         label: const Text('Disconnect'),
                         style: OutlinedButton.styleFrom(
@@ -1337,37 +1416,58 @@ class _CastSheet extends ConsumerWidget {
               if (state == CastState.connecting) {
                 return const Padding(
                   padding: EdgeInsets.all(16),
-                  child: Center(child: AnimatedSagaMark(size: 36, state: SagaMarkState.buffering)),
+                  child: Center(
+                      child: AnimatedSagaMark(
+                          size: 36, state: SagaMarkState.buffering)),
                 );
               }
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Select a Chromecast or Google Cast device on your local network.',
-                    style: TextStyle(color: SagaColors.fgMuted, fontSize: 13),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        await castService.openDevicePicker();
-                      },
-                      icon: const Icon(Icons.cast),
-                      label: const Text('Choose device'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: SagaColors.accent,
-                        foregroundColor: SagaColors.accentFg,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+              // Idle: live device list from active discovery.
+              return StreamBuilder<List<CastDevice>>(
+                stream: _cast.devicesStream,
+                initialData: _cast.devices,
+                builder: (context, devSnap) {
+                  final devices = devSnap.data ?? const <CastDevice>[];
+                  if (devices.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Searching for Cast devices on your network…',
+                              style: TextStyle(
+                                  color: SagaColors.fgMuted, fontSize: 13),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                ],
+                    );
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final device in devices)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.tv_outlined,
+                              color: SagaColors.fgMuted),
+                          title: Text(device.name,
+                              style: TextStyle(color: SagaColors.fg)),
+                          onTap: () {
+                            _pendingLoad = true;
+                            _cast.selectDevice(device);
+                          },
+                        ),
+                    ],
+                  );
+                },
               );
             },
           ),

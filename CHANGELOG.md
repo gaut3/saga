@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.11 - Unreleased]
+
+Stability and hardening release from a full codebase audit.
+
+### Changed
+- **Cast device picker is now a native Saga sheet.** Choosing a Chromecast no longer opens the old system-style dialog; devices appear live inside the same bottom sheet as the rest of the app, with a searching indicator while discovery runs. Device discovery now also stops when the sheet closes (active scanning costs battery).
+
+### Fixed
+- **Chromecast never actually played anything.** Selecting a device started a Cast session but the app never handed the audio over — and even if it had, the stream URL carried no auth token (the Cast device fetches the URL itself and can't send headers, so Plex would have refused it) and the content type was hardcoded to MP3 (wrong for M4B). Casting now pauses local playback, loads the current track on the device at the current position with the correct MIME type, cover art, and a tokened stream URL. Disconnecting pulls the position back from the Cast device and seeks the local player there, so you resume exactly where the cast left off. Failed session starts now also report back instead of leaving the UI stuck on "connecting". Known limitation: one track is cast at a time — for single-file M4B books that's the whole book; multi-file books don't auto-advance to the next file yet.
+- **Position saves are now durable on app kill.** Bookmark writes were fire-and-forget; the app could be killed by Android in the window between scheduling the write and it reaching disk — exactly the moment lifecycle saves exist for. All position, completion, and offline-sync-queue writes are now awaited through the save path (`_saveAndReportPosition`, `savePosition`, `savePositionForLifecycle`, `pause`, `stop`).
+- **Rapidly switching books could silently stop position saving.** If a book load was interrupted by loading another book and then failed, its error handler wiped the *new* book's state, so every subsequent position save was silently dropped until the next load. `loadBook` now uses a generation counter: a superseded load can no longer clobber the active book's state.
+- **Opening a downloaded book no longer loads the entire file into memory.** The chapter parser read the whole M4B (often hundreds of MB) into RAM to find the chapter atom — an out-of-memory crash risk on low-RAM devices. It now reads at most 8 MB from the head and 8 MB from the tail, matching the streaming path's strategy.
+- **Playback event listeners can no longer die silently.** Six audio stream listeners (track index, position, completion detection, headphone-unplug, audio interruptions, sleep-timer playback watch) had no error handlers; a single stream error would cancel the subscription for the rest of the session — e.g. book completion would silently stop being detected. All now carry error handlers.
+- **A malformed Plex track no longer crashes the whole track list.** `PlexTrack` parsing crashed on items with a missing `key` or `title` (partially-indexed files). Same bug class as the book-title parse crash fixed in 1.0.2; now null-guarded.
+- **Sign-out dialog popped the wrong screen.** The Settings sign-out confirmation used the settings screen's navigator context instead of the dialog's own — the same navigator-layer bug fixed in five other dialogs previously. Cancel/Sign out now close only the dialog. The player's Add Bookmark dialog had the same latent pattern and was fixed for consistency.
+- **Failed downloads no longer leave partial files on disk.** A download that failed mid-transfer left the partial file orphaned — never played, but invisibly consuming storage (the storage manager only lists completed downloads). The partial file is now deleted on failure.
+- **Network requests can no longer hang indefinitely on connect.** The PIN sign-in flow, server discovery probes, artwork prefetch, and chapter fetch all created Dio clients without a connect timeout; a stalled TCP connect could hang sign-in forever. All now fail fast (5–10 s).
+- **Malformed chapter timestamps are rejected.** A corrupt M4B chapter entry with an out-of-range timestamp could produce a negative chapter start time; it is now clamped to zero.
+- **Settings toggles no longer risk a crash when leaving the screen mid-tap.** Several async settings callbacks (skip intervals, speed, auto-rewind, Wi-Fi-only, redact address, animation delay, library picker, Up Next nudge dismiss, bulk add-to-collection) called `setState`/providers after an await without checking the widget was still mounted.
+
+### Removed
+- Dead code: an unused legacy library screen (unreferenced since the settings redesign) was deleted.
+
 ## [1.0.10] - 2026-06-11
 
 ### Added

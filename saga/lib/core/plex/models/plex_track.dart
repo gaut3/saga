@@ -28,9 +28,11 @@ class PlexTrack {
     final part = (media?['Part'] as List<dynamic>?)?.firstOrNull;
 
     return PlexTrack(
-      ratingKey: json['ratingKey'].toString(),
-      key: json['key'] as String,
-      title: json['title'] as String,
+      // Null-guarded: Plex can return partially-indexed items with missing
+      // fields, and one bad track must not crash the whole list parse.
+      ratingKey: json['ratingKey']?.toString() ?? '',
+      key: json['key'] as String? ?? '',
+      title: json['title'] as String? ?? '',
       bookTitle: json['parentTitle'] as String?,
       authorName: json['grandparentTitle'] as String?,
       thumbPath: json['parentThumb'] as String?,
