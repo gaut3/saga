@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [1.0.10] - 2026-06-11
 
 ### Added
 - **Redact server address.** A toggle in Settings → Server hides the Plex server's IP / `plex.direct` address in the settings tile — useful when taking screenshots or screen recordings. The app still connects to the real address; only the display is masked (`http://••••••••:32400`). Off by default.
