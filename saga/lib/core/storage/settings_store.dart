@@ -105,6 +105,13 @@ class SettingsStore {
     }
   }
 
+  // Mask server address in Settings for screenshots/recordings.
+  static bool get redactServerAddress =>
+      _box.get('redactServerAddress', defaultValue: false) as bool;
+
+  static Future<void> setRedactServerAddress(bool v) =>
+      _box.put('redactServerAddress', v);
+
   static bool get upNextNudgeDismissed =>
       _box.get('upNextNudgeDismissed', defaultValue: false) as bool;
 

@@ -26,3 +26,14 @@ String fmtPositionMs(int ms) {
 
 String fmtTime(DateTime dt) =>
     '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+
+/// Replaces the host of [uri] with bullets for privacy display.
+/// Protocol and port remain visible so the tile still reads as "connected".
+String maskAddress(String uri) {
+  try {
+    final parsed = Uri.parse(uri);
+    return parsed.replace(host: '••••••••').toString();
+  } catch (_) {
+    return '[address hidden]';
+  }
+}

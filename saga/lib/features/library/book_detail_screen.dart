@@ -881,13 +881,16 @@ class _ChapterListSliver extends ConsumerWidget {
                 '${mins}m ${secs.toString().padLeft(2, '0')}s',
                 style: TextStyle(color: SagaColors.fgMuted)),
             trailing: dlProgress != null
-                ? SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                        value: dlProgress,
-                        strokeWidth: 2,
-                        color: SagaColors.accent),
+                ? Semantics(
+                    label: 'Downloading, ${(dlProgress * 100).round()}%',
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                          value: dlProgress,
+                          strokeWidth: 2,
+                          color: SagaColors.accent),
+                    ),
                   )
                 : IconButton(
                     icon: Icon(

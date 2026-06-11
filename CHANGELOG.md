@@ -7,7 +7,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Redact server address.** A toggle in Settings → Server hides the Plex server's IP / `plex.direct` address in the settings tile — useful when taking screenshots or screen recordings. The app still connects to the real address; only the display is masked (`http://••••••••:32400`). Off by default.
+
 ### Fixed
+- **Large-library support.** `fetchBooks` now pages through the Plex API in batches of 300 (`X-Plex-Container-Start` / `X-Plex-Container-Size`) instead of loading the entire library in one request. Libraries under 300 books are unaffected; larger libraries no longer risk freezing or running out of memory.
+- **TalkBack: download progress spinners had no label.** The per-track `CircularProgressIndicator` in the book detail track list now announces "Downloading, N%" when focused by a screen reader.
+- **TalkBack: heatmap cells had no accessibility labels.** Both the 13-week contribution heatmap (History → Total) and the month calendar (History → Month) now announce e.g. "Jun 11: 45 min" or "Jun 11: no activity" to screen readers. Future calendar cells are excluded from the accessibility tree.
+- **Heatmap legend was missing a color level and used vague labels.** The 13-week heatmap legend showed 5 swatches but there are 6 heat levels — `heat4` (1–2 hours) was absent. All 6 levels are now shown with semantic labels readable by TalkBack, and the endpoint labels changed from "Less / More" to "0 / 2h+".
+- **History tab indicator animation ignored the reduce-motion preference.** The `AnimatedContainer` slide on the Day / Month / Total segmented control now uses `Duration.zero` when the system "reduce motion" accessibility setting is enabled.
 - **Storage manager moved under Downloads.** The "Downloaded books" tile was in its own "Storage" section; moved under the existing Downloads section since both are about downloads.
 
 ## [1.0.9] - 2026-06-10

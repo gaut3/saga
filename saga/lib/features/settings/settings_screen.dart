@@ -60,6 +60,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late int _markMotion;
   late int _animationSyncDelay;
   late int _defaultSleepTimer;
+  late bool _redactServer;
   String _version = '';
 
   @override
@@ -73,6 +74,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _markMotion = SettingsStore.markMotionIndex;
     _animationSyncDelay = SettingsStore.animationSyncDelayMs;
     _defaultSleepTimer = SettingsStore.defaultSleepTimerMinutes;
+    _redactServer = SettingsStore.redactServerAddress;
     PackageInfo.fromPlatform().then((info) {
       if (mounted) setState(() => _version = 'v${info.version}');
     }).catchError((_) {});
@@ -211,12 +213,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _SettingsTile(
                   icon: Icons.dns_outlined,
                   title: 'Plex Server',
-                  subtitle: client.serverUri ?? 'Not connected',
+                  subtitle: client.serverUri == null
+                      ? 'Not connected'
+                      : _redactServer
+                          ? maskAddress(client.serverUri!)
+                          : client.serverUri!,
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
                         builder: (_) => const ServerSelectionScreen()),
                   ).then((_) => ref.invalidate(activeLibraryKeyProvider)),
+                ),
+                _SwitchTile(
+                  icon: Icons.visibility_off_outlined,
+                  title: 'Redact server address',
+                  subtitle: 'Hide IP in screenshots and recordings',
+                  value: _redactServer,
+                  onChanged: (v) async {
+                    await SettingsStore.setRedactServerAddress(v);
+                    setState(() => _redactServer = v);
+                  },
                 ),
                 _LibraryPickerTile(),
                 const SizedBox(height: 16),

@@ -131,10 +131,13 @@ class _SegControl extends StatelessWidget {
             _Tab.month => 'Month',
             _Tab.total => 'Total',
           };
+          final animDuration = MediaQuery.of(context).disableAnimations
+              ? Duration.zero
+              : const Duration(milliseconds: 200);
           return GestureDetector(
             onTap: () => onChanged(t),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+              duration: animDuration,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: selected ? SagaColors.accent : Colors.transparent,
@@ -168,6 +171,10 @@ String _fmtMs(int ms) {
 
 String _weekdayShort(DateTime d) =>
     const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d.weekday - 1];
+
+String _monthAbbr(int month) =>
+    const ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month - 1];
 
 Color _heatColor(int ms) {
   if (ms == 0) return SagaColors.heatEmpty;
@@ -1269,6 +1276,15 @@ class _MonthTabState extends ConsumerState<_MonthTab> {
                     ),
                   );
 
+                  if (!isFuture) {
+                    cell = Semantics(
+                      label: ms > 0
+                          ? '${_monthAbbr(date.month)} $day: ${ms ~/ 60000} min'
+                          : '${_monthAbbr(date.month)} $day',
+                      excludeSemantics: true,
+                      child: cell,
+                    );
+                  }
                   if (!tappable) return cell;
                   return GestureDetector(
                     onTap: () => _showDaySheet(
@@ -1855,18 +1871,25 @@ class _HeatmapCard extends StatelessWidget {
                       return Padding(
                         padding: EdgeInsets.only(
                             bottom: row < _rows - 1 ? _gap : 0),
-                        child: Container(
-                          width: cellW,
-                          height: cellH,
-                          decoration: BoxDecoration(
-                            color: isFuture
-                                ? Colors.transparent
-                                : _heatColor(ms),
-                            borderRadius: BorderRadius.circular(3),
-                            border: isToday
-                                ? Border.all(
-                                    color: SagaColors.accent, width: 1.5)
-                                : null,
+                        child: Semantics(
+                          label: isFuture
+                              ? null
+                              : ms > 0
+                                  ? '${_monthAbbr(date.month)} ${date.day}: ${ms ~/ 60000} min'
+                                  : '${_monthAbbr(date.month)} ${date.day}: no activity',
+                          child: Container(
+                            width: cellW,
+                            height: cellH,
+                            decoration: BoxDecoration(
+                              color: isFuture
+                                  ? Colors.transparent
+                                  : _heatColor(ms),
+                              borderRadius: BorderRadius.circular(3),
+                              border: isToday
+                                  ? Border.all(
+                                      color: SagaColors.accent, width: 1.5)
+                                  : null,
+                            ),
                           ),
                         ),
                       );
@@ -1880,24 +1903,28 @@ class _HeatmapCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Text('Less ',
+              Text('0 ',
                   style: TextStyle(
                       color: SagaColors.fgSubtle, fontSize: 10)),
               ...[
-                SagaColors.heatEmpty,
-                SagaColors.heat1,
-                SagaColors.heat2,
-                SagaColors.heat3,
-                SagaColors.heatMax,
-              ].map((c) => Container(
-                    width: 11,
-                    height: 11,
-                    margin: const EdgeInsets.only(left: 3),
-                    decoration: BoxDecoration(
-                        color: c,
-                        borderRadius: BorderRadius.circular(2)),
+                (SagaColors.heatEmpty, 'No activity'),
+                (SagaColors.heat1, '1–14 min'),
+                (SagaColors.heat2, '15–29 min'),
+                (SagaColors.heat3, '30–59 min'),
+                (SagaColors.heat4, '1–2 hours'),
+                (SagaColors.heatMax, 'Over 2 hours'),
+              ].map((e) => Semantics(
+                    label: e.$2,
+                    child: Container(
+                      width: 11,
+                      height: 11,
+                      margin: const EdgeInsets.only(left: 3),
+                      decoration: BoxDecoration(
+                          color: e.$1,
+                          borderRadius: BorderRadius.circular(2)),
+                    ),
                   )),
-              Text(' More',
+              Text(' 2h+',
                   style: TextStyle(
                       color: SagaColors.fgSubtle, fontSize: 10)),
             ],

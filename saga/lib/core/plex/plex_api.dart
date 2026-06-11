@@ -33,9 +33,33 @@ class PlexApi {
     return items.where((l) => l.isMusic).toList();
   }
 
-  Future<List<PlexBook>> fetchBooks(String sectionKey) =>
-      _fetchList('/library/sections/$sectionKey/all',
-          queryParameters: {'type': 9}, fromJson: PlexBook.fromJson);
+  Future<List<PlexBook>> fetchBooks(String sectionKey) async {
+    const pageSize = 300;
+    var start = 0;
+    final results = <PlexBook>[];
+    while (true) {
+      final response = await _client.get<Map<String, dynamic>>(
+        '/library/sections/$sectionKey/all',
+        queryParameters: {
+          'type': 9,
+          'X-Plex-Container-Start': start,
+          'X-Plex-Container-Size': pageSize,
+        },
+      );
+      final container =
+          response.data?['MediaContainer'] as Map<String, dynamic>?;
+      final page = (container?['Metadata'] as List<dynamic>? ?? [])
+          .map((i) => PlexBook.fromJson(i as Map<String, dynamic>))
+          .toList();
+      results.addAll(page);
+      final total = (container?['totalSize'] as num?)?.toInt() ??
+          (container?['size'] as num?)?.toInt() ??
+          page.length;
+      if (results.length >= total || page.isEmpty) break;
+      start += pageSize;
+    }
+    return results;
+  }
 
   Future<List<PlexBook>> fetchRecentlyAdded(String sectionKey,
           {int limit = 20}) =>
