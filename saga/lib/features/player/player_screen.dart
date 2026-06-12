@@ -883,15 +883,7 @@ class _BottomActions extends ConsumerWidget {
               icon: Icons.speed,
               active: speed != 1.0,
               semanticLabel: 'Playback speed: $speed×',
-              onTap: () {
-                final idx = _speeds.indexOf(speed);
-                final next = _speeds[(idx + 1) % _speeds.length];
-                ref.read(playbackSpeedProvider.notifier).state = next;
-                service.setSpeed(next);
-                if (bookKey != null) {
-                  SettingsStore.setBookSpeed(bookKey!, next);
-                }
-              },
+              onTap: () => _showSpeedSheet(context),
             ),
             _ActionButton(
               label: 'Bookmark',
@@ -960,49 +952,100 @@ class _BottomActions extends ConsumerWidget {
         ((positionMs % 60000) / 1000).round().toString().padLeft(2, '0');
     final defaultLabel = '${track.title} • $mins:$secs';
 
-    final controller = TextEditingController(text: defaultLabel);
+    final labelCtrl = TextEditingController(text: defaultLabel);
+    final noteCtrl = TextEditingController();
+    final bottomPad = MediaQuery.of(context).padding.bottom;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: SagaColors.surface,
-        title: Text('Add bookmark',
-            style: TextStyle(color: SagaColors.fg, fontSize: 16)),
-        content: TextField(
-          controller: controller,
-          style: TextStyle(color: SagaColors.fg),
-          autofocus: true,
-          decoration: InputDecoration(
-            hintText: 'Bookmark name',
-            hintStyle: TextStyle(color: SagaColors.fgSubtle),
-            enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: SagaColors.border)),
-            focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: SagaColors.accent)),
+    // Same sheet shape as the bookmark *edit* sheet — creating and editing the
+    // same object should not go through two different surface types.
+    final saved = await showSagaSheet<bool>(context, (_) => StatefulBuilder(
+      builder: (sheetCtx, _) {
+        final keyboardInset = MediaQuery.of(sheetCtx).viewInsets.bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomPad + keyboardInset),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SagaSheetTitle('Add bookmark',
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: Text(
+                  fmtDuration(Duration(milliseconds: positionMs)),
+                  style: TextStyle(color: SagaColors.fgSubtle, fontSize: 13),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: TextField(
+                  controller: labelCtrl,
+                  autofocus: true,
+                  style: TextStyle(color: SagaColors.fg),
+                  decoration: InputDecoration(
+                    labelText: 'Title',
+                    labelStyle: TextStyle(color: SagaColors.fgMuted),
+                    enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: SagaColors.border)),
+                    focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: SagaColors.accent)),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: TextField(
+                  controller: noteCtrl,
+                  minLines: 1,
+                  maxLines: 3,
+                  style: TextStyle(color: SagaColors.fg),
+                  decoration: InputDecoration(
+                    labelText: 'Note (optional)',
+                    labelStyle: TextStyle(color: SagaColors.fgMuted),
+                    enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: SagaColors.border)),
+                    focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: SagaColors.accent)),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(sheetCtx, false),
+                      child: Text('Cancel',
+                          style: TextStyle(color: SagaColors.fgMuted)),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () => Navigator.pop(sheetCtx, true),
+                      child: Text('Save',
+                          style: TextStyle(color: SagaColors.accent)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, false),
-            child: Text('Cancel', style: TextStyle(color: SagaColors.fgMuted)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, true),
-            child: Text('Save', style: TextStyle(color: SagaColors.accent)),
-          ),
-        ],
-      ),
-    );
+        );
+      },
+    ));
 
-    if (confirmed != true) return;
+    if (saved != true) return;
 
-    final label = controller.text.trim().isEmpty ? defaultLabel : controller.text.trim();
+    final label =
+        labelCtrl.text.trim().isEmpty ? defaultLabel : labelCtrl.text.trim();
+    final note = noteCtrl.text.trim();
     final bm = NamedBookmark(
       id: _uuid(),
       bookRatingKey: key,
       trackRatingKey: track.ratingKey,
       positionMs: positionMs,
       label: label,
+      note: note.isEmpty ? null : note,
       createdAt: DateTime.now(),
     );
     ref.read(bookmarkNotifierProvider(key).notifier).add(bm);
@@ -1015,6 +1058,43 @@ class _BottomActions extends ConsumerWidget {
   void _showCastSheet(BuildContext context) {
     showSagaSheet<void>(context, (_) => _CastSheet(service: service),
         scrollable: false);
+  }
+
+  /// Speed picker sheet — same pattern as the sleep-timer picker, replacing
+  /// the old tap-to-cycle button so every action-row control opens a sheet.
+  void _showSpeedSheet(BuildContext context) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    showSagaSheet<void>(context, (_) => Consumer(
+      builder: (ctx, ref, _) {
+        final current = ref.watch(playbackSpeedProvider);
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomPad + 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SagaSheetTitle('Playback speed',
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
+              ..._speeds.map((s) => ListTile(
+                    title:
+                        Text('$s×', style: TextStyle(color: SagaColors.fg)),
+                    trailing: current == s
+                        ? Icon(Icons.check_rounded, color: SagaColors.accent)
+                        : null,
+                    onTap: () {
+                      ref.read(playbackSpeedProvider.notifier).state = s;
+                      service.setSpeed(s);
+                      if (bookKey != null) {
+                        SettingsStore.setBookSpeed(bookKey!, s);
+                      }
+                      Navigator.pop(ctx);
+                    },
+                  )),
+            ],
+          ),
+        );
+      },
+    ));
   }
 
   void _showSleepTimer(BuildContext context, WidgetRef ref, bool isActive) {

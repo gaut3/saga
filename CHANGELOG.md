@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [1.0.11 - Unreleased]
+## [1.0.11] - 2026-06-12
 
 Stability and hardening release from a full codebase audit.
 
@@ -14,6 +14,8 @@ Stability and hardening release from a full codebase audit.
 - **Cast failures now say why.** When a Cast session fails to start, the sheet shows an error toast with the Cast SDK's reason (e.g. "TIMEOUT (15)") instead of silently returning to the device list. The reason is also written to the diagnostics log. Normal disconnects are not flagged — the SDK reports a reason code even when you end the session yourself, which is logged but never shown as an error.
 
 ### Changed
+- **Adding a bookmark is now a bottom sheet — with a note field.** The Bookmark button opened an `AlertDialog` while *editing* a bookmark used a sheet; creating and editing the same thing now share one surface. Bonus: the note field is available at creation time instead of only when editing afterward.
+- **Playback speed is now a picker sheet.** The speed button cycled through presets one tap at a time (five taps to get from 1.0× to 2.5×, easy to overshoot). It now opens a sheet listing all speeds with the current one marked — same pattern as the sleep-timer picker, making every player action-row button open a sheet.
 - **Consistent error states on every screen.** Home, Browse, Authors, Collections, In Progress, and the library book list now share one error view: a friendly message with a Retry button. Previously each tab did its own thing — Browse had no retry, and Authors/In Progress displayed the raw exception text, which could include your server's address (the kind of thing that ends up in screenshots attached to bug reports). Raw error details now go to the diagnostics log instead of the screen.
 - **Every bottom sheet now has a drag handle and a consistent title.** The handle is applied automatically by the shared sheet, replacing three hand-rolled variants (one was a different size and opacity); sheet titles were split between two sizes and three font weights and are now one shared style.
 - **Text consistency pass.** "Sign Out" → "Sign out", "Active Library" → "Active library", "Data & Backup" → "Data & backup", "Plex Server" → "Plex server", "New Collection" → "New collection", "Select Library" → "Select library" (sentence case app-wide); trailing periods removed from one-line empty states.
