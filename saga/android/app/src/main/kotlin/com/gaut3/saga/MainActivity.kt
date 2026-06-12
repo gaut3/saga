@@ -36,7 +36,13 @@ class MainActivity : AudioServiceActivity() {
             channel?.invokeMethod("onSessionStateChanged", mapOf("connected" to true))
         }
         override fun onSessionEnded(session: CastSession, error: Int) {
-            channel?.invokeMethod("onSessionStateChanged", sessionPayload(false, error))
+            // "ended" marks this as a terminal state, not a failure: the SDK
+            // reports a non-zero reason code even for deliberate disconnects,
+            // which should be logged but never shown to the user as an error.
+            channel?.invokeMethod(
+                "onSessionStateChanged",
+                sessionPayload(false, error) + mapOf("ended" to true)
+            )
         }
         override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
             channel?.invokeMethod("onSessionStateChanged", mapOf("connected" to true))

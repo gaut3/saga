@@ -322,7 +322,7 @@ class _DayTab extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.only(top: 24),
             child: Center(
-              child: Text('No listening history yet.',
+              child: Text('No listening history yet',
                   style: TextStyle(color: SagaColors.fgSubtle)),
             ),
           )
@@ -1480,7 +1480,7 @@ class _MonthTabState extends ConsumerState<_MonthTab> {
     final bottom = MediaQuery.of(context).padding.bottom;
     showSagaSheet(context, (ctx) {
       return Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, bottom + 20),
+        padding: EdgeInsets.fromLTRB(20, 4, 20, bottom + 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1493,7 +1493,7 @@ class _MonthTabState extends ConsumerState<_MonthTab> {
                     style: TextStyle(
                       color: SagaColors.fg,
                       fontSize: 18,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),

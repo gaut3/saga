@@ -203,15 +203,8 @@ class _TopPills extends ConsumerWidget {
             expand: false,
             builder: (ctx2, scrollController) => Column(
               children: [
-                const _SheetHandle(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                  child: Text('Chapters',
-                      style: TextStyle(
-                          color: SagaColors.fg,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold)),
-                ),
+                const SagaSheetHandle(),
+                SagaSheetTitle('Chapters'),
                 if (m4bAsync.isLoading)
                   const Padding(
                     padding: EdgeInsets.all(24),
@@ -236,6 +229,9 @@ class _TopPills extends ConsumerWidget {
           );
         },
       ),
+      // DraggableScrollableSheet manages its own column; the handle is
+      // rendered inside it instead of by showSagaSheet's wrapper.
+      showHandle: false,
     );
   }
 
@@ -250,15 +246,8 @@ class _TopPills extends ConsumerWidget {
             expand: false,
             builder: (ctx2, scrollController) => Column(
               children: [
-                const _SheetHandle(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                  child: Text('Bookmarks',
-                      style: TextStyle(
-                          color: SagaColors.fg,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold)),
-                ),
+                const SagaSheetHandle(),
+                SagaSheetTitle('Bookmarks'),
                 Expanded(
                   child: bookmarks.isEmpty
                       ? Center(
@@ -305,6 +294,7 @@ class _TopPills extends ConsumerWidget {
           );
         },
       ),
+      showHandle: false,
     );
   }
 
@@ -323,15 +313,8 @@ class _TopPills extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _SheetHandle(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Text('Bookmark',
-                    style: TextStyle(
-                        color: SagaColors.fg,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold)),
-              ),
+              SagaSheetTitle('Bookmark',
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0)),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Text(
@@ -459,25 +442,9 @@ class _TopPills extends ConsumerWidget {
         maxChildSize: 0.85,
         builder: (_, ctrl) => Column(
           children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: SagaColors.fgSubtle.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Row(children: [
-                Text('Sessions',
-                    style: TextStyle(
-                        color: SagaColors.fg,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700)),
-              ]),
-            ),
+            const SagaSheetHandle(),
+            SagaSheetTitle('Sessions',
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8)),
             Expanded(
               child: ListView.builder(
                 controller: ctrl,
@@ -531,6 +498,7 @@ class _TopPills extends ConsumerWidget {
           ],
         ),
       ),
+      showHandle: false,
     );
   }
 }
@@ -571,26 +539,6 @@ class _PillButton extends StatelessWidget {
   }
 }
 
-class _SheetHandle extends StatelessWidget {
-  const _SheetHandle();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 4),
-      child: Center(
-        child: Container(
-          width: 40,
-          height: 4,
-          decoration: BoxDecoration(
-            color: SagaColors.fgSubtle,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 // ── Cover art ─────────────────────────────────────────────────────────────────
 
@@ -1364,17 +1312,13 @@ class _CastSheetState extends ConsumerState<_CastSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Cast to device',
-              style: TextStyle(
-                  color: SagaColors.fg,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
+          SagaSheetTitle('Cast to device',
+              padding: const EdgeInsets.fromLTRB(0, 4, 0, 16)),
           StreamBuilder<CastState>(
             stream: _cast.stateStream,
             initialData: _cast.state,
@@ -1433,11 +1377,8 @@ class _CastSheetState extends ConsumerState<_CastSheet> {
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Row(
                         children: [
-                          const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
+                          const AnimatedSagaMark(
+                              size: 22, state: SagaMarkState.buffering),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(

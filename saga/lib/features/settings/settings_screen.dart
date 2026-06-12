@@ -220,7 +220,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _SectionHeader('Server'),
                 _SettingsTile(
                   icon: Icons.dns_outlined,
-                  title: 'Plex Server',
+                  title: 'Plex server',
                   subtitle: client.serverUri == null
                       ? 'Not connected'
                       : _redactServer
@@ -247,7 +247,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const SizedBox(height: 16),
 
                 // ── Data ───────────────────────────────────────────────────────
-                _SectionHeader('Data & Backup'),
+                _SectionHeader('Data & backup'),
                 _SettingsTile(
                   icon: Icons.upload_outlined,
                   title: 'Export progress',
@@ -273,7 +273,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _SectionHeader('Account'),
                 _SettingsTile(
                   icon: Icons.logout,
-                  title: 'Sign Out',
+                  title: 'Sign out',
                   subtitle: 'Sign out of your Plex account',
                   iconColor: Colors.redAccent,
                   onTap: () => _confirmSignOut(ref),
@@ -364,6 +364,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       await ProgressBackup.export();
     } catch (e) {
+      AppLog.log('backup', 'export failed: $e');
       if (mounted) showSagaToast(context, 'Export failed: $e', isError: true);
     }
   }
@@ -454,10 +455,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ref.read(completionRevisionProvider.notifier).state++;
       ref.read(bookmarkRevisionProvider.notifier).state++;
 
+      AppLog.log('backup',
+          'restored ${data.positions.length} positions '
+          '(${conflicts.length} conflicts, ${skipKeys.length} kept local)');
       if (mounted) showSagaToast(context, 'Progress restored');
     } on StateError {
+      AppLog.log('backup', 'import failed: file had no readable path or bytes');
       if (mounted) showSagaToast(context, 'Could not read the selected file.', isError: true);
     } catch (e) {
+      AppLog.log('backup', 'import failed: $e');
       if (mounted) showSagaToast(context, 'Import failed: $e', isError: true);
     }
   }
@@ -544,16 +550,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              'Default sleep timer',
-              style: TextStyle(
-                  color: SagaColors.fg,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16),
-            ),
-          ),
+          SagaSheetTitle('Default sleep timer',
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
           ..._sleepTimerOptions.map((opt) => ListTile(
                 title: Text(opt.label, style: TextStyle(color: SagaColors.fg)),
                 trailing: _defaultSleepTimer == opt.minutes
@@ -579,14 +577,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-              child: Text(title,
-                  style: TextStyle(
-                      color: SagaColors.fg,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18)),
-            ),
+            SagaSheetTitle(title,
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 10)),
             ConstrainedBox(
               constraints: BoxConstraints(
                   maxHeight: MediaQuery.of(ctx).size.height * 0.7),
@@ -621,14 +613,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
-              child: Text('Acknowledgements',
-                  style: TextStyle(
-                      color: SagaColors.fg,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18)),
-            ),
+            SagaSheetTitle('Acknowledgements',
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4)),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               child: Text(
@@ -917,14 +903,8 @@ class _PlayerAnimationTile extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text('Player animation',
-                  style: TextStyle(
-                      color: SagaColors.fg,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16)),
-            ),
+            SagaSheetTitle('Player animation',
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
             ..._options.asMap().entries.map((e) {
               final selected = markMotion == e.key;
               return ListTile(
@@ -1105,7 +1085,7 @@ class _LibraryPickerTile extends ConsumerWidget {
 
     return _SettingsTile(
       icon: Icons.library_books_outlined,
-      title: 'Active Library',
+      title: 'Active library',
       subtitle: subtitle,
       onTap: () => _showPicker(context, ref,
           librariesAsync.valueOrNull ?? [], selectedKey),
@@ -1117,18 +1097,12 @@ class _LibraryPickerTile extends ConsumerWidget {
     if (libraries.isEmpty) return;
     final bottomPad = MediaQuery.of(context).padding.bottom;
     showSagaSheet<void>(context, (_) => Padding(
-        padding: EdgeInsets.fromLTRB(0, 24, 0, 24 + bottomPad),
+        padding: EdgeInsets.fromLTRB(0, 4, 0, 24 + bottomPad),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Text('Select Library',
-                  style: TextStyle(
-                      color: SagaColors.fg,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold)),
-            ),
+            SagaSheetTitle('Select library',
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12)),
             ...libraries.map((lib) {
               final isSelected = selectedKey == lib.key ||
                   (selectedKey == null && lib == libraries.first);
@@ -1470,16 +1444,8 @@ class _StorageTileState extends State<_StorageTile> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(
-                'Downloaded books',
-                style: TextStyle(
-                    color: SagaColors.fg,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16),
-              ),
-            ),
+            SagaSheetTitle('Downloaded books',
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
             ConstrainedBox(
               constraints: BoxConstraints(
                   maxHeight: MediaQuery.of(ctx).size.height * 0.55),

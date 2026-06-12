@@ -47,14 +47,8 @@ class _CollectionDetailScreenState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text('Set cover',
-                  style: TextStyle(
-                      color: SagaColors.fg,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16)),
-            ),
+            SagaSheetTitle('Set cover',
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
             if (books.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(16),

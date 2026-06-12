@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../shared/widgets/saga_error_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
@@ -21,8 +23,10 @@ class CollectionsScreen extends ConsumerWidget {
       body: libraryKeyAsync.when(
         loading: () =>
             Center(child: CircularProgressIndicator(color: SagaColors.accent)),
-        error: (e, _) => Center(
-          child: Text('$e', style: TextStyle(color: SagaColors.fgMuted)),
+        error: (e, _) => SagaErrorView(
+          message: 'Could not load your library',
+          error: e,
+          onRetry: () => ref.invalidate(activeLibraryKeyProvider),
         ),
         data: (key) {
           if (key == null) {
@@ -127,7 +131,7 @@ class _CollectionsContent extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: SagaColors.surface,
-        title: Text('New Collection',
+        title: Text('New collection',
             style: TextStyle(color: SagaColors.fg)),
         content: TextField(
           controller: controller,

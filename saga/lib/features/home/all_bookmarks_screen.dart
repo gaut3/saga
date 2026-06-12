@@ -244,27 +244,8 @@ class _BookmarkTile extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 12, bottom: 4),
-                child: Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: SagaColors.fgSubtle,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Text('Bookmark',
-                    style: TextStyle(
-                        color: SagaColors.fg,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold)),
-              ),
+              SagaSheetTitle('Bookmark',
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0)),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: Text(

@@ -1,4 +1,6 @@
 ﻿import 'package:flutter/material.dart';
+
+import '../../shared/widgets/saga_error_view.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,8 +24,10 @@ class AuthorsScreen extends ConsumerWidget {
       body: libraryKeyAsync.when(
         loading: () =>
             Center(child: CircularProgressIndicator(color: SagaColors.accent)),
-        error: (e, _) => Center(
-          child: Text('$e', style: TextStyle(color: SagaColors.fgMuted)),
+        error: (e, _) => SagaErrorView(
+          message: 'Could not load your library',
+          error: e,
+          onRetry: () => ref.invalidate(activeLibraryKeyProvider),
         ),
         data: (key) {
           if (key == null) {
@@ -79,8 +83,10 @@ class _AuthorsContent extends ConsumerWidget {
             ),
           ),
           error: (e, _) => SliverToBoxAdapter(
-            child: Center(
-              child: Text('$e', style: TextStyle(color: SagaColors.fgMuted)),
+            child: SagaErrorView(
+              message: 'Could not load authors',
+              error: e,
+              onRetry: () => ref.invalidate(authorsProvider(libraryKey)),
             ),
           ),
           data: (authors) => SliverList(
@@ -166,8 +172,10 @@ class _AuthorBooksScreen extends ConsumerWidget {
       body: booksAsync.when(
         loading: () =>
             Center(child: CircularProgressIndicator(color: SagaColors.accent)),
-        error: (e, _) => Center(
-          child: Text('$e', style: TextStyle(color: SagaColors.fgMuted)),
+        error: (e, _) => SagaErrorView(
+          message: 'Could not load this author\'s books',
+          error: e,
+          onRetry: () => ref.invalidate(booksByAuthorProvider(author.ratingKey)),
         ),
         data: (books) => GridView.builder(
           padding: const EdgeInsets.all(16),

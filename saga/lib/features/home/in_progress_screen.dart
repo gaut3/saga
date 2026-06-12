@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../shared/widgets/saga_error_view.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -31,8 +33,11 @@ class InProgressScreen extends ConsumerWidget {
       body: booksAsync.when(
         loading: () => Center(
             child: CircularProgressIndicator(color: SagaColors.accent)),
-        error: (e, _) => Center(
-            child: Text('$e', style: TextStyle(color: SagaColors.fgMuted))),
+        error: (e, _) => SagaErrorView(
+          message: 'Could not load your books',
+          error: e,
+          onRetry: () => ref.invalidate(continueListeningProvider(libraryKey)),
+        ),
         data: (books) {
           return CustomScrollView(
             slivers: [

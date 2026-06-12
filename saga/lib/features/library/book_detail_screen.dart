@@ -69,14 +69,8 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Text('Add to collection',
-                      style: TextStyle(
-                          color: SagaColors.fg,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16)),
-                ),
+                SagaSheetTitle('Add to collection',
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
                 if (collections.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(16),

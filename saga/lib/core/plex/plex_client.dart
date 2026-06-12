@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 
+import '../diagnostics/app_log.dart';
 import '../storage/download_store.dart';
 import 'models/plex_track.dart';
 
@@ -76,6 +77,9 @@ class PlexClient {
       onError: (err, handler) {
         final status = err.response?.statusCode;
         if ((status == 401 || status == 403) && !client._handlingUnauthorized) {
+          // Explains any surprise sign-out: the server rejected the token.
+          AppLog.log('auth',
+              '$status from ${err.requestOptions.uri} — clearing token');
           client._handlingUnauthorized = true;
           client._token = null;
           dio.options.headers.remove('X-Plex-Token');

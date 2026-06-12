@@ -1,4 +1,6 @@
 ﻿import 'package:flutter/material.dart';
+
+import '../../shared/widgets/saga_error_view.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -30,30 +32,16 @@ class BooksScreen extends ConsumerWidget {
         loading: () => Center(
           child: CircularProgressIndicator(color: SagaColors.accent),
         ),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
-              const SizedBox(height: 12),
-              Text('$e',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: SagaColors.fgMuted)),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => ref.invalidate(booksProvider(library.key)),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: SagaColors.accent),
-                child: Text('Retry', style: TextStyle(color: SagaColors.accentFg)),
-              ),
-            ],
-          ),
+        error: (e, _) => SagaErrorView(
+          message: 'Could not load books',
+          error: e,
+          onRetry: () => ref.invalidate(booksProvider(library.key)),
         ),
         data: (books) {
           if (books.isEmpty) {
             return Center(
               child: Text(
-                'No audiobooks found in this library.',
+                'No audiobooks found in this library',
                 style: TextStyle(color: SagaColors.fgMuted),
               ),
             );

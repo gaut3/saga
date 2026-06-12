@@ -81,22 +81,34 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         mediaItem.add(_trackToMediaItem(track));
         _prefetchArtwork(track);
       }
-    }, onError: (Object e, StackTrace st) {});
+    }, onError: (Object e, StackTrace st) {
+      // Should never fire — which is exactly why it's worth recording.
+      AppLog.log('playback', 'listener error: $e');
+    });
     _player.positionStream
-        .listen(_updateChapterMediaItem, onError: (Object e, StackTrace st) {});
+        .listen(_updateChapterMediaItem, onError: (Object e, StackTrace st) {
+      // Should never fire — which is exactly why it's worth recording.
+      AppLog.log('playback', 'listener error: $e');
+    });
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
         _markBookCompleted();
         stop();
       }
-    }, onError: (Object e, StackTrace st) {});
+    }, onError: (Object e, StackTrace st) {
+      // Should never fire — which is exactly why it's worth recording.
+      AppLog.log('playback', 'listener error: $e');
+    });
 
     // Pause when headphones are unplugged (ACTION_AUDIO_BECOMING_NOISY).
     // audio_service does not handle this automatically.
     AudioSession.instance.then((session) {
       session.becomingNoisyEventStream.listen((_) {
         if (_player.playing) pause();
-      }, onError: (Object e, StackTrace st) {});
+      }, onError: (Object e, StackTrace st) {
+      // Should never fire — which is exactly why it's worth recording.
+      AppLog.log('playback', 'listener error: $e');
+    });
 
       // Duck volume on transient interruptions (nav prompts, notifications);
       // pause on longer interruptions. Don't auto-resume after pause — user
@@ -119,7 +131,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
               break;
           }
         }
-      }, onError: (Object e, StackTrace st) {});
+      }, onError: (Object e, StackTrace st) {
+      // Should never fire — which is exactly why it's worth recording.
+      AppLog.log('playback', 'listener error: $e');
+    });
     });
   }
 

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/audio/m4b_chapter_reader.dart';
+import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/providers.dart';
 import '../../core/storage/book_download_store.dart';
@@ -30,6 +31,8 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
   };
   service.onStreamError = (bookRatingKey, position) async {
     try {
+      AppLog.log('playback',
+          'auto-reload after stream error: book $bookRatingKey');
       final tracks = await ref.read(tracksProvider(bookRatingKey).future);
       if (tracks.isEmpty) return;
       final idx = position != null
@@ -46,8 +49,9 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
       await service.setSpeed(savedSpeed);
       ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
       await service.play();
-    } catch (_) {
+    } catch (e) {
       // Server still unreachable — player stays paused, user can retry manually
+      AppLog.log('playback', 'auto-reload failed: $e');
     }
   };
   return service;
@@ -193,7 +197,9 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
         completed: {...state.completed, key},
         downloadedBooks: {...state.downloadedBooks, bookRatingKey},
       );
-    } catch (_) {
+    } catch (e) {
+      // The UI only shows "Retry N failed" — the reason lives here.
+      AppLog.log('download', 'track $key failed: $e');
       // Remove the partially-written file: it's never played (playback is
       // gated on DownloadStore metadata) but would sit invisibly on disk —
       // the storage manager only lists completed downloads.
@@ -398,7 +404,9 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
           _pausedRemaining = null;
         }
       }
-    }, onError: (Object e, StackTrace st) {});
+    }, onError: (Object e, StackTrace st) {
+      AppLog.log('sleep-timer', 'playback watch error: $e');
+    });
   }
 
   void _cancelAll() {

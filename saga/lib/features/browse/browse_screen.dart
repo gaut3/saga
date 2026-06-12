@@ -14,6 +14,7 @@ import '../home/home_screen.dart' show BookProgressOverlay;
 import '../library/book_detail_screen.dart';
 import '../player/player_provider.dart';
 import '../../core/utils/format.dart';
+import '../../shared/widgets/saga_error_view.dart';
 import '../../shared/widgets/saga_sheet.dart';
 import '../../shared/widgets/saga_toast.dart';
 
@@ -40,9 +41,10 @@ class BrowseScreen extends ConsumerWidget {
       body: libraryKeyAsync.when(
         loading: () => Center(
             child: CircularProgressIndicator(color: SagaColors.accent)),
-        error: (_, _) => Center(
-          child: Text('Could not load library',
-              style: TextStyle(color: SagaColors.fgMuted)),
+        error: (e, _) => SagaErrorView(
+          message: 'Could not load your library',
+          error: e,
+          onRetry: () => ref.invalidate(activeLibraryKeyProvider),
         ),
         data: (key) {
           if (key == null) {
@@ -150,16 +152,9 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(
+            SagaSheetTitle(
                 'Add ${keys.length} book${keys.length == 1 ? '' : 's'} to…',
-                style: TextStyle(
-                    color: SagaColors.fg,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16),
-              ),
-            ),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
             if (collections.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -542,10 +537,12 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                   ),
                 ),
               ),
-              error: (_, _) => SliverToBoxAdapter(
-                child: Center(
-                  child: Text('Could not load books',
-                      style: TextStyle(color: SagaColors.fgMuted)),
+              error: (e, _) => SliverToBoxAdapter(
+                child: SagaErrorView(
+                  message: 'Could not load books',
+                  error: e,
+                  onRetry: () =>
+                      ref.invalidate(booksProvider(widget.libraryKey)),
                 ),
               ),
               data: (books) {

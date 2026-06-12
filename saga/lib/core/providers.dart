@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'audio/m4b_chapter_reader.dart';
+import 'diagnostics/app_log.dart';
 import 'plex/models/plex_author.dart';
 import 'plex/models/plex_book.dart';
 import 'plex/models/plex_library.dart';
@@ -92,6 +93,8 @@ final activeLibraryKeyProvider = FutureProvider<String?>((ref) async {
         e.type == DioExceptionType.connectionError) {
       // Saved URI unreachable — clear it and re-discover (tries local and
       // relay in parallel, picks whichever answers first).
+      AppLog.log('server',
+          'saved URI unreachable (${e.type.name}) — re-discovering');
       await client.clearServerUri();
       ref.read(activeServerUriProvider.notifier).state = null;
       if (!await discover()) return null;

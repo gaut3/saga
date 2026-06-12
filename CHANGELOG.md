@@ -9,7 +9,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 Stability and hardening release from a full codebase audit.
 
+### Added
+- **Local diagnostics log + "Copy diagnostics".** Errors are now recorded to a small local log — no telemetry, nothing is transmitted; the log only leaves the device when you tap the new **Settings → About → Copy diagnostics** tile. Covered: crashes, playback stream failures and the automatic reload after them, failed book loads, download failure reasons (the UI only said "Retry N failed", never why), Cast session activity, token rejection by the server (explains any surprise sign-out), server re-discovery after a stale address, backup import/export failures, and the position store's wipe-on-corruption decision. Entries are redacted at write time: the Plex token and any server address are masked before a line ever reaches disk, so a pasted bug report can't leak credentials.
+- **Cast failures now say why.** When a Cast session fails to start, the sheet shows an error toast with the Cast SDK's reason (e.g. "TIMEOUT (15)") instead of silently returning to the device list. The reason is also written to the diagnostics log. Normal disconnects are not flagged — the SDK reports a reason code even when you end the session yourself, which is logged but never shown as an error.
+
 ### Changed
+- **Consistent error states on every screen.** Home, Browse, Authors, Collections, In Progress, and the library book list now share one error view: a friendly message with a Retry button. Previously each tab did its own thing — Browse had no retry, and Authors/In Progress displayed the raw exception text, which could include your server's address (the kind of thing that ends up in screenshots attached to bug reports). Raw error details now go to the diagnostics log instead of the screen.
+- **Every bottom sheet now has a drag handle and a consistent title.** The handle is applied automatically by the shared sheet, replacing three hand-rolled variants (one was a different size and opacity); sheet titles were split between two sizes and three font weights and are now one shared style.
+- **Text consistency pass.** "Sign Out" → "Sign out", "Active Library" → "Active library", "Data & Backup" → "Data & backup", "Plex Server" → "Plex server", "New Collection" → "New collection", "Select Library" → "Select library" (sentence case app-wide); trailing periods removed from one-line empty states.
+- **Cast device search shows the Saga mark.** While scanning for Chromecast devices, the sheet shows the brand buffering animation instead of a stock spinner, matching the connecting state.
 - **Cast device picker is now a native Saga sheet.** Choosing a Chromecast no longer opens the old system-style dialog; devices appear live inside the same bottom sheet as the rest of the app, with a searching indicator while discovery runs. Device discovery now also stops when the sheet closes (active scanning costs battery).
 
 ### Fixed

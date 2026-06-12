@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
+import '../diagnostics/app_log.dart';
+
 class M4bChapter {
   final String title;
   final Duration start;
@@ -42,7 +44,9 @@ class M4bChapterReader {
       } finally {
         await raf.close();
       }
-    } catch (_) {
+    } catch (e) {
+      // Silent "Chapter N missing" reports start here — one line per attempt.
+      AppLog.log('chapters', 'parse failed for local file: $e');
       return [];
     }
   }
@@ -86,7 +90,8 @@ class M4bChapterReader {
       }
 
       return [];
-    } catch (_) {
+    } catch (e) {
+      AppLog.log('chapters', 'parse failed for stream: $e');
       return [];
     }
   }

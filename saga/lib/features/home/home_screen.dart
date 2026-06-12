@@ -6,6 +6,7 @@ import '../../core/plex/models/plex_track.dart';
 import '../../core/providers.dart';
 import '../../core/storage/settings_store.dart';
 import '../../shared/widgets/book_cover_image.dart';
+import '../../shared/widgets/saga_error_view.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/chapter_store.dart';
 import '../../core/storage/completed_books_store.dart';
@@ -87,7 +88,10 @@ class HomeScreen extends ConsumerWidget {
         loading: () => Center(
           child: CircularProgressIndicator(color: SagaColors.accent),
         ),
-        error: (e, _) => _ErrorView(error: e, onRetry: () => ref.invalidate(activeLibraryKeyProvider)),
+        error: (e, _) => SagaErrorView(
+            message: 'Could not load your library',
+            error: e,
+            onRetry: () => ref.invalidate(activeLibraryKeyProvider)),
         data: (key) {
           if (key == null) {
             return _NoServerView(onSelectServer: () => _openServerSelection(context, ref));
@@ -423,38 +427,6 @@ class _BookTile extends ConsumerWidget {
 
 }
 
-
-class _ErrorView extends StatelessWidget {
-  final Object error;
-  final VoidCallback onRetry;
-
-  const _ErrorView({required this.error, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
-          const SizedBox(height: 12),
-          Text('$error',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: SagaColors.fgMuted)),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: onRetry,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: SagaColors.accent,
-              foregroundColor: SagaColors.accentFg,
-            ),
-            child: const Text('Retry'),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _NoServerView extends StatelessWidget {
   final VoidCallback onSelectServer;

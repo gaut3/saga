@@ -1,5 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../diagnostics/app_log.dart';
+
 const _boxName = 'positions';
 
 class BookPosition {
@@ -51,7 +53,12 @@ class BookmarkStore {
       // files from an unclean OS kill) so the caller can surface a real error
       // rather than silently deleting every saved position.
       final msg = e.message.toLowerCase();
-      if (!msg.contains('wrong key') && !msg.contains('corrupt')) rethrow;
+      if (!msg.contains('wrong key') && !msg.contains('corrupt')) {
+        AppLog.log('storage', 'positions box failed to open (kept): $e');
+        rethrow;
+      }
+      // The most destructive decision in the app — it must leave a trace.
+      AppLog.log('storage', 'positions box wiped after decryption failure: $e');
       await Hive.deleteBoxFromDisk(_boxName);
       _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
     }

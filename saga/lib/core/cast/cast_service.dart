@@ -40,12 +40,20 @@ class CastService {
     switch (call.method) {
       case 'onSessionStateChanged':
         final connected = call.arguments['connected'] as bool? ?? false;
+        final ended = call.arguments['ended'] as bool? ?? false;
         final errorMessage = call.arguments['errorMessage'] as String?;
         if (errorMessage != null) {
           final code = call.arguments['errorCode'];
           final reason = '$errorMessage ($code)';
-          AppLog.log('cast', 'session failed: $reason');
-          _errorController.add(reason);
+          if (ended) {
+            // Session end always carries a reason code, even for a deliberate
+            // Disconnect — log it (useful for unexpected drops) but don't
+            // surface it as an error.
+            AppLog.log('cast', 'session ended: $reason');
+          } else {
+            AppLog.log('cast', 'session failed: $reason');
+            _errorController.add(reason);
+          }
         }
         _setState(connected ? CastState.connected : CastState.idle);
       case 'onRoutesChanged':
