@@ -113,6 +113,32 @@ Saga is local-first with no analytics, no crash reporting SDK, and nothing trans
 - Progress export is credentials-free (no token, no server URL)
 - No Google Fonts, no Firebase, no third-party analytics of any kind
 
+### Network audit — every endpoint Saga contacts
+
+| Endpoint | When | Why |
+|----------|------|-----|
+| `plex.tv/api/v2/pins` | Sign-in | PIN-based OAuth flow (request + poll) |
+| `app.plex.tv/auth` | Sign-in | Sign-in page, opened in your **system browser** — never an in-app WebView |
+| `plex.tv/api/v2/resources` | Sign-in / reconnect | Discover your Plex servers |
+| `plex.tv/users/sign_out.json` | Sign-out | Invalidate the session (best-effort) |
+| **Your own Plex server** | Always | Everything else: library browsing, streaming, cover art, playback progress |
+| `api.github.com/repos/gaut3/saga/releases/latest` | **Opt-in only, default off** | "Check for updates on launch" (Settings → About) — one anonymous GET per launch when enabled |
+
+**That's the complete list.** Two documented exceptions put the Plex token in a URL query instead of a header — notification artwork (Android `MediaSession` fetches art without custom headers) and Chromecast (the Cast device fetches the stream itself) — both go only to your own server. Details in the [privacy policy](PRIVACY_POLICY.md).
+
+**Verify it yourself:** point [PCAPdroid](https://github.com/emanuele-f/PCAPdroid) (on-device, no root) at Saga — you'll see traffic only to your own server and `plex.tv` (plus `api.github.com` if you enabled update checks).
+
+### Permissions — every entry in the manifest
+
+| Permission | Why |
+|------------|-----|
+| `INTERNET` | Streaming from your Plex server |
+| `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_MEDIA_PLAYBACK` | Background playback with the media notification |
+| `WAKE_LOCK` | Keep playback alive with the screen off |
+| `POST_NOTIFICATIONS` | The media playback notification (Android 13+) |
+| `WRITE_EXTERNAL_STORAGE` (≤ Android 9) / `READ_EXTERNAL_STORAGE` (≤ Android 12) | Legacy download support on old Android versions; auto-dropped on modern Android |
+| `ACCESS_NETWORK_STATE` | Wi-Fi-only downloads setting (merged in by `connectivity_plus`; read-only network-type query) |
+
 ---
 
 ## Setup

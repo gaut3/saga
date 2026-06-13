@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/providers.dart';
+import '../../core/stats/streak.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/completed_books_store.dart';
 import '../../core/storage/listening_history_store.dart';
@@ -14,6 +15,7 @@ import '../../shared/widgets/book_cover_image.dart';
 import '../library/book_detail_screen.dart';
 import '../player/player_provider.dart';
 import '../player/player_screen.dart';
+import '../../core/utils/date_math.dart';
 import '../../core/utils/format.dart';
 
 // ── Enum ──────────────────────────────────────────────────────────────────────
@@ -195,43 +197,8 @@ Color _heatTextColor(int ms) =>
         ? const Color(0xCC1E1410) // muted ink
         : const Color(0xCCF4EAD8); // muted cream
 
-({int current, int longest}) _computeStreak() {
-  final today = DateTime.now();
-  final todayClean = DateTime(today.year, today.month, today.day);
-
-  // If today has no listening yet the streak is still alive — it just hasn't
-  // been extended yet. Start counting from yesterday in that case.
-  final startRaw = ListeningHistoryStore.getMs(todayClean) > 0
-      ? todayClean
-      : todayClean.subtract(const Duration(days: 1));
-  final start = DateTime(startRaw.year, startRaw.month, startRaw.day);
-
-  int current = 0;
-  var d = start;
-  while (ListeningHistoryStore.getMs(d) > 0) {
-    current++;
-    // Renormalize to midnight after each subtraction — Duration(days:1) is
-    // exactly 24h and lands at 23:00 across the spring-forward DST boundary,
-    // causing the history store lookup to miss and the streak to end early.
-    final prev = d.subtract(const Duration(days: 1));
-    d = DateTime(prev.year, prev.month, prev.day);
-  }
-
-  int longest = 0;
-  int run = 0;
-  for (int i = 0; i < 365; i++) {
-    final raw = todayClean.subtract(Duration(days: i));
-    final day = DateTime(raw.year, raw.month, raw.day);
-    if (ListeningHistoryStore.getMs(day) > 0) {
-      run++;
-      if (run > longest) longest = run;
-    } else {
-      run = 0;
-    }
-  }
-  if (current > longest) longest = current;
-  return (current: current, longest: longest);
-}
+({int current, int longest}) _computeStreak() =>
+    computeStreak(msForDay: ListeningHistoryStore.getMs);
 
 const TextStyle _monoLabel = TextStyle(
   fontSize: 11,
@@ -1028,10 +995,10 @@ class _MonthTabState extends ConsumerState<_MonthTab> {
     final today = DateTime.now();
     final todayClean = DateTime(today.year, today.month, today.day);
 
-    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
-    // Mon-first calendar: Mon=0, Tue=1, … Sun=6
-    final calOffset =
-        (DateTime(_month.year, _month.month, 1).weekday - 1) % 7;
+    // Mon-first calendar: leadingBlanks gives Mon=0, Tue=1, … Sun=6
+    final grid = monthGridMetrics(_month.year, _month.month);
+    final daysInMonth = grid.daysInMonth;
+    final calOffset = grid.leadingBlanks;
 
     final monthStart = DateTime(_month.year, _month.month, 1);
     final monthEnd = DateTime(_month.year, _month.month, daysInMonth);
@@ -1116,9 +1083,8 @@ class _MonthTabState extends ConsumerState<_MonthTab> {
     final canGoBack = _month.isAfter(DateTime(_month.year - 1, _month.month));
     final canGoForward = _month.isBefore(_maxMonth);
 
-    // Grid cell count (pad to multiple of 7)
-    final totalCells = calOffset + daysInMonth;
-    final gridCount = totalCells + (7 - totalCells % 7) % 7;
+    // Grid cell count (padded to a multiple of 7)
+    final gridCount = grid.gridCount;
 
     final bottomPad = MediaQuery.of(context).padding.bottom;
     return ListView(
@@ -1654,26 +1620,10 @@ class _TotalTab extends ConsumerWidget {
     final totalHours = totalMs ~/ 3600000;
 
     // Streak
-    int longestStreak = 0;
-    int run = 0;
-    for (int i = 0; i < 365; i++) {
-      final day = todayClean.subtract(Duration(days: i));
-      if (ListeningHistoryStore.getMs(day) > 0) {
-        run++;
-        if (run > longestStreak) longestStreak = run;
-      } else {
-        run = 0;
-      }
-    }
-    final currentStreak = _computeStreak().current;
-    if (currentStreak > longestStreak) longestStreak = currentStreak;
+    final longestStreak = _computeStreak().longest;
 
-    // 13-week heatmap — normalize heatStart to midnight (subtract can land on
-    // 23:00 or 01:00 local time when crossing a DST boundary).
-    final rawHeatStart =
-        todayClean.subtract(Duration(days: today.weekday - 1 + 7 * 12));
-    final heatStart =
-        DateTime(rawHeatStart.year, rawHeatStart.month, rawHeatStart.day);
+    // 13-week heatmap
+    final heatStart = heatmapStart(todayClean);
     final heatData = ListeningHistoryStore.getRange(heatStart, todayClean);
 
     // Riverpod data (requires libraryKey)
@@ -1859,11 +1809,7 @@ class _HeatmapCard extends StatelessWidget {
                       EdgeInsets.only(right: col < _cols - 1 ? _gap : 0),
                   child: Column(
                     children: List.generate(_rows, (row) {
-                      final rawDate =
-                          heatStart.add(Duration(days: col * 7 + row));
-                      // Normalize to midnight so the lookup matches getRange keys.
-                      final date = DateTime(
-                          rawDate.year, rawDate.month, rawDate.day);
+                      final date = addDays(heatStart, col * 7 + row);
                       final isFuture = date.isAfter(todayClean);
                       final isToday = date == todayClean;
                       final ms =

@@ -693,6 +693,26 @@
             <a href="https://github.com/gaut3/saga" style="color:var(--amber);text-decoration:none">See the README &rarr;</a>
           </p>
         </details>
+        <details class="download-details">
+          <summary>Verify your download</summary>
+          <p class="download-note">
+            Every release ships a SHA-256 checksum. Compare it against the
+            <code style="font-family:monospace;color:var(--amber);font-size:12px">saga.apk.sha256</code>
+            file on the release page:<br>
+            Windows: <code style="font-family:monospace;color:var(--amber);font-size:12px">certutil -hashfile saga.apk SHA256</code><br>
+            Linux / macOS: <code style="font-family:monospace;color:var(--amber);font-size:12px">sha256sum saga.apk</code>
+          </p>
+          <p class="download-note">
+            Releases also carry Sigstore build provenance &mdash; cryptographic proof the APK
+            was built by GitHub Actions from this repository's public source. With the
+            GitHub CLI:<br>
+            <code style="font-family:monospace;color:var(--amber);font-size:12px">gh attestation verify saga.apk --repo gaut3/saga</code>
+          </p>
+          <p class="download-note">
+            Releases are published <em>immutable</em>: assets cannot be modified or replaced
+            after publishing.
+          </p>
+        </details>
       </div>
 
     </div>
@@ -708,7 +728,7 @@
 
       <div class="privacy-card" data-index="01">
         <h3>No analytics</h3>
-        <p>No Firebase, no Crashlytics, no tracking SDKs of any kind. The only outbound traffic goes to your own Plex server and plex.tv for sign-in. Nothing else.</p>
+        <p>No Firebase, no Crashlytics, no tracking SDKs of any kind. The only outbound traffic goes to your own Plex server and plex.tv for sign-in &mdash; plus GitHub, only if you opt in to update checks. Every endpoint and permission is documented in the <a href="https://github.com/gaut3/saga#network-audit--every-endpoint-saga-contacts" style="color:var(--amber);text-decoration:none">network audit</a>, and you can verify it yourself with PCAPdroid.</p>
       </div>
 
       <div class="privacy-card" data-index="02">

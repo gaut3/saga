@@ -34,6 +34,14 @@ jobs:
 
       - run: flutter pub get
 
+      - run: flutter analyze
+
+      - name: Run tests
+        env:
+          # The DST regression tests target Europe/Oslo boundaries.
+          TZ: Europe/Oslo
+        run: flutter test
+
       - name: Build signed release APK
         env:
           KEYSTORE_PATH: keystore.jks
@@ -42,21 +50,34 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: flutter build apk --release --obfuscate --split-debug-info=build/symbols
 
-      - name: Rename to stable filename
+      # arm64-only APK for IzzyOnDroid (their repo has a ~30 MB per-app
+      # budget; the universal APK is ~50 MB). saga.apk stays the headline
+      # asset for direct downloads.
+      - name: Build arm64-only APK
+        env:
+          KEYSTORE_PATH: keystore.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: flutter build apk --release --obfuscate --split-debug-info=build/symbols --split-per-abi --target-platform android-arm64
+
+      - name: Rename to stable filenames
         run: |
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk dist/saga.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/saga-arm64-v8a.apk
 
-      - name: Generate SHA-256 checksum
+      - name: Generate SHA-256 checksums
         run: |
           cd dist
           sha256sum saga.apk > saga.apk.sha256
-          cat saga.apk.sha256
+          sha256sum saga-arm64-v8a.apk > saga-arm64-v8a.apk.sha256
+          cat *.sha256
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: saga/dist/saga.apk
+          subject-path: saga/dist/*.apk
 
       - name: Extract changelog section
         run: awk '/^## /{n++; next} n==1' ../CHANGELOG.md > ../RELEASE_NOTES.md
@@ -69,3 +90,5 @@ jobs:
           files: |
             saga/dist/saga.apk
             saga/dist/saga.apk.sha256
+            saga/dist/saga-arm64-v8a.apk
+            saga/dist/saga-arm64-v8a.apk.sha256

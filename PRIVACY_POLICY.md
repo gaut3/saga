@@ -23,7 +23,7 @@ All of the above is encrypted at rest using AES-256 (Hive) with a key stored in 
 
 ## What Saga transmits
 
-Saga contacts exactly two external services:
+Saga contacts exactly two external services (plus one strictly opt-in check, below):
 
 **1. plex.tv** — for sign-in and server discovery only.
 - `plex.tv/api/v2/pins` — to initiate and complete the PIN-based OAuth flow.
@@ -34,6 +34,8 @@ Saga contacts exactly two external services:
 Your Plex account is subject to [Plex's own Privacy Policy](https://www.plex.tv/about/privacy-legal/).
 
 **2. Your own Plex server** — for everything else: browsing your library, streaming audio, fetching cover art, and reporting playback progress.
+
+**3. api.github.com — only if you turn it on.** Settings → About has a "Check for updates on launch" toggle, **off by default**. When enabled, the app makes a single anonymous GET request to `api.github.com/repos/gaut3/saga/releases/latest` once per launch to compare the latest release tag with your installed version. The request carries no account data, no token, and nothing about your library; GitHub sees your IP address, as with any web request. Turning the toggle off stops the request entirely.
 
 **Nothing else.** No analytics service, no crash reporting SDK, no advertising network, no third-party API of any kind. The Manrope font is bundled inside the app — no Google Fonts CDN call is made.
 

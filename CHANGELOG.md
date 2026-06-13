@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Optional update check — off by default.** Settings → About has a new "Check for updates on launch" toggle. When (and only when) you enable it, the app makes a single anonymous request to GitHub once per launch and shows "Update available: vX.Y.Z" on the existing Check for updates tile. Nothing about you or your library is sent, and the toggle being off means no request at all — documented in the privacy policy.
+- **Regression test suite now gates every release.** ~70 tests cover the bug classes that have actually shipped: calendar math across DST changes (the source of seven previous bugs — streaks, heatmaps, week strips), multi-track position math, the resume-rewind curve, M4B chapter parsing against malformed files, and a full backup → restore round-trip. A failing test now blocks the release build in CI, and every push runs the suite.
+- **Smaller arm64-only APK published with each release.** Alongside the universal `saga.apk`, releases now include `saga-arm64-v8a.apk` (roughly half the size; right for nearly all phones from ~2016 on) with its own checksum and build attestation. Also the asset prepared for the planned IzzyOnDroid listing.
+
+### Changed
+- **Old playback session details are now pruned after 12 months.** The per-book session log (which powers the History day view) kept up to 200 events per book forever; events older than a year are now removed at app start. Listening totals, streaks, heatmaps, and finished-book records are unaffected — only the tap-to-jump session detail rows expire.
+
+---
+
 ## [1.0.11] - 2026-06-12
 
 Stability and hardening release from a full codebase audit.

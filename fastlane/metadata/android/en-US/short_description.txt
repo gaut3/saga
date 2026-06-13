@@ -1,0 +1,1 @@
+Self-hosted audiobook player for Plex — local-first, private, no telemetry

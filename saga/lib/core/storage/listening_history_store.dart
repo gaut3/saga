@@ -1,5 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../utils/date_math.dart';
+
 class CompletedBook {
   final String ratingKey;
   final String? title;
@@ -67,14 +69,11 @@ class ListeningHistoryStore {
   /// Returns every day in [start..end] mapped to ms listened (0 if none).
   static Map<DateTime, int> getRange(DateTime start, DateTime end) {
     final result = <DateTime, int>{};
-    var d = DateTime(start.year, start.month, start.day);
-    final last = DateTime(end.year, end.month, end.day);
+    var d = dayOnly(start);
+    final last = dayOnly(end);
     while (!d.isAfter(last)) {
       result[d] = getMs(d);
-      // Renormalize to midnight after each add — Duration arithmetic crosses
-      // DST boundaries and can leave d at 01:00 or 23:00 local time.
-      final next = d.add(const Duration(days: 1));
-      d = DateTime(next.year, next.month, next.day);
+      d = addDays(d, 1);
     }
     return result;
   }
@@ -120,12 +119,11 @@ class ListeningHistoryStore {
   /// Returns all days with activity in [start..end], newest first.
   static List<DateTime> activeDays(DateTime start, DateTime end) {
     final days = <DateTime>[];
-    var d = DateTime(start.year, start.month, start.day);
-    final last = DateTime(end.year, end.month, end.day);
+    var d = dayOnly(start);
+    final last = dayOnly(end);
     while (!d.isAfter(last)) {
       if (getMs(d) > 0 || getCompleted(d).isNotEmpty) days.add(d);
-      final next = d.add(const Duration(days: 1));
-      d = DateTime(next.year, next.month, next.day);
+      d = addDays(d, 1);
     }
     return days.reversed.toList();
   }

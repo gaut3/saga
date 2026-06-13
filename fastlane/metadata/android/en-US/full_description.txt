@@ -1,0 +1,24 @@
+Saga is a self-hosted audiobook player for your own Plex library. Local-first and private: no analytics, no crash SDKs, no third-party services — the only outbound traffic is to your own Plex server and plex.tv for sign-in.
+
+Features:
+
+• Stream or download for fully offline listening (Wi-Fi-only option)
+• Never lose your place — position saved continuously, smart rewind on resume
+• M4B chapter support with chapter-aware lock-screen controls
+• Named bookmarks with notes, and a full session log per book
+• Listening stats: streaks, daily/monthly/lifetime views, heatmaps
+• Custom collections with "Up Next in Series"
+• Sleep timer (time- or chapter-based, playback-aware)
+• Per-book playback speed, configurable skip intervals
+• Chromecast support
+• Progress backup/restore to a credentials-free JSON file
+• Three hand-tuned themes and an animated brand mark that reacts to real loudness
+
+Privacy and security:
+
+• Plex token stored in the Android Keystore, never logged
+• All local data AES-256 encrypted
+• Cloud backup disabled; downloads in app-private storage
+• Every endpoint and permission documented in the README network audit
+
+Requires a Plex Media Server with an audiobook library. Saga is an independent, third-party client and is not affiliated with Plex Inc.

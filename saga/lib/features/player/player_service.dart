@@ -21,6 +21,8 @@ import '../../core/storage/listen_days_store.dart';
 import '../../core/storage/listening_history_store.dart';
 import '../../core/storage/playback_log_store.dart';
 import '../../core/storage/timeline_queue_store.dart';
+import 'resume_rewind.dart';
+import 'track_position_math.dart';
 
 class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player = AudioPlayer();
@@ -245,10 +247,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// the live resume-after-pause path ([play]) and the resume-after-load path
   /// ([loadBook]) so the two curves can never drift apart. ~50 ms per second
   /// away (5 s per 100 s), no rewind under 5 s, capped at 60 s.
-  static int _resumeRewindMs(int awaySeconds) {
-    if (!SettingsStore.autoRewindEnabled) return 0;
-    return awaySeconds <= 5 ? 0 : (awaySeconds * 50).clamp(0, 60000);
-  }
+  static int _resumeRewindMs(int awaySeconds) =>
+      resumeRewindMs(awaySeconds, enabled: SettingsStore.autoRewindEnabled);
 
   @override
   Future<void> play() async {
@@ -463,18 +463,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// without re-saving, so undo cannot itself be undone.
   Future<void> undoSeek() async {
     if (_previousAbsolutePositionMs < 0) return;
-    final target = _previousAbsolutePositionMs;
+    final targetMs = _previousAbsolutePositionMs;
     _previousAbsolutePositionMs = -1;
     canUndoSeekNotifier.value = false;
-    var ms = target.clamp(0, totalBookDurationMs);
-    for (var i = 0; i < _tracks.length; i++) {
-      final dur = _tracks[i].durationMs;
-      if (ms <= dur || i == _tracks.length - 1) {
-        await _player.seek(Duration(milliseconds: ms), index: i);
-        return;
-      }
-      ms -= dur;
-    }
+    final target = trackFromAbsolute(_trackDurationsMs, targetMs);
+    if (target == null) return;
+    await _player.seek(Duration(milliseconds: target.positionMs),
+        index: target.index);
   }
 
   /// Seek to [absolutePosition] within the book, resolving the correct
@@ -482,15 +477,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   Future<void> seekAbsolute(Duration absolutePosition) async {
     _previousAbsolutePositionMs = absolutePositionMs;
     canUndoSeekNotifier.value = true;
-    var ms = absolutePosition.inMilliseconds.clamp(0, totalBookDurationMs);
-    for (var i = 0; i < _tracks.length; i++) {
-      final dur = _tracks[i].durationMs;
-      if (ms <= dur || i == _tracks.length - 1) {
-        await _player.seek(Duration(milliseconds: ms), index: i);
-        return;
-      }
-      ms -= dur;
-    }
+    final target =
+        trackFromAbsolute(_trackDurationsMs, absolutePosition.inMilliseconds);
+    if (target == null) return;
+    await _player.seek(Duration(milliseconds: target.positionMs),
+        index: target.index);
   }
 
   void logSleepTimer() => _logEvent('sleepTimer');
@@ -657,14 +648,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     return _tracks[index];
   }
 
-  int _absolutePositionMs(int currentTrackPositionMs) {
-    final index = _player.currentIndex ?? 0;
-    var offset = 0;
-    for (var i = 0; i < index && i < _tracks.length; i++) {
-      offset += _tracks[i].durationMs;
-    }
-    return offset + currentTrackPositionMs;
-  }
+  List<int> get _trackDurationsMs => [for (final t in _tracks) t.durationMs];
+
+  int _absolutePositionMs(int currentTrackPositionMs) => absoluteFromTrack(
+      _trackDurationsMs, _player.currentIndex ?? 0, currentTrackPositionMs);
 
   void _broadcastState(PlaybackEvent event) {
     final playing = _player.playing;

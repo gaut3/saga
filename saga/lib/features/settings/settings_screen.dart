@@ -23,6 +23,7 @@ import '../../core/storage/named_bookmark_store.dart';
 import '../../core/storage/playback_log_store.dart';
 import '../../core/storage/progress_backup.dart';
 import '../../core/storage/settings_store.dart';
+import '../../core/update/update_checker.dart';
 import '../auth/server_selection_screen.dart';
 import '../player/player_provider.dart';
 import '../../shared/widgets/saga_mark.dart' show SagaWordmark, SagaMark;
@@ -63,6 +64,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late int _animationSyncDelay;
   late int _defaultSleepTimer;
   late bool _redactServer;
+  late bool _updateCheck;
   String _version = '';
 
   @override
@@ -77,6 +79,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _animationSyncDelay = SettingsStore.animationSyncDelayMs;
     _defaultSleepTimer = SettingsStore.defaultSleepTimerMinutes;
     _redactServer = SettingsStore.redactServerAddress;
+    _updateCheck = SettingsStore.updateCheckEnabled;
     PackageInfo.fromPlatform().then((info) {
       if (mounted) setState(() => _version = 'v${info.version}');
     }).catchError((_) {});
@@ -301,15 +304,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   subtitle: 'Open-source licenses & thanks',
                   onTap: () => _showAcknowledgements(context),
                 ),
-                _SettingsTile(
-                  icon: Icons.system_update_outlined,
-                  title: 'Check for updates',
-                  subtitle: 'View releases on GitHub',
-                  onTap: () => launchUrl(
-                    Uri.parse('https://github.com/gaut3/saga/releases'),
-                    mode: LaunchMode.externalApplication,
-                  ),
+                _SwitchTile(
+                  icon: Icons.update_outlined,
+                  title: 'Check for updates on launch',
+                  subtitle:
+                      'Off by default — one request to GitHub per launch when on',
+                  value: _updateCheck,
+                  onChanged: (v) async {
+                    await SettingsStore.setUpdateCheckEnabled(v);
+                    if (!mounted) return;
+                    setState(() => _updateCheck = v);
+                    // Re-run (or clear) the cached result immediately.
+                    ref.invalidate(updateCheckProvider);
+                  },
                 ),
+                Builder(builder: (context) {
+                  final update = ref.watch(updateCheckProvider).valueOrNull;
+                  final hasUpdate = update?.isNewer == true;
+                  return _SettingsTile(
+                    icon: hasUpdate
+                        ? Icons.new_releases_outlined
+                        : Icons.system_update_outlined,
+                    title: 'Check for updates',
+                    subtitle: hasUpdate
+                        ? 'Update available: ${update!.latestTag}'
+                        : 'View releases on GitHub',
+                    onTap: () => launchUrl(
+                      Uri.parse('https://github.com/gaut3/saga/releases'),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                  );
+                }),
                 _SettingsTile(
                   icon: Icons.bug_report_outlined,
                   title: 'Copy diagnostics',

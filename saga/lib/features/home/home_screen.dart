@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/providers.dart';
+import '../../core/stats/streak.dart';
 import '../../core/storage/settings_store.dart';
 import '../../shared/widgets/book_cover_image.dart';
 import '../../shared/widgets/saga_error_view.dart';
@@ -14,6 +15,7 @@ import '../../core/storage/custom_collection_store.dart';
 import '../../core/storage/listening_history_store.dart';
 import '../../core/storage/want_to_read_store.dart';
 import '../../core/theme/saga_theme.dart';
+import '../../core/utils/date_math.dart';
 import '../../shared/widgets/saga_mark.dart'
     show SagaWordmark, AnimatedSagaMark, SagaMarkState;
 import '../auth/server_selection_screen.dart';
@@ -468,24 +470,8 @@ String _homeFmtMs(int ms) {
   return '<1m';
 }
 
-int _homeStreak() {
-  final today = DateTime.now();
-  final todayClean = DateTime(today.year, today.month, today.day);
-  // If today has no listening yet the streak is still alive — it just hasn't
-  // been extended yet. Start counting from yesterday in that case.
-  final startRaw = ListeningHistoryStore.getMs(todayClean) > 0
-      ? todayClean
-      : todayClean.subtract(const Duration(days: 1));
-  final start = DateTime(startRaw.year, startRaw.month, startRaw.day);
-  int streak = 0;
-  var d = start;
-  while (ListeningHistoryStore.getMs(d) > 0) {
-    streak++;
-    final prev = d.subtract(const Duration(days: 1));
-    d = DateTime(prev.year, prev.month, prev.day);
-  }
-  return streak;
-}
+int _homeStreak() =>
+    computeStreak(msForDay: ListeningHistoryStore.getMs).current;
 
 class _ListeningStrip extends ConsumerWidget {
   const _ListeningStrip();
@@ -496,18 +482,8 @@ class _ListeningStrip extends ConsumerWidget {
     ref.watch(historyRevisionProvider);
     final libraryKey = ref.watch(activeLibraryKeyProvider).valueOrNull;
 
-    final today = DateTime.now();
-    final todayClean = DateTime(today.year, today.month, today.day);
-    final mondayRaw = todayClean.subtract(Duration(days: today.weekday - 1));
-    // Renormalize: Duration subtraction lands at 23:00 on a DST spring-forward
-    // Sunday, shifting every weekday entry one hour early and zeroing bar data.
-    final monday = DateTime(mondayRaw.year, mondayRaw.month, mondayRaw.day);
-    // Renormalize each entry: Duration(days:N) is exactly N×24h and can land at
-    // 01:00 across a spring-forward DST boundary, breaking the isToday comparison.
-    final weekDays = List.generate(7, (i) {
-      final raw = monday.add(Duration(days: i));
-      return DateTime(raw.year, raw.month, raw.day);
-    });
+    final todayClean = dayOnly(DateTime.now());
+    final weekDays = mondayWeek(todayClean);
     final weekMs = weekDays.map(ListeningHistoryStore.getMs).toList();
     final weekTotal = weekMs.fold(0, (a, b) => a + b);
     final streak = _homeStreak();

@@ -91,6 +91,14 @@ Future<void> _run() async {
     AudioLevel.instance.setDelay(SettingsStore.animationSyncDelayMs);
     AudioLevel.instance.start();
 
+    // Retention: the Day tab only renders recent days, so playback-log events
+    // older than 12 months are dead weight. Prune before session reconciliation
+    // so a reconcile never resurrects a just-pruned book.
+    final pruned = await PlaybackLogStore.pruneOldEvents();
+    if (pruned > 0) {
+      AppLog.log('storage', 'pruned $pruned playback-log events (>12 months)');
+    }
+
     _reconcileDanglingSessions();
 
     runApp(const ProviderScope(child: App()));

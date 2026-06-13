@@ -1,0 +1,212 @@
+diff --git a/android/src/main/java/com/ryanheise/just_audio/AudioPlayer.java b/android/src/main/java/com/ryanheise/just_audio/AudioPlayer.java
+index 590bab3..78c74dc 100644
+--- a/android/src/main/java/com/ryanheise/just_audio/AudioPlayer.java
++++ b/android/src/main/java/com/ryanheise/just_audio/AudioPlayer.java
+@@ -102,6 +102,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
+ 
+     private ExoPlayer player;
+     private Integer audioSessionId;
++    // Saga: real-loudness visualizer tap (no RECORD_AUDIO). RMS of the decoded
++    // PCM is posted to the main thread and emitted on JustAudioPlugin's RMS
++    // EventChannel.
++    private final android.os.Handler mainHandler =
++        new android.os.Handler(android.os.Looper.getMainLooper());
+     private MediaSource mediaSource;
+     private Integer currentIndex;
+     private final Handler handler = new Handler(Looper.getMainLooper());
+@@ -302,10 +307,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
+     }
+ 
+     private boolean updateCurrentIndex() {
+-        Integer newIndex = player.getCurrentMediaItemIndex();
+-        // newIndex is never null.
+-        // currentIndex is sometimes null.
+-        if (!newIndex.equals(currentIndex)) {
++        int newIndex = player.getCurrentMediaItemIndex();
++        if (currentIndex == null || newIndex != currentIndex) {
+             currentIndex = newIndex;
+             return true;
+         }
+@@ -765,7 +768,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
+ 
+     private void ensurePlayerInitialized() {
+         if (player == null) {
+-            ExoPlayer.Builder builder = new ExoPlayer.Builder(context);
++            ExoPlayer.Builder builder = new ExoPlayer.Builder(context, createRmsRenderersFactory());
+             if (loadControl != null) {
+                 builder.setLoadControl(loadControl);
+             }
+@@ -791,7 +794,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
+                         new AudioOffloadPreferences.Builder()
+                             .setIsGaplessSupportRequired(!offloadSchedulingEnabled)
+                             .setIsSpeedChangeSupportRequired(!offloadSchedulingEnabled)
+-                            .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
++                            // Saga: DISABLED (was ENABLED) so audio runs through the
++                            // software processor chain — our TeeAudioProcessor needs the
++                            // PCM. Offload routes audio straight to hardware, bypassing the
++                            // tee (the loudness visualizer would go dead). Speech decode is
++                            // cheap, so the battery cost is negligible.
++                            .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED)
+                             .build()
+                     )
+                     .build()
+@@ -801,6 +809,91 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
+         }
+     }
+ 
++    // ── Saga: real-loudness tap ───────────────────────────────────────────────
++    // A RenderersFactory whose audio sink PREPENDS a TeeAudioProcessor to the
++    // default chain via DefaultAudioProcessorChain(tee) — which keeps the stock
++    // silence-skip + Sonic processors AFTER the tee. The order is load-bearing;
++    // do NOT reorder when re-applying this patch after a just_audio bump:
++    //   1) Prepend, don't replace — replacing the chain with [tee] alone would
++    //      drop Sonic and break playback speed/pitch. The tee must be ADDED to
++    //      the default chain, not substituted for it.
++    //   2) Tee runs BEFORE Sonic, so the RMS reflects the content's loudness,
++    //      not the playback tempo (1.5x wouldn't inflate the meter).
++    // The tee observes decoded PCM in-process — no RECORD_AUDIO — and emits a
++    // throttled RMS level on JustAudioPlugin's RMS EventChannel.
++    private androidx.media3.exoplayer.RenderersFactory createRmsRenderersFactory() {
++        return new androidx.media3.exoplayer.DefaultRenderersFactory(context) {
++            @Override
++            protected androidx.media3.exoplayer.audio.AudioSink buildAudioSink(
++                    android.content.Context context,
++                    boolean enableFloatOutput,
++                    boolean enableAudioTrackPlaybackParams) {
++                androidx.media3.exoplayer.audio.TeeAudioProcessor tee =
++                    new androidx.media3.exoplayer.audio.TeeAudioProcessor(new RmsAudioBufferSink());
++                return new androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
++                    .setEnableFloatOutput(enableFloatOutput)
++                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
++                    .setAudioProcessorChain(
++                        new androidx.media3.exoplayer.audio.DefaultAudioSink.DefaultAudioProcessorChain(tee))
++                    .build();
++            }
++        };
++    }
++
++    private class RmsAudioBufferSink
++            implements androidx.media3.exoplayer.audio.TeeAudioProcessor.AudioBufferSink {
++        private int encoding = androidx.media3.common.C.ENCODING_PCM_16BIT;
++        private long lastEmitNs = 0L;
++
++        @Override
++        public void flush(int sampleRateHz, int channelCount, int encoding) {
++            this.encoding = encoding;
++        }
++
++        @Override
++        public void handleBuffer(java.nio.ByteBuffer buffer) {
++            final int pos = buffer.position();
++            final int lim = buffer.limit();
++            double sumSq = 0.0;
++            int n = 0;
++            if (encoding == androidx.media3.common.C.ENCODING_PCM_16BIT) {
++                // Subsample (step 64 bytes = every 32nd sample); absolute gets so
++                // we never disturb the buffer position.
++                for (int i = pos; i + 1 < lim; i += 64) {
++                    int lo = buffer.get(i) & 0xFF;
++                    int hi = buffer.get(i + 1);
++                    short s = (short) ((hi << 8) | lo);
++                    double v = s / 32768.0;
++                    sumSq += v * v;
++                    n++;
++                }
++            } else if (encoding == androidx.media3.common.C.ENCODING_PCM_FLOAT) {
++                java.nio.ByteBuffer fb =
++                    buffer.duplicate().order(java.nio.ByteOrder.nativeOrder());
++                for (int i = pos; i + 4 <= lim; i += 128) {
++                    float f = fb.getFloat(i);
++                    sumSq += (double) f * f;
++                    n++;
++                }
++            } else {
++                return; // unsupported encoding → Dart uses synthetic envelope
++            }
++            if (n == 0) return;
++            final long now = System.nanoTime();
++            if (now - lastEmitNs < 20_000_000L) return; // ~50 Hz
++            lastEmitNs = now;
++            final double rms = Math.sqrt(sumSq / n);
++            mainHandler.post(new Runnable() {
++                @Override
++                public void run() {
++                    if (JustAudioPlugin.rmsEventChannel != null) {
++                        JustAudioPlugin.rmsEventChannel.success(Double.valueOf(rms));
++                    }
++                }
++            });
++        }
++    }
++
+     private void setAudioAttributes(int contentType, int flags, int usage) {
+         AudioAttributes.Builder builder = new AudioAttributes.Builder();
+         builder.setContentType(contentType);
+@@ -886,7 +979,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
+     // broadcastPendingPlaybackEvent, only the last event is
+     // broadcast.
+     private void enqueuePlaybackEvent() {
+-        final Map<String, Object> event = new HashMap<String, Object>();
+         pendingPlaybackEvent = createPlaybackEvent();
+     }
+ 
+@@ -1095,7 +1187,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
+ 
+     static Map<String, Object> mapOf(Object... args) {
+         Map<String, Object> map = new HashMap<>();
+-        for (int i = 0; i < args.length; i += 2) {
++        for (int i = 0; i + 1 < args.length; i += 2) {
+             map.put((String)args[i], args[i + 1]);
+         }
+         return map;
+diff --git a/android/src/main/java/com/ryanheise/just_audio/JustAudioPlugin.java b/android/src/main/java/com/ryanheise/just_audio/JustAudioPlugin.java
+index c3ed48b..9b9c270 100644
+--- a/android/src/main/java/com/ryanheise/just_audio/JustAudioPlugin.java
++++ b/android/src/main/java/com/ryanheise/just_audio/JustAudioPlugin.java
+@@ -2,8 +2,6 @@ package com.ryanheise.just_audio;
+ 
+ import android.content.Context;
+ import androidx.annotation.NonNull;
+-import io.flutter.embedding.engine.FlutterEngine;
+-import io.flutter.embedding.engine.FlutterEngine.EngineLifecycleListener;
+ import io.flutter.embedding.engine.plugins.FlutterPlugin;
+ import io.flutter.plugin.common.BinaryMessenger;
+ import io.flutter.plugin.common.MethodCall;
+@@ -17,6 +15,10 @@ import io.flutter.plugin.common.MethodChannel.Result;
+ public class JustAudioPlugin implements FlutterPlugin {
+     private MethodChannel channel;
+     private MainMethodCallHandler methodCallHandler;
++    // Saga: global RMS channel for the real-loudness visualizer. Registered at
++    // attach (not per-player) so Dart can listen at app start, before any player
++    // connects. Emitted by AudioPlayer's TeeAudioProcessor.
++    static BetterEventChannel rmsEventChannel;
+ 
+     @Override
+     public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
+@@ -26,18 +28,7 @@ public class JustAudioPlugin implements FlutterPlugin {
+ 
+         channel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods");
+         channel.setMethodCallHandler(methodCallHandler);
+-        @SuppressWarnings("deprecation")
+-        FlutterEngine engine = binding.getFlutterEngine();
+-        engine.addEngineLifecycleListener(new EngineLifecycleListener() {
+-            @Override
+-            public void onPreEngineRestart() {
+-                methodCallHandler.dispose();
+-            }
+-
+-            @Override
+-            public void onEngineWillDestroy() {
+-            }
+-        });
++        rmsEventChannel = new BetterEventChannel(messenger, "com.ryanheise.just_audio.rms");
+     }
+ 
+     @Override
+@@ -46,5 +37,6 @@ public class JustAudioPlugin implements FlutterPlugin {
+         methodCallHandler = null;
+ 
+         channel.setMethodCallHandler(null);
++        rmsEventChannel = null;
+     }
+ }

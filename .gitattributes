@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Patch files must stay byte-exact (LF context lines) or git apply rejects
+# them on Windows checkouts — never normalize.
+*.patch -text

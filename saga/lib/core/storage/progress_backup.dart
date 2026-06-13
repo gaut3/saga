@@ -57,18 +57,21 @@ class PositionConflict {
 class ProgressBackup {
   static const _version = 4;
 
-  static Future<void> export() async {
+  /// Serializes all stores into the backup map. Pure store reads — no file
+  /// IO and no [PlexClient] dependency, so the round-trip is unit-testable.
+  static Map<String, dynamic> buildBackupMap(
+      {String? serverMachineIdentifier}) {
     final positions = BookmarkStore.allPositions();
     final completed = CompletedBooksStore.allCompleted().toList();
     final namedBookmarks = NamedBookmarkStore.getAll();
     final collections = CustomCollectionStore.getAll();
     final history = ListeningHistoryStore.exportAll();
 
-    final data = {
+    return {
       'version': _version,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
-      if (PlexClient.instance.machineIdentifier != null)
-        'serverMachineIdentifier': PlexClient.instance.machineIdentifier,
+      if (serverMachineIdentifier != null)
+        'serverMachineIdentifier': serverMachineIdentifier,
       'positions': {
         for (final e in positions.entries) e.key: e.value.toMap(),
       },
@@ -82,6 +85,11 @@ class ProgressBackup {
       'listenDays': ListenDaysStore.exportAll(),
       'playbackLog': PlaybackLogStore.exportAll(),
     };
+  }
+
+  static Future<void> export() async {
+    final data = buildBackupMap(
+        serverMachineIdentifier: PlexClient.instance.machineIdentifier);
 
     final json = jsonEncode(data);
     final dir = await getTemporaryDirectory();
@@ -109,6 +117,12 @@ class ProgressBackup {
       throw StateError('File picker returned a file with no readable path or bytes.');
     }
 
+    return parseBackupJson(content);
+  }
+
+  /// Parses backup JSON into [ProgressBackupData]. Returns null for unknown
+  /// versions. Pure — no file IO, so the round-trip is unit-testable.
+  static ProgressBackupData? parseBackupJson(String content) {
     final Map<String, dynamic> json =
         jsonDecode(content) as Map<String, dynamic>;
     final version = json['version'] as int? ?? 0;

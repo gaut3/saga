@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../diagnostics/app_log.dart';
 
@@ -30,14 +31,14 @@ class M4bChapterReader {
       final raf = await file.open();
       try {
         final head = await raf.read(_readSize.clamp(0, total));
-        final result = _parse(head);
+        final result = parseBytes(head);
         if (result.isNotEmpty) return result;
-        var scanned = _scanForMoov(head);
+        var scanned = scanForMoov(head);
         if (scanned.isNotEmpty) return scanned;
         if (total > _readSize) {
           await raf.setPosition(total - _readSize);
           final tail = await raf.read(_readSize);
-          scanned = _scanForMoov(tail);
+          scanned = scanForMoov(tail);
           if (scanned.isNotEmpty) return scanned;
         }
         return [];
@@ -78,7 +79,7 @@ class M4bChapterReader {
       // Always fetch the first block
       final firstBlock = await _fetchRange(dio, url, 0, _readSize, headers: headers);
       if (firstBlock != null) {
-        final result = _parse(firstBlock);
+        final result = parseBytes(firstBlock);
         if (result.isNotEmpty) return result;
       }
 
@@ -86,7 +87,7 @@ class M4bChapterReader {
       if (!moovFirst && total != null && total > _readSize) {
         final start = (total - _readSize).clamp(0, total);
         final lastBlock = await _fetchRange(dio, url, start, total, headers: headers);
-        if (lastBlock != null) return _scanForMoov(lastBlock);
+        if (lastBlock != null) return scanForMoov(lastBlock);
       }
 
       return [];
@@ -144,7 +145,8 @@ class M4bChapterReader {
   }
 
   /// Scan a chunk for a moov atom that doesn't start at offset 0.
-  static List<M4bChapter> _scanForMoov(Uint8List d) {
+  @visibleForTesting
+  static List<M4bChapter> scanForMoov(Uint8List d) {
     for (int i = 0; i + 8 <= d.length; i++) {
       if (d[i + 4] == 0x6D && d[i + 5] == 0x6F &&
           d[i + 6] == 0x6F && d[i + 7] == 0x76) {
@@ -161,7 +163,10 @@ class M4bChapterReader {
 
   // ── atom parsers ──────────────────────────────────────────────────────────────
 
-  static List<M4bChapter> _parse(Uint8List d) {
+  /// Parse a chunk that starts at an atom boundary (top-level entry point;
+  /// public for tests — production callers are [fromFile] and [fromUrl]).
+  @visibleForTesting
+  static List<M4bChapter> parseBytes(Uint8List d) {
     int offset = 0;
     while (offset + 8 <= d.length) {
       final size = _u32(d, offset);

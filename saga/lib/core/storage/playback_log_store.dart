@@ -1,5 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../utils/date_math.dart';
+
 class AudioLogEvent {
   final String type;
   final String trackRatingKey;
@@ -33,6 +35,7 @@ class PlaybackLogStore {
   static late Box _box;
   static const _boxName = 'playback_log';
   static const _maxPerBook = 200;
+  static const _retentionDays = 365;
 
   static Future<void> init(List<int> encKey) async {
     final cipher = HiveAesCipher(encKey);
@@ -81,6 +84,35 @@ class PlaybackLogStore {
       if (k.startsWith('log_')) out[k] = _box.get(key);
     }
     return out;
+  }
+
+  /// Drops events older than [_retentionDays] — the per-book 200-event cap
+  /// bounds each book, but a large library keeps 200 events per book forever;
+  /// the History Day tab only renders recent days, so old events are dead
+  /// weight in box size and init time. Events with a missing or invalid
+  /// timestamp are dropped too (validate values, not just presence). A book's
+  /// key is deleted entirely when nothing remains. Returns the number of
+  /// events removed. Called once on app start.
+  static Future<int> pruneOldEvents({DateTime? now}) async {
+    final cutoff = addDays(dayOnly(now ?? DateTime.now()), -_retentionDays)
+        .millisecondsSinceEpoch;
+    var removed = 0;
+    for (final key in _box.keys.toList()) {
+      if (!key.toString().startsWith('log_')) continue;
+      final list = (_box.get(key) as List?)?.cast<Map>() ?? const <Map>[];
+      final kept = [
+        for (final m in list)
+          if (m['ts'] is int && (m['ts'] as int) >= cutoff) m
+      ];
+      if (kept.length == list.length) continue;
+      removed += list.length - kept.length;
+      if (kept.isEmpty) {
+        await _box.delete(key);
+      } else {
+        await _box.put(key, kept);
+      }
+    }
+    return removed;
   }
 
   /// Merges backed-up logs per book: events are deduped by (timestamp, type,

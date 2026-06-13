@@ -105,6 +105,14 @@ class SettingsStore {
     }
   }
 
+  // Opt-in launch-time update check (one GET to api.github.com when enabled).
+  // Default OFF — the no-background-network principle; the user opts in.
+  static bool get updateCheckEnabled =>
+      _box.get('updateCheck', defaultValue: false) as bool;
+
+  static Future<void> setUpdateCheckEnabled(bool v) =>
+      _box.put('updateCheck', v);
+
   // Mask server address in Settings for screenshots/recordings.
   static bool get redactServerAddress =>
       _box.get('redactServerAddress', defaultValue: false) as bool;

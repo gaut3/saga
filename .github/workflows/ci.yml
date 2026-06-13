@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['saga/**', '.github/workflows/ci.yml']
+  pull_request:
+    paths: ['saga/**', '.github/workflows/ci.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: saga
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter analyze
+
+      - name: Run tests
+        env:
+          # The DST regression tests target Europe/Oslo boundaries.
+          TZ: Europe/Oslo
+        run: flutter test

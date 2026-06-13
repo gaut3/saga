@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/storage/settings_store.dart';
+import '../core/update/update_checker.dart';
 import '../shared/widgets/mini_player_pill.dart';
 import 'authors/authors_screen.dart';
 import 'browse/browse_screen.dart';
@@ -33,6 +35,13 @@ class _MainShellState extends ConsumerState<MainShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Opt-in, default off: one anonymous GET to GitHub per launch. Never
+      // blocks startup; the result is cached in the provider for Settings.
+      if (mounted && SettingsStore.updateCheckEnabled) {
+        ref.read(updateCheckProvider);
+      }
+    });
   }
 
   @override
