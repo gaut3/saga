@@ -1,8 +1,8 @@
 # Saga — design handoff (canonical)
 
 Single source of truth for the Saga audiobook player's visual system. Everything in
-this folder is **current**. Superseded material lives in `../_archive/` (kept for
-reference, not for building from).
+this folder is **current**. Superseded material lives in `../Old design/` (kept locally
+for reference, not tracked in git, not for building from).
 
 > **Read this first.** Saga's mark went through a generational change. If you opened an
 > older file describing a *three-spine* mark or a Manrope-800 wordmark, that's Gen 1 and
@@ -19,8 +19,7 @@ saga_handoff/
 │                         (tokens.css is the implementation source of truth)
 ├── 02-mark/           ← THE mark — four spines that double as the play/pause control:
 │                         geometry, triangle⇄spines morph, every playback state,
-│                         app-icon, monochrome, notification assets, Flutter painter
-├── 04-flutter/        ← drop-in Dart/Flutter implementation of the brand
+│                         app-icon, monochrome, notification assets, Flutter painter spec
 └── assets/            ← regenerated 4-spine export set (SVG + PNG), see below
 ```
 
@@ -53,8 +52,8 @@ large/bold text meets AA. Don't use low-opacity cream as the contrast mechanism 
 
 ## assets/ — regenerated 4-spine export set
 
-The old 3-spine SVG/PNG exports are archived (`../_archive/gen1-3spine-svgs/`,
-`../_archive/gen1-3spine-pngs/`). These are their 4-spine replacements, drawn from the
+The old 3-spine SVG/PNG exports are archived in `../Old design/` (untracked). These
+are their 4-spine replacements, drawn from the
 **static logo pose** in `02-mark` (bars at x = 41 / 73 / 105 / 137 in a 200-box, the
 2nd bar accent, radius 5).
 
@@ -75,7 +74,8 @@ Manrope available, or convert text→outlines before handing to a tool without t
 
 ## Where to start, by task
 
-- **Implementing the app (Flutter):** `04-flutter/` for the brand package, `02-mark/`
-  for the mark painter, `01-brand/` for tokens.
+- **Implementing the app (Flutter):** the live implementation is in the app itself —
+  `saga/lib/shared/widgets/saga_mark.dart` and `saga/lib/core/theme/saga_theme.dart`.
+  Use `02-mark/` for the painter spec and `01-brand/` for tokens.
 - **Making a logo/icon/marketing asset:** `assets/` (exports) or `02-mark/` (source + icon).
 - **Changing colours or type:** `01-brand/tokens.css` — and read the deferred-palette note above.
