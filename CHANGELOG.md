@@ -15,6 +15,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - **Old playback session details are now pruned after 12 months.** The per-book session log (which powers the History day view) kept up to 200 events per book forever; events older than a year are now removed at app start. Listening totals, streaks, heatmaps, and finished-book records are unaffected — only the tap-to-jump session detail rows expire.
 
+### Fixed
+- **CI builds work again on current Flutter.** The toolchain moved to Flutter 3.44, which deprecated the drag-to-reorder callback used in collection detail; migrated to the replacement API (no behavior change) and updated the GitHub Actions workflows off deprecated Node.js 20 runners.
+- **Downloading a multi-file book no longer fails on every file except the last.** Download requests looked like playback streams to the Plex server, which terminates a client's previous stream when a new one starts — so each file's transfer was killed by the next file's request, leaving only the last file downloaded and the button stuck on "Retry N failed". Downloads are now marked as file downloads (`download=1`), which the server serves outside its streaming-session tracking. This also protects active playback from being cut off by a download starting mid-listen. Thanks to [@Kiffir](https://github.com/Kiffir) for Saga's first-ever issue report!
+
 ---
 
 ## [1.0.11] - 2026-06-12

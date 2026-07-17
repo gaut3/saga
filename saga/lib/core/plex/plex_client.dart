@@ -184,6 +184,17 @@ class PlexClient {
     return '$_serverUri$partKey';
   }
 
+  // For downloading a part to disk. `download=1` makes the server treat the
+  // request as a file download instead of a playback stream — without it,
+  // Plex tracks each GET as a streaming session and terminates the previous
+  // one when the same client starts the next, so on multi-file books every
+  // file except the last aborts mid-transfer.
+  String? buildDownloadUrl(String partKey) {
+    final url = buildStreamUrl(partKey);
+    if (url == null) return null;
+    return url.contains('?') ? '$url&download=1' : '$url?download=1';
+  }
+
   String? buildThumbUrl(String? thumbPath) {
     if (thumbPath == null || _serverUri == null) return null;
     return '$_serverUri$thumbPath';

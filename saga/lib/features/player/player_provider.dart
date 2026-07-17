@@ -154,7 +154,7 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
       }
 
       final client = _ref.read(plexClientProvider);
-      final url = client.buildStreamUrl(track.partKey);
+      final url = client.buildDownloadUrl(track.partKey);
       if (url == null) {
         _markFailed(key);
         return;

@@ -236,8 +236,10 @@ class _CollectionDetailScreenState
                                 ),
                               );
                             },
-                            onReorder: (oldIdx, newIdx) async {
-                              if (newIdx > oldIdx) newIdx--;
+                            // onReorderItem (unlike the deprecated onReorder)
+                            // delivers newIdx already adjusted for the removed
+                            // item, so no manual index fixup.
+                            onReorderItem: (oldIdx, newIdx) async {
                               final reordered = List<PlexBook>.from(rawBooks);
                               final item = reordered.removeAt(oldIdx);
                               reordered.insert(newIdx, item);
