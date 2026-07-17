@@ -5,18 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [1.0.12] - 2026-07-17
 
 ### Added
 - **Optional update check — off by default.** Settings → About has a new "Check for updates on launch" toggle. When (and only when) you enable it, the app makes a single anonymous request to GitHub once per launch and shows "Update available: vX.Y.Z" on the existing Check for updates tile. Nothing about you or your library is sent, and the toggle being off means no request at all — documented in the privacy policy.
 - **Regression test suite now gates every release.** ~70 tests cover the bug classes that have actually shipped: calendar math across DST changes (the source of seven previous bugs — streaks, heatmaps, week strips), multi-track position math, the resume-rewind curve, M4B chapter parsing against malformed files, and a full backup → restore round-trip. A failing test now blocks the release build in CI, and every push runs the suite.
-- **Smaller arm64-only APK published with each release.** Alongside the universal `saga.apk`, releases now include `saga-arm64-v8a.apk` (roughly half the size; right for nearly all phones from ~2016 on) with its own checksum and build attestation. Also the asset prepared for the planned IzzyOnDroid listing.
+- **Smaller arm64-only APK published with each release.** Alongside the universal `saga.apk`, releases now include `saga-arm64-v8a.apk` (roughly half the size; right for nearly all phones from ~2016 on) with its own checksum and build attestation.
 
 ### Changed
 - **Old playback session details are now pruned after 12 months.** The per-book session log (which powers the History day view) kept up to 200 events per book forever; events older than a year are now removed at app start. Listening totals, streaks, heatmaps, and finished-book records are unaffected — only the tap-to-jump session detail rows expire.
 
 ### Fixed
-- **CI builds work again on current Flutter.** The toolchain moved to Flutter 3.44, which deprecated the drag-to-reorder callback used in collection detail; migrated to the replacement API (no behavior change) and updated the GitHub Actions workflows off deprecated Node.js 20 runners.
+- **CI builds work again on current Flutter.** The toolchain moved to Flutter 3.44, which deprecated the drag-to-reorder callback used in collection detail; migrated to the replacement API (no behavior change), excluded the vendored just_audio fork from lint gating (upstream code, re-extracted on every bump), and updated the GitHub Actions workflows off deprecated Node.js 20 runners.
 - **Downloading a multi-file book no longer fails on every file except the last.** Download requests looked like playback streams to the Plex server, which terminates a client's previous stream when a new one starts — so each file's transfer was killed by the next file's request, leaving only the last file downloaded and the button stuck on "Retry N failed". Downloads are now marked as file downloads (`download=1`), which the server serves outside its streaming-session tracking. This also protects active playback from being cut off by a download starting mid-listen. Thanks to [@Kiffir](https://github.com/Kiffir) for Saga's first-ever issue report!
 
 ---
