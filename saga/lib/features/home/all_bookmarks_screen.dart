@@ -225,6 +225,7 @@ class _BookmarkTile extends ConsumerWidget {
         tracks: tracks,
         startTrackIndex: idx,
         startPositionMs: bookmark.positionMs,
+        playWhenReady: true,
       );
       await service.play();
     } catch (_) {}

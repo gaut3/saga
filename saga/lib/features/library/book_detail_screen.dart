@@ -504,18 +504,20 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
 
     try {
       final service = ref.read(playerServiceProvider);
+      // Restore the book's saved speed before loading: with playWhenReady,
+      // audio can start the instant buffering completes.
+      final savedSpeed =
+          SettingsStore.getBookSpeed(widget.book.ratingKey);
+      await service.setSpeed(savedSpeed);
+      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
       await service.loadBook(
         bookRatingKey: widget.book.ratingKey,
         tracks: tracks,
         startTrackIndex: trackIndex,
         startPositionMs: positionMs,
         applyResumeRewind: resumePosition != null,
+        playWhenReady: true,
       );
-      // Restore the speed saved for this book.
-      final savedSpeed =
-          SettingsStore.getBookSpeed(widget.book.ratingKey);
-      await service.setSpeed(savedSpeed);
-      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
       await service.play();
     } catch (_) {
       if (context.mounted) {
@@ -622,15 +624,9 @@ class _DownloadBookButton extends ConsumerWidget {
       child: OutlinedButton.icon(
         onPressed: isDownloading
             ? null
-            : () {
-                for (final track in tracks) {
-                  if (!downloadState.completed.contains(track.ratingKey)) {
-                    ref
-                        .read(downloadNotifierProvider.notifier)
-                        .downloadTrack(track, book.ratingKey);
-                  }
-                }
-              },
+            : () => ref
+                .read(downloadNotifierProvider.notifier)
+                .downloadBook(book.ratingKey, tracks),
         icon: isDownloading
             ? AnimatedSagaMark(
                 size: 18,
@@ -934,6 +930,7 @@ class _ChapterListSliver extends ConsumerWidget {
         tracks: tracks,
         startTrackIndex: trackIndex,
         startPositionMs: positionMs,
+        playWhenReady: true,
       );
       await service.play();
     } catch (_) {

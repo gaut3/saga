@@ -54,7 +54,7 @@
 
 | Ink (dark) | Cream (light) | Terracotta |
 |---|---|---|
-| <img src="saga_handoff/assets/svg/mark/saga-mark-ink-bg.svg" width="80"> | <img src="saga_handoff/assets/svg/mark/saga-mark-cream-bg.svg" width="80"> | <img src="saga_handoff/assets/svg/mark/saga-mark-terra-bg.svg" width="80"> |
+| <img src="brand/assets/svg/mark/saga-mark-ink-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-cream-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-terra-bg.svg" width="80"> |
 
 
 ---
@@ -147,6 +147,12 @@ Saga is local-first with no analytics, no crash reporting SDK, and nothing trans
 2. Saga will auto-discover your Plex server on the local network; remote access via relay works too.
 3. Select your audiobook library from Settings if you have more than one.
 4. Tap any book to start listening. Your place is saved automatically.
+
+## Troubleshooting
+
+**Playback stops on its own after the screen has been off for a while** (common on Samsung, Xiaomi, OnePlus, and other heavily customized Android builds): the manufacturer's battery manager is killing Saga despite its playback service. Exclude Saga from battery optimization — **Android Settings → Apps → Saga → Battery → Unrestricted** (wording varies by brand). [dontkillmyapp.com](https://dontkillmyapp.com) has step-by-step instructions per manufacturer. Saga already does everything an app can do from its side (foreground playback service, wake and Wi-Fi locks); this last step is unfortunately in the system's hands.
+
+If playback was stopped this way, your position is safe — Saga saves it continuously — and the notification's play button or the app will resume where you left off.
 
 ---
 

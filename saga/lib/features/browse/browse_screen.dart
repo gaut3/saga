@@ -77,8 +77,95 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
 
   bool _isList = false;
   bool _onlyWanted = false;
+  bool _onlyDownloaded = false;
   bool _selectMode = false;
   final Set<String> _selectedKeys = {};
+
+  String _sortChipLabel() => switch (_sort) {
+        _SortOption.defaultOrder => 'Sort',
+        _SortOption.titleAsc => 'Title A→Z',
+        _SortOption.titleDesc => 'Title Z→A',
+        _SortOption.byAuthorAsc => 'Author A→Z',
+        _SortOption.byAuthorDesc => 'Author Z→A',
+        _SortOption.byDurationAsc => 'Duration ↑',
+        _SortOption.byDurationDesc => 'Duration ↓',
+      };
+
+  void _showSortSheet() {
+    // Sheets on the tab navigator paint under the nav pill/mini player —
+    // pad by the calling context's bottom inset (standing convention).
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    showSagaSheet(context, (ctx) {
+      Widget option({
+        required String label,
+        required _SortOption asc,
+        _SortOption? desc,
+        String ascLabel = 'A → Z',
+        String descLabel = 'Z → A',
+      }) {
+        final active = _sort == asc || (desc != null && _sort == desc);
+        final isAsc = _sort == asc;
+        return ListTile(
+          dense: true,
+          leading: Icon(
+            active
+                ? Icons.radio_button_checked
+                : Icons.radio_button_unchecked,
+            color: active ? SagaColors.accent : SagaColors.fgMuted,
+            size: 20,
+          ),
+          title: Text(label,
+              style: TextStyle(
+                  color: active ? SagaColors.accent : SagaColors.fg,
+                  fontSize: 14,
+                  fontWeight:
+                      active ? FontWeight.w600 : FontWeight.normal)),
+          trailing: active && desc != null
+              ? Text(isAsc ? ascLabel : descLabel,
+                  style:
+                      TextStyle(color: SagaColors.accent, fontSize: 12.5))
+              : null,
+          onTap: () {
+            // Tapping the active option flips its direction; an inactive one
+            // selects it (ascending first).
+            setState(() {
+              _sort = active && desc != null ? (isAsc ? desc : asc) : asc;
+            });
+            Navigator.pop(ctx);
+          },
+        );
+      }
+
+      return Padding(
+        padding: EdgeInsets.only(bottom: bottomPad + 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SagaSheetTitle('Sort',
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4)),
+            option(
+                label: 'Default (library order)',
+                asc: _SortOption.defaultOrder),
+            option(
+                label: 'Title',
+                asc: _SortOption.titleAsc,
+                desc: _SortOption.titleDesc),
+            option(
+                label: 'Author',
+                asc: _SortOption.byAuthorAsc,
+                desc: _SortOption.byAuthorDesc),
+            option(
+                label: 'Duration',
+                asc: _SortOption.byDurationAsc,
+                desc: _SortOption.byDurationDesc,
+                ascLabel: 'Shortest first',
+                descLabel: 'Longest first'),
+          ],
+        ),
+      );
+    });
+  }
 
   @override
   void didUpdateWidget(_BrowseContent old) {
@@ -210,9 +297,9 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
     for (final key in keys) {
       try {
         final tracks = await ref.read(tracksProvider(key).future);
-        for (final track in tracks) {
-          ref.read(downloadNotifierProvider.notifier).downloadTrack(track, key);
-        }
+        await ref
+            .read(downloadNotifierProvider.notifier)
+            .downloadBook(key, tracks);
       } catch (_) {}
     }
     if (mounted) {
@@ -236,6 +323,14 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
     if (_onlyWanted) {
       final wanted = WantToReadStore.all;
       list = list.where((b) => wanted.contains(b.ratingKey)).toList();
+    }
+
+    if (_onlyDownloaded) {
+      // Any download counts (not just fully downloaded) — a partially
+      // downloaded book is one the user likely wants to find and finish.
+      final downloaded =
+          ref.read(downloadNotifierProvider).downloadedBooks;
+      list = list.where((b) => downloaded.contains(b.ratingKey)).toList();
     }
 
     switch (_sort) {
@@ -432,85 +527,68 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                           ),
                           Row(
                             children: [
-                              Expanded(
-                                child: SizedBox(
-                                  height: 36,
-                                  child: ListView(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12),
-                                    scrollDirection: Axis.horizontal,
-                                    children: [
-                                      _SortChip(
-                                        label: 'Saved',
-                                        selected: _onlyWanted,
-                                        onTap: () => setState(
-                                            () => _onlyWanted = !_onlyWanted),
+                              const SizedBox(width: 8),
+                              // Filters (independent toggles) live left; the
+                              // mutually-exclusive sort collapses into one chip
+                              // opening a sheet — no more scrolling row mixing
+                              // two kinds of control with identical styling.
+                              _SortChip(
+                                label: 'Saved',
+                                selected: _onlyWanted,
+                                onTap: () => setState(
+                                    () => _onlyWanted = !_onlyWanted),
+                              ),
+                              _SortChip(
+                                label: 'Downloaded',
+                                selected: _onlyDownloaded,
+                                onTap: () => setState(() =>
+                                    _onlyDownloaded = !_onlyDownloaded),
+                              ),
+                              const Spacer(),
+                              _SortChip(
+                                label: _sortChipLabel(),
+                                selected: _sort != _SortOption.defaultOrder,
+                                onTap: _showSortSheet,
+                              ),
+                              // Same pill treatment as the chips so it reads
+                              // as part of the control row, not loose
+                              // furniture. Outer 44dp box keeps the touch
+                              // target at the accessibility floor; the visible
+                              // circle matches the chips' height.
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () =>
+                                    setState(() => _isList = !_isList),
+                                child: Semantics(
+                                  button: true,
+                                  label: _isList
+                                      ? 'Switch to grid view'
+                                      : 'Switch to list view',
+                                  child: Container(
+                                    width: 44,
+                                    height: 44,
+                                    alignment: Alignment.center,
+                                    margin:
+                                        const EdgeInsets.only(right: 8),
+                                    child: Container(
+                                      width: 38,
+                                      height: 38,
+                                      decoration: BoxDecoration(
+                                        color: SagaColors.surface,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                            color: SagaColors.border),
                                       ),
-                                      _SortChip(
-                                        label: 'Default',
-                                        selected: _sort ==
-                                            _SortOption.defaultOrder,
-                                        onTap: () => setState(() =>
-                                            _sort = _SortOption.defaultOrder),
+                                      child: Icon(
+                                        _isList
+                                            ? Icons.grid_view
+                                            : Icons.list,
+                                        color: SagaColors.fgMuted,
+                                        size: 18,
                                       ),
-                                      _SortChip(
-                                        label: _sort == _SortOption.titleDesc
-                                            ? 'Z → A'
-                                            : 'A → Z',
-                                        selected: _sort ==
-                                                _SortOption.titleAsc ||
-                                            _sort == _SortOption.titleDesc,
-                                        onTap: () => setState(() {
-                                          _sort = _sort == _SortOption.titleAsc
-                                              ? _SortOption.titleDesc
-                                              : _SortOption.titleAsc;
-                                        }),
-                                      ),
-                                      _SortChip(
-                                        label: _sort == _SortOption.byAuthorDesc
-                                            ? 'Z → A'
-                                            : 'Author',
-                                        selected: _sort ==
-                                                _SortOption.byAuthorAsc ||
-                                            _sort == _SortOption.byAuthorDesc,
-                                        onTap: () => setState(() {
-                                          _sort = _sort ==
-                                                  _SortOption.byAuthorAsc
-                                              ? _SortOption.byAuthorDesc
-                                              : _SortOption.byAuthorAsc;
-                                        }),
-                                      ),
-                                      _SortChip(
-                                        label: _sort == _SortOption.byDurationAsc
-                                            ? 'Duration ↑'
-                                            : _sort == _SortOption.byDurationDesc
-                                                ? 'Duration ↓'
-                                                : 'Duration',
-                                        selected: _sort ==
-                                                _SortOption.byDurationAsc ||
-                                            _sort == _SortOption.byDurationDesc,
-                                        onTap: () => setState(() {
-                                          _sort = _sort ==
-                                                  _SortOption.byDurationAsc
-                                              ? _SortOption.byDurationDesc
-                                              : _SortOption.byDurationAsc;
-                                        }),
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                 ),
-                              ),
-                              IconButton(
-                                icon: Icon(
-                                  _isList ? Icons.grid_view : Icons.list,
-                                  color: SagaColors.fgMuted,
-                                  size: 20,
-                                ),
-                                onPressed: () =>
-                                    setState(() => _isList = !_isList),
-                                padding: const EdgeInsets.only(right: 12),
-                                constraints: const BoxConstraints(
-                                    minWidth: 44, minHeight: 44),
                               ),
                             ],
                           ),
@@ -590,13 +668,18 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                 final gridBottom = (_selectMode && _selectedKeys.isNotEmpty)
                     ? bottomPad + 72
                     : bottomPad + 16;
+                // Cell height = square cover + the exact text-block height the
+                // card lays out (4 gap + 30 two-line title + 2 gap + 15 author).
+                // The old childAspectRatio left ~34 dp for ~51 dp of text, so a
+                // wrapped title crowded/clipped the author line (issue #3).
+                final cellW =
+                    (MediaQuery.of(context).size.width - 32 - 20) / 3;
                 return SliverPadding(
                   padding: EdgeInsets.fromLTRB(16, 8, 16, gridBottom),
                   sliver: SliverGrid(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 3,
-                      childAspectRatio: 0.75,
+                      mainAxisExtent: cellW + 53,
                       crossAxisSpacing: 10,
                       mainAxisSpacing: 10,
                     ),
@@ -763,10 +846,10 @@ class _BookTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final hasDownload = ref
-        .watch(downloadNotifierProvider)
-        .downloadedBooks
-        .contains(book.ratingKey);
+    // Watched for reactivity; the badge itself is store-derived so it can be
+    // honest about completeness (all tracks, not just the first).
+    ref.watch(downloadNotifierProvider);
+    final hasDownload = isBookFullyDownloaded(book.ratingKey);
 
     return GestureDetector(
       onTap: onTap ??
@@ -823,14 +906,21 @@ class _BookTile extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(book.title,
-              style: TextStyle(color: SagaColors.fg, fontSize: 12),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis),
+          // Fixed two-line block whether the title wraps or not, so the author
+          // line sits at the same height on every card in a row (issue #3).
+          SizedBox(
+            height: 30,
+            child: Text(book.title,
+                style:
+                    TextStyle(color: SagaColors.fg, fontSize: 12, height: 1.25),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis),
+          ),
+          const SizedBox(height: 2),
           if (book.authorName != null)
             Text(book.authorName!,
-                style:
-                    TextStyle(color: SagaColors.fgSubtle, fontSize: 11),
+                style: TextStyle(
+                    color: SagaColors.fgSubtle, fontSize: 11, height: 1.3),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis),
         ],

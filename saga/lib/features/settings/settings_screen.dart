@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,14 +14,17 @@ import '../../core/plex/plex_client.dart';
 import '../../core/utils/format.dart';
 import '../../core/plex/models/plex_library.dart';
 import '../../core/providers.dart';
+import '../../core/storage/book_download_store.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/completed_books_store.dart';
+import '../../core/storage/download_store.dart';
 import '../../core/storage/listen_days_store.dart';
 import '../../core/storage/listening_history_store.dart';
 import '../../core/storage/named_bookmark_store.dart';
 import '../../core/storage/playback_log_store.dart';
 import '../../core/storage/progress_backup.dart';
 import '../../core/storage/settings_store.dart';
+import '../../core/storage/track_cache_store.dart';
 import '../../core/update/update_checker.dart';
 import '../auth/server_selection_screen.dart';
 import '../player/player_provider.dart';
@@ -59,6 +61,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late int _skipBackward;
   late double _defaultSpeed;
   late bool _autoRewind;
+  late bool _resumeAfterInterruption;
+  late bool _chapterScrub;
   late bool _wifiOnly;
   late int _markMotion;
   late int _animationSyncDelay;
@@ -74,6 +78,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _skipBackward = SettingsStore.skipBackwardSeconds;
     _defaultSpeed = SettingsStore.defaultSpeed;
     _autoRewind = SettingsStore.autoRewindEnabled;
+    _resumeAfterInterruption = SettingsStore.resumeAfterInterruption;
+    _chapterScrub = SettingsStore.chapterScrub;
     _wifiOnly = SettingsStore.downloadWifiOnly;
     _markMotion = SettingsStore.markMotionIndex;
     _animationSyncDelay = SettingsStore.animationSyncDelayMs;
@@ -193,6 +199,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     await SettingsStore.setAutoRewindEnabled(v);
                     if (!mounted) return;
                     setState(() => _autoRewind = v);
+                  },
+                ),
+                _SwitchTile(
+                  icon: Icons.phone_paused_outlined,
+                  title: 'Resume after interruptions',
+                  subtitle: 'Continue playback when a call or alert ends',
+                  value: _resumeAfterInterruption,
+                  onChanged: (v) async {
+                    await SettingsStore.setResumeAfterInterruption(v);
+                    if (!mounted) return;
+                    setState(() => _resumeAfterInterruption = v);
+                  },
+                ),
+                _SwitchTile(
+                  icon: Icons.linear_scale_rounded,
+                  title: 'Scrub within chapter',
+                  subtitle:
+                      'Seek bar covers the current chapter, not the whole book',
+                  value: _chapterScrub,
+                  onChanged: (v) async {
+                    await SettingsStore.setChapterScrub(v);
+                    if (!mounted) return;
+                    setState(() => _chapterScrub = v);
                   },
                 ),
                 _SettingsTile(
@@ -1410,23 +1439,25 @@ class _StorageResult {
 
 class _BookStorageInfo {
   final String title;
-  final String path;
+  final String bookRatingKey;
+  final Set<String> trackKeys;
   final int bytes;
   const _BookStorageInfo({
     required this.title,
-    required this.path,
+    required this.bookRatingKey,
+    required this.trackKeys,
     required this.bytes,
   });
 }
 
-class _StorageTile extends StatefulWidget {
+class _StorageTile extends ConsumerStatefulWidget {
   const _StorageTile();
 
   @override
-  State<_StorageTile> createState() => _StorageTileState();
+  ConsumerState<_StorageTile> createState() => _StorageTileState();
 }
 
-class _StorageTileState extends State<_StorageTile> {
+class _StorageTileState extends ConsumerState<_StorageTile> {
   late Future<_StorageResult> _future;
 
   @override
@@ -1436,22 +1467,38 @@ class _StorageTileState extends State<_StorageTile> {
   }
 
   Future<_StorageResult> _scan() async {
-    final base = await getApplicationDocumentsDirectory();
-    final downloadsDir = Directory('${base.path}/downloads');
-    if (!downloadsDir.existsSync()) {
-      return const _StorageResult(bookCount: 0, totalBytes: 0, books: []);
-    }
+    // Scan the download STORES, not the filesystem: the stores are what
+    // Browse's badge and "Downloaded" filter read, so building this list from
+    // the same source keeps the two surfaces consistent by construction (the
+    // old folder-based scan could disagree with Browse — issue reported July
+    // 2026). reconcile() first drops metadata whose files are gone.
+    await ref.read(downloadNotifierProvider.notifier).reconcile();
     final books = <_BookStorageInfo>[];
-    for (final entry in downloadsDir.listSync()) {
-      if (entry is Directory) {
-        int size = 0;
-        for (final file in entry.listSync(recursive: true)) {
-          if (file is File) size += file.statSync().size;
-        }
-        final name = entry.uri.pathSegments
-            .lastWhere((s) => s.isNotEmpty, orElse: () => entry.path);
-        books.add(_BookStorageInfo(title: name, path: entry.path, bytes: size));
+    for (final bookKey in BookDownloadStore.booksWithDownloads()) {
+      final trackKeys = BookDownloadStore.trackKeys(bookKey);
+      var size = 0;
+      String? anyPath;
+      for (final key in trackKeys) {
+        final path = DownloadStore.getPath(key);
+        if (path == null) continue;
+        anyPath = path;
+        final file = File(path);
+        if (file.existsSync()) size += file.statSync().size;
       }
+      // Title from the track cache; for pre-cache downloads fall back to the
+      // download folder's name (which was derived from the book title).
+      final cached = TrackCacheStore.load(bookKey);
+      final title = cached?.first.bookTitle ??
+          (anyPath != null
+              ? File(anyPath).parent.uri.pathSegments
+                  .lastWhere((s) => s.isNotEmpty, orElse: () => 'Unknown book')
+              : 'Unknown book');
+      books.add(_BookStorageInfo(
+        title: title,
+        bookRatingKey: bookKey,
+        trackKeys: trackKeys,
+        bytes: size,
+      ));
     }
     books.sort((a, b) => b.bytes.compareTo(a.bytes));
     final total = books.fold(0, (sum, b) => sum + b.bytes);
@@ -1516,7 +1563,13 @@ class _StorageTileState extends State<_StorageTile> {
                           ),
                         );
                         if (confirmed != true) return;
-                        Directory(book.path).deleteSync(recursive: true);
+                        // Through the notifier so files, store metadata,
+                        // track cache, and the Browse badge all update
+                        // together — never delete download files directly.
+                        await ref
+                            .read(downloadNotifierProvider.notifier)
+                            .deleteBookByKeys(
+                                book.bookRatingKey, book.trackKeys);
                         if (ctx.mounted) Navigator.pop(ctx);
                         _refresh();
                       },
@@ -1534,6 +1587,20 @@ class _StorageTileState extends State<_StorageTile> {
 
   @override
   Widget build(BuildContext context) {
+    // Const-constructed by the parent, so its theme-driven rebuild never
+    // reaches us — watch the theme directly (see CLAUDE.md theme reactivity).
+    ref.watch(sagaThemeVariantProvider);
+    // Re-scan when downloads complete or books are deleted. The settings tab
+    // lives in an IndexedStack, so this state survives the whole app session —
+    // without this, the list only refreshed on a full app restart (issue #2).
+    // Listen (not watch) so per-byte progress ticks don't trigger disk scans.
+    ref.listen(downloadNotifierProvider, (prev, next) {
+      if (prev == null) return;
+      if (prev.completed.length != next.completed.length ||
+          prev.downloadedBooks.length != next.downloadedBooks.length) {
+        _refresh();
+      }
+    });
     return FutureBuilder<_StorageResult>(
       future: _future,
       builder: (context, snap) {

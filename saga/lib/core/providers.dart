@@ -12,12 +12,14 @@ import 'plex/plex_api.dart';
 import 'plex/plex_auth.dart';
 import 'plex/plex_client.dart';
 import 'plex/plex_server.dart';
+import 'storage/book_download_store.dart';
 import 'storage/bookmark_store.dart';
 import 'storage/chapter_store.dart';
 import 'storage/completed_books_store.dart';
 import 'storage/custom_collection_store.dart';
 import 'storage/named_bookmark_store.dart';
 import 'storage/settings_store.dart';
+import 'storage/track_cache_store.dart';
 import 'theme/saga_theme.dart';
 
 final plexClientProvider = Provider<PlexClient>((_) => PlexClient.instance);
@@ -205,11 +207,29 @@ final tracksProvider =
     FutureProvider.family<List<PlexTrack>, String>((ref, bookRatingKey) async {
   // Re-run when the server URI changes (e.g. after auto-discovery completes).
   final serverUri = ref.watch(activeServerUriProvider);
-  if (serverUri == null) {
-    // Discovery is still running; wait for it to set a server before fetching.
-    await ref.watch(activeLibraryKeyProvider.future);
+  try {
+    if (serverUri == null) {
+      // Discovery is still running; wait for it to set a server before fetching.
+      await ref.watch(activeLibraryKeyProvider.future);
+    }
+    final tracks = await ref.watch(plexApiProvider).fetchTracks(bookRatingKey);
+    // Lazy backfill: keep the offline track cache fresh for downloaded books,
+    // including ones downloaded before the cache existed.
+    if (tracks.isNotEmpty && BookDownloadStore.hasDownload(bookRatingKey)) {
+      await TrackCacheStore.save(bookRatingKey, tracks);
+    }
+    return tracks;
+  } catch (e) {
+    // Server unreachable (offline, dead server). Downloaded books have their
+    // track list cached at download time — serve it so they stay playable.
+    final cached = TrackCacheStore.load(bookRatingKey);
+    if (cached != null) {
+      AppLog.log('library',
+          'tracks fetch failed for $bookRatingKey, using offline cache: $e');
+      return cached;
+    }
+    rethrow;
   }
-  return ref.watch(plexApiProvider).fetchTracks(bookRatingKey);
 });
 
 // Named bookmarks for a specific book

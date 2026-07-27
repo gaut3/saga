@@ -62,6 +62,7 @@ $checks = @(
     @{ File = 'AudioPlayer.java';     Pattern = 'RmsAudioBufferSink';            Why = 'RMS sink class' },
     @{ File = 'AudioPlayer.java';     Pattern = 'TeeAudioProcessor';             Why = 'tee prepended to processor chain' },
     @{ File = 'AudioPlayer.java';     Pattern = 'AUDIO_OFFLOAD_MODE_DISABLED';   Why = 'offload disabled (tap needs PCM)' },
+    @{ File = 'AudioPlayer.java';     Pattern = 'WAKE_MODE_NETWORK';             Why = 'WifiLock during network playback' },
     @{ File = 'AudioPlayer.java';     Pattern = '// Saga';                       Why = 'patch comment markers' },
     @{ File = 'JustAudioPlugin.java'; Pattern = 'com\.ryanheise\.just_audio\.rms'; Why = 'global RMS EventChannel' },
     @{ File = 'JustAudioPlugin.java'; Pattern = '// Saga';                       Why = 'patch comment marker' }

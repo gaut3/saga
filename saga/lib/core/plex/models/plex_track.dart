@@ -23,6 +23,35 @@ class PlexTrack {
     this.partFile,
   });
 
+  /// Flat map for local storage (offline track cache) — deliberately our own
+  /// shape, not a reconstruction of the nested Plex JSON, so [fromJson] parsing
+  /// quirks can't leak into the cache round-trip.
+  Map<String, dynamic> toMap() => {
+        'ratingKey': ratingKey,
+        'key': key,
+        'title': title,
+        if (bookTitle != null) 'bookTitle': bookTitle,
+        if (authorName != null) 'authorName': authorName,
+        if (thumbPath != null) 'thumbPath': thumbPath,
+        'durationMs': durationMs,
+        'index': index,
+        'partKey': partKey,
+        if (partFile != null) 'partFile': partFile,
+      };
+
+  factory PlexTrack.fromMap(Map<dynamic, dynamic> map) => PlexTrack(
+        ratingKey: map['ratingKey'] as String? ?? '',
+        key: map['key'] as String? ?? '',
+        title: map['title'] as String? ?? '',
+        bookTitle: map['bookTitle'] as String?,
+        authorName: map['authorName'] as String?,
+        thumbPath: map['thumbPath'] as String?,
+        durationMs: map['durationMs'] as int? ?? 0,
+        index: map['index'] as int? ?? 0,
+        partKey: map['partKey'] as String? ?? '',
+        partFile: map['partFile'] as String?,
+      );
+
   factory PlexTrack.fromJson(Map<String, dynamic> json) {
     final media = (json['Media'] as List<dynamic>?)?.firstOrNull;
     final part = (media?['Part'] as List<dynamic>?)?.firstOrNull;

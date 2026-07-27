@@ -957,6 +957,7 @@ class _BookSessionPanel extends ConsumerWidget {
         tracks: tracks,
         startTrackIndex: idx,
         startPositionMs: event.positionMs,
+        playWhenReady: true,
       );
       await service.play();
     } catch (_) {}

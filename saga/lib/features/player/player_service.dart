@@ -21,7 +21,9 @@ import '../../core/storage/listen_days_store.dart';
 import '../../core/storage/listening_history_store.dart';
 import '../../core/storage/playback_log_store.dart';
 import '../../core/storage/timeline_queue_store.dart';
+import '../../core/storage/track_cache_store.dart';
 import 'resume_rewind.dart';
+import 'session_restore.dart';
 import 'track_position_math.dart';
 
 class AudioPlayerService extends BaseAudioHandler with SeekHandler {
@@ -40,6 +42,16 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   void Function()? onHistoryRecorded;
   Future<void> Function(String bookRatingKey, BookPosition? position)? onStreamError;
   bool _reloadInProgress = false;
+  bool _restoringSession = false; // re-entry guard for _restoreLastSession
+  // True while paused *by* an audio interruption (call, alarm) rather than by
+  // the user — the only case where interruption-end may auto-resume. Cleared
+  // by any user-initiated play (see [play]).
+  bool _pausedByInterruption = false;
+  DateTime? _interruptionBeganAt;
+  // True when the device's audio mode indicated telephony (ring / call / VoIP)
+  // at interruption begin — the one case where a long interruption may still
+  // auto-resume. Sampled asynchronously; see [_onInterruptionBegin].
+  bool _interruptionCallLike = false;
   // Incremented on every loadBook; lets an in-flight load detect that a newer
   // load has superseded it across an await gap, so a stale failure can't
   // clobber the new book's state (which would silently drop position saves).
@@ -104,7 +116,16 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
     // Pause when headphones are unplugged (ACTION_AUDIO_BECOMING_NOISY).
     // audio_service does not handle this automatically.
-    AudioSession.instance.then((session) {
+    AudioSession.instance.then((session) async {
+      // Declare spoken-word content (contentType speech, focus gain,
+      // pause-when-ducked enforced at the source). Without this,
+      // audio_session falls back to a music profile on the first focus
+      // request — wrong attributes for an audiobook app.
+      try {
+        await session.configure(const AudioSessionConfiguration.speech());
+      } catch (e) {
+        AppLog.log('playback', 'audio session configure failed: $e');
+      }
       session.becomingNoisyEventStream.listen((_) {
         if (_player.playing) pause();
       }, onError: (Object e, StackTrace st) {
@@ -112,25 +133,37 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       AppLog.log('playback', 'listener error: $e');
     });
 
-      // Duck volume on transient interruptions (nav prompts, notifications);
-      // pause on longer interruptions. Don't auto-resume after pause — user
-      // must press play, which is the standard audiobook expectation.
+      // Interruption policy for spoken word: ducking (lowering volume under a
+      // nav prompt or notification) means missed words — unlike music, speech
+      // can't be half-heard. So when auto-resume is enabled, duck requests
+      // pause-and-resume like any other transient interruption (the Audible /
+      // Pocket Casts convention). With auto-resume off, ducks fall back to
+      // lowering volume — pausing without resuming would be strictly worse.
+      // Resume decisions live in [_maybeResumeAfterInterruption]; the system's
+      // "resuming is appropriate" signal alone is NOT sufficient — see there.
       session.interruptionEventStream.listen((event) {
         if (event.begin) {
           switch (event.type) {
             case AudioInterruptionType.duck:
-              _player.setVolume(0.5);
+              if (SettingsStore.resumeAfterInterruption) {
+                if (_player.playing) _onInterruptionBegin('duck');
+              } else {
+                _player.setVolume(0.5);
+              }
             case AudioInterruptionType.pause:
             case AudioInterruptionType.unknown:
-              if (_player.playing) pause();
+              if (_player.playing) _onInterruptionBegin(event.type.name);
           }
         } else {
           switch (event.type) {
             case AudioInterruptionType.duck:
-              _player.setVolume(1.0);
+              _player.setVolume(1.0); // no-op if we paused instead of ducking
+              _maybeResumeAfterInterruption('duck');
             case AudioInterruptionType.pause:
+              _maybeResumeAfterInterruption('pause');
             case AudioInterruptionType.unknown:
-              break;
+              // Resume not recommended — permanent focus loss.
+              _pausedByInterruption = false;
           }
         }
       }, onError: (Object e, StackTrace st) {
@@ -140,6 +173,59 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     });
   }
 
+  /// Telephony check: ringtone / in-call / in-communication audio mode means
+  /// the current focus loss came from a phone or VoIP call rather than another
+  /// media app. Reads the platform AudioManager mode — no permission needed.
+  static Future<bool> _inCallAudioMode() async {
+    try {
+      final mode = await AndroidAudioManager().getMode();
+      return mode == AndroidAudioHardwareMode.ringtone ||
+          mode == AndroidAudioHardwareMode.inCall ||
+          mode == AndroidAudioHardwareMode.inCommunication;
+    } catch (_) {
+      return false; // unknown → treat as not a call
+    }
+  }
+
+  void _onInterruptionBegin(String type) {
+    _pausedByInterruption = true;
+    _interruptionBeganAt = DateTime.now();
+    _interruptionCallLike = false;
+    // Sampled async so the pause itself is never delayed by a platform call.
+    unawaited(_inCallAudioMode().then((inCall) {
+      if (inCall) _interruptionCallLike = true;
+    }));
+    AppLog.log('playback', 'interruption begin ($type)');
+    pause();
+  }
+
+  /// The focus-regained event says resuming is *allowed* — not that it's
+  /// wanted. Another media app (video, music) that took transient focus and
+  /// later released it (paused its stream, rebuffered, ad break) produces the
+  /// exact same event as a phone call ending — and resuming the audiobook
+  /// over someone's video is the worst failure mode of naive auto-resume.
+  /// So resume only when the interruption was plausibly call-like: telephony
+  /// audio mode at begin or end, or a short blip (≤ 30 s — TTS announcements,
+  /// quickly dismissed alarms). A long non-call interruption stays paused.
+  Future<void> _maybeResumeAfterInterruption(String type) async {
+    if (!_pausedByInterruption) return;
+    _pausedByInterruption = false;
+    if (!SettingsStore.resumeAfterInterruption) return;
+    final began = _interruptionBeganAt;
+    final elapsed = began == null ? null : DateTime.now().difference(began);
+    final callLike = _interruptionCallLike || await _inCallAudioMode();
+    final shortBlip =
+        elapsed != null && elapsed <= const Duration(seconds: 30);
+    if (callLike || shortBlip) {
+      AppLog.log('playback',
+          'interruption end ($type): resuming — ${callLike ? 'call-like' : 'short'} (${elapsed?.inSeconds ?? '?'}s)');
+      await play();
+    } else {
+      AppLog.log('playback',
+          'interruption end ($type): NOT resuming — media-like (${elapsed?.inSeconds ?? '?'}s)');
+    }
+  }
+
   Future<void> loadBook({
     required String bookRatingKey,
     required List<PlexTrack> tracks,
@@ -147,6 +233,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     int startPositionMs = 0,
     bool isAutoReload = false,
     bool applyResumeRewind = false,
+    bool playWhenReady = false,
   }) async {
     if (tracks.isEmpty) throw ArgumentError('Cannot load a book with no tracks');
 
@@ -193,11 +280,47 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       );
     }).toList();
 
+    // Publish queue/notification metadata before the (potentially slow) network
+    // load, so the media notification has real content the moment the service
+    // goes foreground below — not a blank "Saga" card until buffering finishes.
+    queue.add(tracks.map(_trackToMediaItem).toList());
+    mediaItem.add(_trackToMediaItem(tracks[startTrackIndex]));
+    _prefetchArtwork(tracks[startTrackIndex]);
+
     try {
       _playlist = ConcatenatingAudioSource(children: sources);
-      await _player.setAudioSource(_playlist, initialIndex: startTrackIndex);
+      if (playWhenReady) {
+        // Declare the play intent BEFORE the network await. Broadcasting
+        // playing=true is what makes audio_service promote to a foreground
+        // service and take its wake lock — started here, while the app is
+        // still guaranteed foreground, the initial buffer survives the user
+        // backgrounding the app mid-load. Started only after the load (the
+        // old ordering), the process is an ordinary cached app for the whole
+        // round-trip to Plex and Android may freeze it, stalling the stream.
+        // play()'s future is intentionally unawaited: it only completes once
+        // playback actually starts, i.e. after setAudioSource below.
+        if (_player.audioSource != null) {
+          // A previous source is still loaded — mute so the early play intent
+          // doesn't audibly resume the old audio during the load. Restored in
+          // the finally below.
+          await _player.setVolume(0);
+        }
+        unawaited(_player.play());
+      }
+      // initialPosition (rather than a seek after load) so playback starts at
+      // the resume point directly — with playWhenReady, a post-load seek would
+      // audibly play a moment from 0:00 first. Callers reading _player.position
+      // after loadBook() still see the correct resume point.
+      await _player.setAudioSource(
+        _playlist,
+        initialIndex: startTrackIndex,
+        initialPosition: Duration(milliseconds: resumePositionMs),
+      );
     } catch (e) {
       AppLog.log('playback', 'setAudioSource failed for book $bookRatingKey: $e');
+      // Withdraw the play intent: a failed load must not leave a playing=true
+      // foreground service with no audio source.
+      if (playWhenReady) unawaited(_player.pause());
       // Only clear state if no newer load has taken over: a failed stale load
       // (e.g. interrupted because the user tapped another book) must not wipe
       // the new book's key/tracks — that would silently drop its saves.
@@ -206,23 +329,12 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         _tracks = [];
       }
       rethrow;
+    } finally {
+      // Unmute on every exit path (success, failure, superseded) — a stray
+      // zero volume would make all playback silent with no visible cause.
+      if (_player.volume == 0) await _player.setVolume(1);
     }
     if (gen != _loadGeneration) return; // superseded by a newer load
-
-    // Seek atomically after the source is confirmed ready so that callers
-    // reading _player.position after loadBook() see the correct resume point.
-    if (resumePositionMs > 0) {
-      await _player.seek(
-        Duration(milliseconds: resumePositionMs),
-        index: startTrackIndex,
-      );
-      if (gen != _loadGeneration) return;
-    }
-
-    final queue = tracks.map(_trackToMediaItem).toList();
-    this.queue.add(queue);
-    mediaItem.add(_trackToMediaItem(tracks[startTrackIndex]));
-    _prefetchArtwork(tracks[startTrackIndex]);
   }
 
   void _prefetchArtwork(PlexTrack track) {
@@ -250,8 +362,61 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   static int _resumeRewindMs(int awaySeconds) =>
       resumeRewindMs(awaySeconds, enabled: SettingsStore.autoRewindEnabled);
 
+  /// After process death (OEM battery kill, memory pressure) Android 11+ keeps
+  /// the media card in the shade, and tapping its play button cold-starts this
+  /// service with no book loaded. Restore the most recently listened book —
+  /// the same one Continue Listening would offer — so the controls work
+  /// instead of silently doing nothing. Returns true when a book was loaded
+  /// (with playback already starting via playWhenReady).
+  Future<bool> _restoreLastSession() async {
+    if (_restoringSession) return false; // absorb double-taps mid-restore
+    _restoringSession = true;
+    try {
+      final bookKey = mostRecentBookRatingKey(BookmarkStore.allPositions());
+      if (bookKey == null) return false;
+      final position = BookmarkStore.load(bookKey);
+      // Cache first: instant, and works offline for downloaded books. The
+      // network fetch covers streamed books (needs the server reachable).
+      final tracks =
+          TrackCacheStore.load(bookKey) ?? await _api.fetchTracks(bookKey);
+      if (tracks.isEmpty) return false;
+      final idx = position != null
+          ? tracks.indexWhere((t) => t.ratingKey == position.trackRatingKey)
+          : -1;
+      await setSpeed(SettingsStore.getBookSpeed(bookKey));
+      await loadBook(
+        bookRatingKey: bookKey,
+        tracks: tracks,
+        startTrackIndex: idx < 0 ? 0 : idx,
+        startPositionMs: position?.positionMs ?? 0,
+        applyResumeRewind: true,
+        playWhenReady: true,
+      );
+      AppLog.log('playback', 'restored last session: book $bookKey');
+      return true;
+    } catch (e) {
+      AppLog.log('playback', 'session restore failed: $e');
+      return false;
+    } finally {
+      _restoringSession = false;
+    }
+  }
+
   @override
   Future<void> play() async {
+    // No book loaded means this play command reached a freshly cold-started
+    // service (media controls after process death) — restore the session.
+    // Without a successful restore we must return before _player.play():
+    // with no source it broadcasts playing=true and never completes, leaving
+    // the notification stuck on a lying pause icon.
+    if (_bookRatingKey == null || _tracks.isEmpty) {
+      if (!await _restoreLastSession()) return;
+    }
+
+    // Any play (user or auto-resume itself) settles a pending interruption —
+    // a later interruption-end must not trigger a second resume.
+    _pausedByInterruption = false;
+
     // Smart rewind: if resuming after a pause, seek back proportionally to how
     // long the user was away. Only fires when paused within the same session
     // (_pausedAt is set). Uses the same curve as the resume-after-load path.
@@ -474,6 +639,29 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   /// Seek to [absolutePosition] within the book, resolving the correct
   /// track index and intra-track offset automatically.
+  /// Absolute (book-level) bounds of the chapter containing the current
+  /// position, for chapter-range scrubbing. Single-file books use embedded
+  /// chapters; multi-file books use the current track (one file ≈ one
+  /// chapter). Falls back to the whole book when neither applies.
+  ({int startMs, int endMs}) currentChapterRangeMs() {
+    final totalMs = totalBookDurationMs;
+    final chapters = _chaptersIfSingleTrack();
+    if (chapters != null) {
+      return chapterRangeAt(
+        [for (final c in chapters) c.start.inMilliseconds],
+        _player.position.inMilliseconds,
+        totalMs,
+      );
+    }
+    if (_tracks.length > 1) {
+      final durations = _trackDurationsMs;
+      final idx = (_player.currentIndex ?? 0).clamp(0, durations.length - 1);
+      final startMs = absoluteFromTrack(durations, idx, 0);
+      return (startMs: startMs, endMs: startMs + durations[idx]);
+    }
+    return (startMs: 0, endMs: totalMs);
+  }
+
   Future<void> seekAbsolute(Duration absolutePosition) async {
     _previousAbsolutePositionMs = absolutePositionMs;
     canUndoSeekNotifier.value = true;
@@ -702,6 +890,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     );
   }
 
+  /// The user swiped the app out of recents: stop playback and the service.
+  /// Deliberate decision (July 2026, reversed once): a keep-playing variant
+  /// shipped briefly because it's what music apps do, but in actual use the
+  /// owner expects swipe-away to mean "quit" — audiobooks aren't background
+  /// wallpaper like playlists. Position is saved by [stop]; session restore
+  /// brings the book back on the next play. Do not re-litigate without a
+  /// user request in the other direction.
   @override
   Future<void> onTaskRemoved() async {
     await stop();

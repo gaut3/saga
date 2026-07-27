@@ -46,6 +46,22 @@ class SettingsStore {
   static Future<void> setAutoRewindEnabled(bool v) =>
       _box.put('autoRewind', v);
 
+  // Resume playback when a transient audio interruption (phone call, alarm)
+  // ends. Only applies when the system marks resuming as appropriate — never
+  // after another media app permanently takes audio focus.
+  static bool get resumeAfterInterruption =>
+      _box.get('resumeAfterInterruption', defaultValue: true) as bool;
+
+  static Future<void> setResumeAfterInterruption(bool v) =>
+      _box.put('resumeAfterInterruption', v);
+
+  // Seek bar range: whole book (default) or just the current chapter — the
+  // fine-scrub option for very long books (1 px of a 30 h book ≈ minutes).
+  static bool get chapterScrub =>
+      _box.get('chapterScrub', defaultValue: false) as bool;
+
+  static Future<void> setChapterScrub(bool v) => _box.put('chapterScrub', v);
+
   // Restrict downloads to Wi-Fi / unmetered connections.
   static bool get downloadWifiOnly =>
       _box.get('downloadWifiOnly', defaultValue: false) as bool;

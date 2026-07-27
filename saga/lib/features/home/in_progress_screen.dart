@@ -384,6 +384,7 @@ class _EventTile extends ConsumerWidget {
         tracks: tracks,
         startTrackIndex: idx,
         startPositionMs: event.positionMs,
+        playWhenReady: true,
       );
       await service.play();
     } catch (_) {}

@@ -657,28 +657,55 @@ class _ProgressBar extends StatefulWidget {
 
 class _ProgressBarState extends State<_ProgressBar> {
   double? _dragValue;
+  // Right-hand label mode: remaining-at-current-speed (default) or book total.
+  bool _showTotal = false;
+
+  /// Wall-clock time left in the book at the current playback speed.
+  Duration _remainingAtSpeed(Duration pos, Duration dur) {
+    final speed = widget.service.player.speed;
+    final remainingMs = (dur - pos).inMilliseconds.clamp(0, dur.inMilliseconds);
+    // Guard nonsense speeds (0 or negative can't occur via the picker, but a
+    // division by zero here would take the whole player screen down).
+    return Duration(
+        milliseconds: speed > 0 ? (remainingMs / speed).round() : remainingMs);
+  }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<Duration>(
       stream: widget.service.positionStream,
       builder: (context, posSnap) {
-        // Use book-level absolute position so multi-track books show overall
-        // progress rather than per-chapter progress.
         final totalMs = widget.service.totalBookDurationMs;
         final absMs = widget.service.absolutePositionMs;
         // posSnap drives rebuilds; the actual value used is absolutePositionMs.
         posSnap.data;
 
-        final progress = totalMs > 0
-            ? (absMs / totalMs).clamp(0.0, 1.0)
-            : 0.0;
+        // Whole-book range by default; in chapter-scrub mode (Settings →
+        // Playback) the slider spans only the current chapter, so very long
+        // books can be scrubbed precisely (1 px of a 30 h book ≈ minutes).
+        // The range is derived from the live position, so crossing a chapter
+        // boundary re-anchors the bar automatically.
+        final chapterMode = SettingsStore.chapterScrub;
+        final range = chapterMode
+            ? widget.service.currentChapterRangeMs()
+            : (startMs: 0, endMs: totalMs);
+        final rawSpan = range.endMs - range.startMs;
+        final spanMs = rawSpan > 0 ? rawSpan : 1;
+
+        final progress = ((absMs - range.startMs) / spanMs).clamp(0.0, 1.0);
         final displayValue = _dragValue ?? progress;
+        // Book-level position the thumb currently represents.
         final displayAbsMs = _dragValue != null
-            ? (_dragValue! * totalMs).round()
+            ? range.startMs + (_dragValue! * spanMs).round()
             : absMs;
-        final displayPos = Duration(milliseconds: displayAbsMs);
-        final displayDur = Duration(milliseconds: totalMs > 0 ? totalMs : absMs);
+        // Labels and drag tooltip are chapter-relative in chapter mode so the
+        // whole row speaks one unit; book mode is unchanged.
+        final displayPos = Duration(
+            milliseconds:
+                chapterMode ? displayAbsMs - range.startMs : displayAbsMs);
+        final displayDur = Duration(
+            milliseconds:
+                chapterMode ? spanMs : (totalMs > 0 ? totalMs : absMs));
 
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -713,11 +740,15 @@ class _ProgressBarState extends State<_ProgressBar> {
                           onChanged: (v) => setState(() => _dragValue = v),
                           onChangeEnd: (v) {
                             setState(() => _dragValue = null);
-                            widget.service.seekAbsolute(
-                                Duration(milliseconds: (v * totalMs).round()));
+                            widget.service.seekAbsolute(Duration(
+                                milliseconds:
+                                    range.startMs + (v * spanMs).round()));
                           },
+                          // Announced chapter-relative in chapter mode,
+                          // matching the visible labels (startMs is 0 and
+                          // spanMs the book length in book mode).
                           semanticFormatterCallback: (v) => fmtDuration(
-                              Duration(milliseconds: (v * totalMs).round())),
+                              Duration(milliseconds: (v * spanMs).round())),
                         ),
                       ),
                       if (_dragValue != null)
@@ -755,9 +786,26 @@ class _ProgressBarState extends State<_ProgressBar> {
                     Text(fmtDuration(displayPos),
                         style: TextStyle(
                             color: SagaColors.fgMuted, fontSize: 12)),
-                    Text(fmtDuration(displayDur),
-                        style: TextStyle(
-                            color: SagaColors.fgMuted, fontSize: 12)),
+                    // Remaining listening time at the current playback speed
+                    // (the audiobook convention: 2 h left at 1.5× is really
+                    // 1 h 20 m of your evening). Tap to toggle to book total.
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => setState(() => _showTotal = !_showTotal),
+                      child: Semantics(
+                        label: _showTotal
+                            ? (chapterMode ? 'Chapter length' : 'Book length')
+                            : 'Time remaining at current speed',
+                        button: true,
+                        child: Text(
+                          _showTotal
+                              ? fmtDuration(displayDur)
+                              : '-${fmtDuration(_remainingAtSpeed(displayPos, displayDur))}',
+                          style: TextStyle(
+                              color: SagaColors.fgMuted, fontSize: 12),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1807,10 +1855,13 @@ class _NextInSeriesButton extends ConsumerWidget {
   Future<void> _playNext(WidgetRef ref, PlexBook book) async {
     try {
       final tracks = await ref.read(tracksProvider(book.ratingKey).future);
+      // Speed before load: with playWhenReady, audio can start the instant
+      // buffering completes — it must already be at the book's saved speed.
       final savedSpeed = SettingsStore.getBookSpeed(book.ratingKey);
-      await service.loadBook(bookRatingKey: book.ratingKey, tracks: tracks);
       await service.setSpeed(savedSpeed);
       ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
+      await service.loadBook(
+          bookRatingKey: book.ratingKey, tracks: tracks, playWhenReady: true);
       await service.play();
     } catch (_) {}
   }

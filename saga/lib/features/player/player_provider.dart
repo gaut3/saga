@@ -13,6 +13,7 @@ import '../../core/providers.dart';
 import '../../core/storage/book_download_store.dart';
 import '../../core/storage/download_store.dart';
 import '../../core/storage/settings_store.dart';
+import '../../core/storage/track_cache_store.dart';
 import 'player_service.dart';
 
 // Initialized in main.dart before runApp
@@ -38,16 +39,19 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
       final idx = position != null
           ? tracks.indexWhere((t) => t.ratingKey == position.trackRatingKey)
           : -1;
+      // Speed before load: with playWhenReady, audio can start the instant
+      // buffering completes — it must already be at the book's saved speed.
+      final savedSpeed = SettingsStore.getBookSpeed(bookRatingKey);
+      await service.setSpeed(savedSpeed);
+      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
       await service.loadBook(
         bookRatingKey: bookRatingKey,
         tracks: tracks,
         startTrackIndex: idx < 0 ? 0 : idx,
         startPositionMs: position?.positionMs ?? 0,
         isAutoReload: true,
+        playWhenReady: true,
       );
-      final savedSpeed = SettingsStore.getBookSpeed(bookRatingKey);
-      await service.setSpeed(savedSpeed);
-      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
       await service.play();
     } catch (e) {
       // Server still unreachable — player stays paused, user can retry manually
@@ -90,6 +94,17 @@ class DownloadState {
       );
 }
 
+/// True when every track of the book is downloaded. When the expected total is
+/// unknown (book downloaded before the track cache existed and not yet
+/// backfilled), falls back to the old optimistic "has any download" behavior.
+/// Callers must watch [downloadNotifierProvider] for reactivity.
+bool isBookFullyDownloaded(String bookRatingKey) {
+  final have = BookDownloadStore.downloadedCount(bookRatingKey);
+  if (have == 0) return false;
+  final expected = TrackCacheStore.trackCount(bookRatingKey);
+  return expected == null ? true : have >= expected;
+}
+
 class DownloadNotifier extends StateNotifier<DownloadState> {
   final Ref _ref;
 
@@ -102,12 +117,52 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
 
   DownloadNotifier(this._ref) : super(const DownloadState()) {
     _loadExisting();
+    reconcile(); // fire-and-forget: heal store/disk drift at startup
   }
 
   void _loadExisting() {
     final all = DownloadStore.allDownloads();
     final books = BookDownloadStore.booksWithDownloads();
     state = state.copyWith(completed: all.keys.toSet(), downloadedBooks: books);
+  }
+
+  /// Drops download metadata whose files no longer exist on disk. Historic
+  /// cause: the storage manager's delete used to remove folders without
+  /// clearing the stores, so Browse showed "downloaded" for books with no
+  /// files while the storage list (folder-based at the time) didn't list
+  /// them. Runs at startup and before every storage scan; heals that state.
+  Future<int> reconcile() async {
+    var purged = 0;
+    for (final book in BookDownloadStore.booksWithDownloads().toList()) {
+      for (final key in BookDownloadStore.trackKeys(book).toList()) {
+        final path = DownloadStore.getPath(key);
+        if (path == null || !File(path).existsSync()) {
+          await DownloadStore.remove(key);
+          BookDownloadStore.removeDownload(book, key);
+          purged++;
+        }
+      }
+      if (!BookDownloadStore.hasDownload(book)) {
+        await TrackCacheStore.delete(book);
+      }
+    }
+    if (purged > 0) {
+      AppLog.log('download',
+          'reconciled $purged download entries with missing files');
+      _loadExisting();
+    }
+    return purged;
+  }
+
+  /// Enqueues every not-yet-downloaded track of a book, persisting the full
+  /// track list to [TrackCacheStore] first so the book can be opened and
+  /// played (and the last session restored) with the server unreachable.
+  Future<void> downloadBook(
+      String bookRatingKey, List<PlexTrack> tracks) async {
+    await TrackCacheStore.save(bookRatingKey, tracks);
+    for (final track in tracks) {
+      await downloadTrack(track, bookRatingKey);
+    }
   }
 
   /// Enqueues [track] for download. Returns immediately; the job runs when a
@@ -235,15 +290,22 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
     return dir;
   }
 
-  Future<void> deleteBook(String bookRatingKey, List<PlexTrack> tracks) async {
+  Future<void> deleteBook(String bookRatingKey, List<PlexTrack> tracks) =>
+      deleteBookByKeys(bookRatingKey, tracks.map((t) => t.ratingKey));
+
+  /// Key-based variant for callers that don't have `PlexTrack` objects (the
+  /// storage manager works from the stores). ALL download deletion must go
+  /// through here so files, store metadata, track cache, and UI state can
+  /// never diverge — a raw `Directory.delete` once left Browse showing
+  /// "downloaded" for books whose files were gone.
+  Future<void> deleteBookByKeys(
+      String bookRatingKey, Iterable<String> trackRatingKeys) async {
+    final keys = trackRatingKeys.toSet();
     // Collect paths before removing from store.
-    final paths = tracks
-        .map((t) => DownloadStore.getPath(t.ratingKey))
-        .whereType<String>()
-        .toList();
+    final paths =
+        keys.map(DownloadStore.getPath).whereType<String>().toList();
 
     // Update UI state immediately so the button reacts before file I/O finishes.
-    final keys = tracks.map((t) => t.ratingKey).toSet();
     state = state.copyWith(
       completed: Set<String>.from(state.completed)..removeAll(keys),
       downloadedBooks: Set<String>.from(state.downloadedBooks)
@@ -252,15 +314,24 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
     );
 
     // Clean up store metadata.
-    for (final track in tracks) {
-      await DownloadStore.remove(track.ratingKey);
-      BookDownloadStore.removeDownload(bookRatingKey, track.ratingKey);
+    for (final key in keys) {
+      await DownloadStore.remove(key);
+      BookDownloadStore.removeDownload(bookRatingKey, key);
     }
+    await TrackCacheStore.delete(bookRatingKey);
 
-    // Delete the actual files.
+    // Delete the actual files, then any book folders left empty.
     for (final path in paths) {
       final file = File(path);
       if (await file.exists()) await file.delete();
+    }
+    for (final dirPath in paths.map((p) => File(p).parent.path).toSet()) {
+      try {
+        final dir = Directory(dirPath);
+        if (dir.existsSync() && dir.listSync().isEmpty) {
+          await dir.delete();
+        }
+      } catch (_) {} // best-effort cleanup only
     }
   }
 
@@ -272,6 +343,10 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
     }
     await DownloadStore.remove(track.ratingKey);
     BookDownloadStore.removeDownload(bookRatingKey, track.ratingKey);
+    // The cache exists to serve downloaded books; drop it with the last track.
+    if (!BookDownloadStore.hasDownload(bookRatingKey)) {
+      await TrackCacheStore.delete(bookRatingKey);
+    }
 
     final newCompleted = Set<String>.from(state.completed)
       ..remove(track.ratingKey);

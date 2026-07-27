@@ -27,7 +27,7 @@ index 590bab3..78c74dc 100644
              currentIndex = newIndex;
              return true;
          }
-@@ -765,7 +768,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
+@@ -765,11 +768,16 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
  
      private void ensurePlayerInitialized() {
          if (player == null) {
@@ -36,6 +36,15 @@ index 590bab3..78c74dc 100644
              if (loadControl != null) {
                  builder.setLoadControl(loadControl);
              }
+             if (livePlaybackSpeedControl != null) {
+                 builder.setLivePlaybackSpeedControl(livePlaybackSpeedControl);
+             }
++            // Saga: hold a Wi-Fi lock (in addition to the CPU wake lock) while
++            // playing over the network, so long screen-off streaming sessions
++            // don't stall when Wi-Fi power save kicks in. WAKE_LOCK permission
++            // is already declared by the app.
++            builder.setWakeMode(C.WAKE_MODE_NETWORK);
+             player = builder.build();
 @@ -791,7 +794,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                          new AudioOffloadPreferences.Builder()
                              .setIsGaplessSupportRequired(!offloadSchedulingEnabled)

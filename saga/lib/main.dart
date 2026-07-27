@@ -26,6 +26,7 @@ import 'core/storage/named_bookmark_store.dart';
 import 'core/storage/playback_log_store.dart';
 import 'core/storage/settings_store.dart';
 import 'core/storage/timeline_queue_store.dart';
+import 'core/storage/track_cache_store.dart';
 import 'core/storage/want_to_read_store.dart';
 import 'features/player/player_provider.dart';
 import 'features/player/player_service.dart';
@@ -66,6 +67,7 @@ Future<void> _run() async {
     await PlaybackLogStore.init(hiveKey);
     await SettingsStore.init(hiveKey);
     await TimelineQueueStore.init(hiveKey);
+    await TrackCacheStore.init(hiveKey);
     await WantToReadStore.init(hiveKey);
     await ArtworkCache.init();
 

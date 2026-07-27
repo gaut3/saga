@@ -36,6 +36,8 @@ class BookDownloadStore {
   static int downloadedCount(String bookRatingKey) =>
       _getSet(bookRatingKey).length;
 
+  static Set<String> trackKeys(String bookRatingKey) => _getSet(bookRatingKey);
+
   static bool hasDownload(String bookRatingKey) =>
       _getSet(bookRatingKey).isNotEmpty;
 

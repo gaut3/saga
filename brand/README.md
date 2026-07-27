@@ -1,4 +1,4 @@
-# Saga — design handoff (canonical)
+# Saga — brand (canonical)
 
 Single source of truth for the Saga audiobook player's visual system. Everything in
 this folder is **current**. Superseded material lives in `../Old design/` (kept locally
@@ -13,7 +13,7 @@ for reference, not tracked in git, not for building from).
 ## What's inside
 
 ```
-saga_handoff/
+brand/
 ├── README.md          ← you are here
 ├── 01-brand/          ← foundations: colour tokens, type, theming, accessibility
 │                         (tokens.css is the implementation source of truth)

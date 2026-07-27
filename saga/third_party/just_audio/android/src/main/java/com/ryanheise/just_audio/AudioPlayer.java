@@ -775,6 +775,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             if (livePlaybackSpeedControl != null) {
                 builder.setLivePlaybackSpeedControl(livePlaybackSpeedControl);
             }
+            // Saga: hold a Wi-Fi lock (in addition to the CPU wake lock) while
+            // playing over the network, so long screen-off streaming sessions
+            // don't stall when Wi-Fi power save kicks in. WAKE_LOCK permission
+            // is already declared by the app.
+            builder.setWakeMode(C.WAKE_MODE_NETWORK);
             player = builder.build();
             // The latest ExoPlayer enables offload scheduling by default but
             // it doesn't support gapless playback below SDK level 33 or speec

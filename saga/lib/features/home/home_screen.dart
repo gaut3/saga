@@ -353,10 +353,10 @@ class _BookTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final hasDownload = ref
-        .watch(downloadNotifierProvider)
-        .downloadedBooks
-        .contains(book.ratingKey);
+    // Watched for reactivity; the badge itself is store-derived so it can be
+    // honest about completeness (all tracks, not just the first).
+    ref.watch(downloadNotifierProvider);
+    final hasDownload = isBookFullyDownloaded(book.ratingKey);
 
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -906,16 +906,19 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
       final idx = savedPos != null
           ? tracks.indexWhere((t) => t.ratingKey == savedPos.trackRatingKey)
           : -1;
+      // Speed before load: with playWhenReady, audio can start the instant
+      // buffering completes — it must already be at the book's saved speed.
+      final savedSpeed = SettingsStore.getBookSpeed(widget.book.ratingKey);
+      await service.setSpeed(savedSpeed);
+      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
       await service.loadBook(
         bookRatingKey: widget.book.ratingKey,
         tracks: tracks,
         startTrackIndex: idx < 0 ? 0 : idx,
         startPositionMs: savedPos?.positionMs ?? 0,
         applyResumeRewind: true,
+        playWhenReady: true,
       );
-      final savedSpeed = SettingsStore.getBookSpeed(widget.book.ratingKey);
-      await service.setSpeed(savedSpeed);
-      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
       await service.play();
     } catch (_) {
     } finally {

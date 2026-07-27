@@ -34,3 +34,23 @@ int absoluteFromTrack(
   // Unreachable: the last-track branch above always returns.
   return (index: trackDurationsMs.length - 1, positionMs: ms);
 }
+
+/// Book-absolute start/end of the chapter containing [posMs], given ascending
+/// chapter start offsets. Chapter i spans `[start_i, start_{i+1})`; the last
+/// chapter runs to [totalMs]. A position before the first start (unusual, but
+/// some books' first chapter mark isn't at 0:00) spans `[0, firstStart)`.
+/// With no chapters, the whole book is one range.
+({int startMs, int endMs}) chapterRangeAt(
+    List<int> chapterStartsMs, int posMs, int totalMs) {
+  var startMs = 0;
+  var endMs = totalMs;
+  for (final cs in chapterStartsMs) {
+    if (cs <= posMs) {
+      startMs = cs;
+    } else {
+      endMs = cs;
+      break;
+    }
+  }
+  return (startMs: startMs, endMs: endMs);
+}

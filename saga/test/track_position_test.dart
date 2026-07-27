@@ -83,4 +83,40 @@ void main() {
       }
     });
   });
+
+  group('chapterRangeAt', () {
+    // Chapter starts at 0, 10 min, 25 min in a 40-min book.
+    const starts = [0, 600000, 1500000];
+    const bookMs = 2400000;
+
+    test('position inside a middle chapter', () {
+      expect(chapterRangeAt(starts, 700000, bookMs),
+          (startMs: 600000, endMs: 1500000));
+    });
+
+    test('position exactly on a chapter start belongs to that chapter', () {
+      expect(chapterRangeAt(starts, 600000, bookMs),
+          (startMs: 600000, endMs: 1500000));
+    });
+
+    test('first chapter starts at zero', () {
+      expect(
+          chapterRangeAt(starts, 0, bookMs), (startMs: 0, endMs: 600000));
+    });
+
+    test('last chapter runs to the book end', () {
+      expect(chapterRangeAt(starts, 2000000, bookMs),
+          (startMs: 1500000, endMs: bookMs));
+    });
+
+    test('position before a non-zero first start spans from zero to it', () {
+      expect(chapterRangeAt(const [300000, 900000], 100000, bookMs),
+          (startMs: 0, endMs: 300000));
+    });
+
+    test('no chapters means the whole book is one range', () {
+      expect(chapterRangeAt(const [], 500, bookMs),
+          (startMs: 0, endMs: bookMs));
+    });
+  });
 }
