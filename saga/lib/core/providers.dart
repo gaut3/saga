@@ -128,7 +128,9 @@ final recentlyAddedProvider =
 });
 
 final sagaThemeVariantProvider = StateProvider<SagaThemeVariant>(
-  (_) => SagaThemeVariant.values[SettingsStore.themeIndex],
+  // Clamped: a stored index from a build with more variants must not crash.
+  (_) => SagaThemeVariant.values[SettingsStore.themeIndex
+      .clamp(0, SagaThemeVariant.values.length - 1)],
 );
 
 /// Increment to force continueListeningProvider + inProgressCountProvider to re-run.

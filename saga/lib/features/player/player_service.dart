@@ -34,7 +34,6 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   List<PlexTrack> _tracks = [];
   String? _bookRatingKey;
   Timer? _progressTimer;
-  Timer? _sleepTimer;
   DateTime? _trackingFrom;
   DateTime? _pausedAt;
   void Function()? onBookCompleted;
@@ -456,8 +455,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> stop() async {
+    // The sleep timer lives in SleepTimerNotifier, which cancels itself off
+    // this stop (idle processing state) — there is deliberately no timer here.
+    // A dead second implementation used to be cancelled on this line, which
+    // read as "stopping clears the sleep timer" while clearing nothing.
     _progressTimer?.cancel();
-    _sleepTimer?.cancel();
     _pausedAt = DateTime.now();
     await _saveAndReportPosition(state: 'stopped');
     await _player.stop();
@@ -471,26 +473,22 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     await _player.seek(position);
   }
 
-  /// Seek to [position] and record it in the playback log (used by the slider
-  /// on drag-end only, so drags don't spam the history).
-  Future<void> seekAndLog(Duration position) async {
-    _previousAbsolutePositionMs = absolutePositionMs;
-    canUndoSeekNotifier.value = true;
-    _logEvent('seek', overridePositionMs: position.inMilliseconds);
-    await _player.seek(position);
-  }
-
   @override
   Future<void> skipToNext() async {
     _logEvent('skipNext');
     final chapters = _chaptersIfSingleTrack();
     if (chapters != null) {
-      final posMs = _player.position.inMilliseconds;
-      final next = chapters.firstWhere(
-        (c) => c.start.inMilliseconds > posMs,
-        orElse: () => chapters.last,
-      );
-      await _player.seek(next.start);
+      final idx = chapterIndexAt(
+          [for (final c in chapters) c.start.inMilliseconds],
+          _player.position.inMilliseconds);
+      // Already in the last chapter: nothing to skip to, so do nothing.
+      // Falling back to the last chapter (the old `orElse: () => last`)
+      // seeked to *its* start — backwards, by up to a whole chapter. Seeking
+      // to the end of the audio instead would be worse: it trips completion
+      // detection and marks the book finished. Same bug the sleep timer's
+      // end-of-chapter target had.
+      if (idx + 1 >= chapters.length) return;
+      await _player.seek(chapters[idx + 1].start);
     } else {
       await _player.seekToNext();
     }
@@ -502,9 +500,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     final chapters = _chaptersIfSingleTrack();
     if (chapters != null) {
       final posMs = _player.position.inMilliseconds;
-      final idx = chapters.lastIndexWhere(
-        (c) => c.start.inMilliseconds <= posMs,
-      );
+      final idx = chapterIndexAt(
+          [for (final c in chapters) c.start.inMilliseconds], posMs);
       const thresholdMs = 5000;
       if (idx <= 0) {
         await _player.seek(Duration.zero);
@@ -535,14 +532,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       _lastChapterIndex = -1;
       return;
     }
-    final posMs = position.inMilliseconds;
-    var idx = 0;
-    for (var i = chapters.length - 1; i >= 0; i--) {
-      if (posMs >= chapters[i].start.inMilliseconds) {
-        idx = i;
-        break;
-      }
-    }
+    final idx = chapterIndexAt(
+        [for (final c in chapters) c.start.inMilliseconds],
+        position.inMilliseconds);
     if (idx == _lastChapterIndex) return;
     _lastChapterIndex = idx;
     final current = mediaItem.value;
@@ -559,18 +551,6 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   Future<void> setSpeed(double speed) async {
     await _player.setSpeed(speed);
     playbackState.add(playbackState.value.copyWith(speed: speed));
-  }
-
-  void setSleepTimer(Duration duration) {
-    _sleepTimer?.cancel();
-    _sleepTimer = Timer(duration, () async {
-      await pause();
-    });
-  }
-
-  void cancelSleepTimer() {
-    _sleepTimer?.cancel();
-    _sleepTimer = null;
   }
 
   /// Saves the current position immediately. Called by the periodic 10-s timer;

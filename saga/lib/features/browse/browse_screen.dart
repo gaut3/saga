@@ -389,6 +389,12 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
   @override
   Widget build(BuildContext context) {
     ref.watch(wantToReadRevisionProvider);
+    // The "Downloaded" filter reads the download stores in
+    // _applySortAndFilter, so the list must rebuild when they change —
+    // otherwise a finished download never appears and a deleted one never
+    // leaves (its card would even drop its badge while staying in the list).
+    // Same pairing as wantToReadRevisionProvider above for the "Saved" chip.
+    ref.watch(downloadNotifierProvider);
     final booksAsync = ref.watch(booksProvider(widget.libraryKey));
 
     final bottomPad = MediaQuery.of(context).padding.bottom;

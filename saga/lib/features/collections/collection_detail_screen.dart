@@ -7,6 +7,7 @@ import '../../shared/widgets/book_cover_image.dart';
 import '../../core/storage/custom_collection_store.dart';
 import '../../core/theme/saga_theme.dart';
 import '../library/book_detail_screen.dart';
+import '../../shared/widgets/saga_error_view.dart';
 import '../../shared/widgets/saga_sheet.dart';
 
 class CollectionDetailScreen extends ConsumerStatefulWidget {
@@ -150,8 +151,15 @@ class _CollectionDetailScreenState
       body: booksAsync.when(
         loading: () =>
             Center(child: CircularProgressIndicator(color: SagaColors.accent)),
-        error: (e, _) => Center(
-            child: Text('$e', style: TextStyle(color: SagaColors.fgMuted))),
+        // Never render the raw exception: DioException prints the request URI,
+        // i.e. the user's server address, straight onto a screen that ends up
+        // in bug-report screenshots. The details go to the diagnostics log.
+        error: (e, _) => SagaErrorView(
+          message: 'Could not load this collection',
+          error: e,
+          onRetry: () => ref.invalidate(customCollectionBooksProvider(
+              '${widget.libraryKey}|${widget.collection.id}')),
+        ),
         data: (rawBooks) {
           final q = _query.toLowerCase();
           final books = _query.isEmpty

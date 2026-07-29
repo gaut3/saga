@@ -11,6 +11,7 @@ import '../../core/plex/plex_client.dart';
 import '../../core/providers.dart';
 import '../../features/player/player_screen.dart';
 import '../../features/player/player_service.dart';
+import '../../features/player/track_position_math.dart';
 
 class MiniPlayerPill extends ConsumerWidget {
   final AudioPlayerService service;
@@ -28,12 +29,11 @@ class MiniPlayerPill extends ConsumerWidget {
     return PlexClient.instance.resolveM4bParam(tracks[0]);
   }
 
-  String _activeChapter(List<M4bChapter> chapters, Duration pos) {
-    for (int i = chapters.length - 1; i >= 0; i--) {
-      if (pos >= chapters[i].start) return chapters[i].title;
-    }
-    return chapters.first.title;
-  }
+  String _activeChapter(List<M4bChapter> chapters, Duration pos) =>
+      chapters[chapterIndexAt(
+          [for (final c in chapters) c.start.inMilliseconds],
+          pos.inMilliseconds)]
+          .title;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

@@ -25,6 +25,7 @@ import '../../shared/widgets/saga_sheet.dart';
 import '../../shared/widgets/saga_toast.dart';
 import 'player_provider.dart';
 import 'player_service.dart';
+import 'track_position_math.dart';
 
 class PlayerScreen extends ConsumerWidget {
   const PlayerScreen({super.key});
@@ -645,24 +646,76 @@ class _TrackInfo extends StatelessWidget {
   }
 }
 
+/// Skip-button glyph with the configured interval drawn inside the arc. The
+/// material `replay_30`-style icons hardcode their number into the glyph —
+/// with 15/45/60 s configured they showed a lying "30" (issue #7), and no
+/// numbered variants exist beyond 5/10/30. The plain arc (mirrored for
+/// forward) plus a centered label works for any interval.
+class _SkipIntervalIcon extends StatelessWidget {
+  final int seconds;
+  final bool forward;
+  final double size;
+  final Color color;
+
+  const _SkipIntervalIcon({
+    required this.seconds,
+    required this.forward,
+    required this.size,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Transform.flip(
+            flipX: forward,
+            child: Icon(Icons.replay_rounded, size: size, color: color),
+          ),
+          // Slightly below center, matching where the numbered material
+          // glyphs place their digits.
+          Padding(
+            padding: EdgeInsets.only(top: size * 0.14),
+            child: Text(
+              '$seconds',
+              style: TextStyle(
+                color: color,
+                fontSize: size * 0.32,
+                fontWeight: FontWeight.w800,
+                height: 1.0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Progress bar — shows book-level progress ──────────────────────────────────
 
-class _ProgressBar extends StatefulWidget {
+class _ProgressBar extends ConsumerStatefulWidget {
   final AudioPlayerService service;
   const _ProgressBar({required this.service});
 
   @override
-  State<_ProgressBar> createState() => _ProgressBarState();
+  ConsumerState<_ProgressBar> createState() => _ProgressBarState();
 }
 
-class _ProgressBarState extends State<_ProgressBar> {
+class _ProgressBarState extends ConsumerState<_ProgressBar> {
   double? _dragValue;
   // Right-hand label mode: remaining-at-current-speed (default) or book total.
   bool _showTotal = false;
 
-  /// Wall-clock time left in the book at the current playback speed.
-  Duration _remainingAtSpeed(Duration pos, Duration dur) {
-    final speed = widget.service.player.speed;
+  /// Wall-clock time left in the book at [speed]. The speed is watched rather
+  /// than read off the player: this widget otherwise only rebuilds on position
+  /// ticks, which stop while paused — so changing speed from the sheet with
+  /// playback paused left the countdown showing the old figure.
+  Duration _remainingAtSpeed(Duration pos, Duration dur, double speed) {
     final remainingMs = (dur - pos).inMilliseconds.clamp(0, dur.inMilliseconds);
     // Guard nonsense speeds (0 or negative can't occur via the picker, but a
     // division by zero here would take the whole player screen down).
@@ -672,6 +725,8 @@ class _ProgressBarState extends State<_ProgressBar> {
 
   @override
   Widget build(BuildContext context) {
+    final speed = ref.watch(playbackSpeedProvider).valueOrNull ??
+        widget.service.player.speed;
     return StreamBuilder<Duration>(
       stream: widget.service.positionStream,
       builder: (context, posSnap) {
@@ -800,7 +855,7 @@ class _ProgressBarState extends State<_ProgressBar> {
                         child: Text(
                           _showTotal
                               ? fmtDuration(displayDur)
-                              : '-${fmtDuration(_remainingAtSpeed(displayPos, displayDur))}',
+                              : '-${fmtDuration(_remainingAtSpeed(displayPos, displayDur, speed))}',
                           style: TextStyle(
                               color: SagaColors.fgMuted, fontSize: 12),
                         ),
@@ -846,7 +901,12 @@ class _Controls extends StatelessWidget {
             ),
             IconButton(
               iconSize: 28,
-              icon: const Icon(Icons.replay_30_rounded),
+              icon: _SkipIntervalIcon(
+                seconds: SettingsStore.skipBackwardSeconds,
+                forward: false,
+                size: 28,
+                color: SagaColors.fgMuted,
+              ),
               color: SagaColors.fgMuted,
               tooltip:
                   'Rewind ${SettingsStore.skipBackwardSeconds} seconds',
@@ -878,7 +938,12 @@ class _Controls extends StatelessWidget {
             const SizedBox(width: 8),
             IconButton(
               iconSize: 28,
-              icon: const Icon(Icons.forward_30_rounded),
+              icon: _SkipIntervalIcon(
+                seconds: SettingsStore.skipForwardSeconds,
+                forward: true,
+                size: 28,
+                color: SagaColors.fgMuted,
+              ),
               color: SagaColors.fgMuted,
               tooltip:
                   'Skip forward ${SettingsStore.skipForwardSeconds} seconds',
@@ -916,7 +981,8 @@ class _BottomActions extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final speed = ref.watch(playbackSpeedProvider);
+    final speed =
+        ref.watch(playbackSpeedProvider).valueOrNull ?? service.player.speed;
     final timerEnd = ref.watch(sleepTimerProvider);
 
     return ValueListenableBuilder<bool>(
@@ -1114,7 +1180,8 @@ class _BottomActions extends ConsumerWidget {
     final bottomPad = MediaQuery.of(context).padding.bottom;
     showSagaSheet<void>(context, (_) => Consumer(
       builder: (ctx, ref, _) {
-        final current = ref.watch(playbackSpeedProvider);
+        final current = ref.watch(playbackSpeedProvider).valueOrNull ??
+            service.player.speed;
         return Padding(
           padding: EdgeInsets.only(bottom: bottomPad + 8),
           child: Column(
@@ -1130,7 +1197,8 @@ class _BottomActions extends ConsumerWidget {
                         ? Icon(Icons.check_rounded, color: SagaColors.accent)
                         : null,
                     onTap: () {
-                      ref.read(playbackSpeedProvider.notifier).state = s;
+                      // playbackSpeedProvider follows the service's own state,
+                      // so setting the speed is all the UI update there is.
                       service.setSpeed(s);
                       if (bookKey != null) {
                         SettingsStore.setBookSpeed(bookKey!, s);
@@ -1170,7 +1238,7 @@ class _BottomActions extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('Sleep Timer',
+                Text('Sleep timer',
                     style: TextStyle(
                         color: SagaColors.fg,
                         fontSize: 18,
@@ -1603,12 +1671,8 @@ class _M4bChapterList extends StatelessWidget {
     );
   }
 
-  int _activeIndex(Duration pos) {
-    for (int i = chapters.length - 1; i >= 0; i--) {
-      if (pos >= chapters[i].start) return i;
-    }
-    return 0;
-  }
+  int _activeIndex(Duration pos) => chapterIndexAt(
+      [for (final c in chapters) c.start.inMilliseconds], pos.inMilliseconds);
 
 }
 
@@ -1857,9 +1921,7 @@ class _NextInSeriesButton extends ConsumerWidget {
       final tracks = await ref.read(tracksProvider(book.ratingKey).future);
       // Speed before load: with playWhenReady, audio can start the instant
       // buffering completes — it must already be at the book's saved speed.
-      final savedSpeed = SettingsStore.getBookSpeed(book.ratingKey);
-      await service.setSpeed(savedSpeed);
-      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
+      await service.setSpeed(SettingsStore.getBookSpeed(book.ratingKey));
       await service.loadBook(
           bookRatingKey: book.ratingKey, tracks: tracks, playWhenReady: true);
       await service.play();

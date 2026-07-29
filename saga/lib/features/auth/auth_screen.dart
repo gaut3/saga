@@ -98,7 +98,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     child: ElevatedButton(
                       onPressed: _loading ? null : _startLogin,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: SagaColors.accent,
+                        // Full-width filled button — accentDim, not accent.
+                        backgroundColor: SagaColors.accentDim,
                         foregroundColor: SagaColors.accentFg,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(

@@ -170,10 +170,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     await SettingsStore.setDefaultSpeed(v);
                     if (!mounted) return;
                     setState(() => _defaultSpeed = v);
-                    // Apply immediately if player is active
-                    final service = ref.read(playerServiceProvider);
-                    service.setSpeed(v);
-                    ref.read(playbackSpeedProvider.notifier).state = v;
+                    // Apply immediately if a player is active; the player UI
+                    // follows the service's own speed state from here.
+                    ref.read(playerServiceProvider).setSpeed(v);
                   },
                 ),
                 _PlayerAnimationTile(
@@ -807,6 +806,7 @@ class _ThemePicker extends ConsumerWidget {
     (variant: SagaThemeVariant.ink,   label: 'Ink',   bg: Color(0xFF1E1410), accent: Color(0xFFE0A050)),
     (variant: SagaThemeVariant.cream, label: 'Cream', bg: Color(0xFFF4EAD8), accent: Color(0xFFC25A3A)),
     (variant: SagaThemeVariant.terra, label: 'Terra', bg: Color(0xFFC25A3A), accent: Color(0xFF1E1410)),
+    (variant: SagaThemeVariant.onyx,  label: 'Onyx',  bg: Color(0xFF000000), accent: Color(0xFFE0A050)),
   ];
 
   @override

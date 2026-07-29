@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.14] - 2026-07-29
+
+### Added
+- **Onyx theme — true black for OLED screens.** A fourth theme with a pure-black page (pixels actually off), warm near-black surfaces, and slightly softened text so nothing blooms during night listening. Amber stays the accent, dimmed slightly on the few large filled areas (the Home card's Resume bar, the Play/Resume buttons, the week strip) where full-brightness amber blooms against black. Opt-in from Settings → Theme; the default dark theme remains Ink. Suggested by [@Kiffir](https://github.com/Kiffir) ([discussion #6](https://github.com/gaut3/saga/discussions/6)).
+
+### Changed
+- **"Sleep Timer" is now "Sleep timer", and "Select Server" is "Select server"** — the last two labels missed by 1.0.11's sentence-case pass.
+
+### Fixed
+- **Skip-to-next in the last chapter jumped backwards.** In a single-file book's final chapter, the next-chapter button had no chapter to move to and fell back to the last one — seeking to *its* start, i.e. backwards by up to a whole chapter, in the one place you least want to lose your spot. It now does nothing, which is what "next" means when there isn't one.
+- **The sleep timer stayed armed after a book ended.** Finishing a book stops playback, but the timer only saw "not playing" and froze mid-countdown — so the player kept showing an armed sleep timer, which then resumed against whatever you played next and paused it early. The timer now ends with playback.
+- **A collection that failed to load showed the raw error text.** Every other screen has shown a friendly message with a Retry button since 1.0.11; collection detail was missed and still printed the exception, which can contain your server's address — exactly the thing that ends up in a screenshot attached to a bug report. It now matches the rest of the app, with the details going to the diagnostics log instead.
+- **The book screen's chapter list could disagree with the player about which chapter you're in.** For a book whose first chapter mark isn't at 0:00, the book screen highlighted no chapter at all for a position before that mark, while the player highlighted the first one. Six separate copies of "which chapter is this position in" are now one tested function shared by the player, the book screen, the mini player, the notification title and chapter skipping — so they can't drift apart again.
+- **Deleting a download from the book screen didn't refresh the "Downloaded books" list.** The 1.0.13 fix refreshed the list when download state changed — but the delete updated that state *before* cleaning up the download records, so the refresh re-read the records a moment too early and still saw the book. The cleanup now happens first. Deleting from the storage list itself was unaffected. Thanks to [@Kiffir](https://github.com/Kiffir) for the precise follow-up on [#2](https://github.com/gaut3/saga/issues/2)!
+- **Startup could flash white before the app appeared.** Between the ink launch screen and Saga's first frame there's a window — Hive, the key read, the audio service — where Android paints the plain activity background, and that background followed the *phone's* light/dark setting rather than Saga. On a phone in light mode that meant ink, then a white flash, then a dark app. Startup is now one colour throughout. Only affected phones not set to system dark mode.
+- **Browse's "Downloaded" filter didn't notice downloads finishing or being deleted.** With the filter on, the list was built once and then ignored the download store: a book that finished downloading never appeared, and a book you deleted stayed in the list — visibly wrong, since its own cover badge did update and vanished while the book sat there under a "Downloaded" filter. The list now refreshes with the store, exactly like the "Saved" filter does.
+- **Downloading a single chapter marked the whole book as downloaded.** Using the per-chapter download button in a book's file list didn't record how many files the book has, and without that count Saga fell back to "any download counts" — so one file of a twenty-file book lit the completed badge. That's the same misleading badge fixed in 1.0.13, which only covered whole-book downloads. Per-chapter downloads now record the file list too, which also means a part-downloaded book opens offline.
+- **The playback speed shown in the player could disagree with what you were hearing.** The player screen kept its own copy of the speed, updated by hand on each of the paths that can change it — and the one added in 1.0.13, restoring your book from the media notification after Android killed the app, didn't update it. Your book resumed at its saved 1.5× while the speed button claimed 1.0×. The player now reads the speed from the player itself, so there is no second copy to fall out of step. Same root cause: the "time remaining" label no longer waits for playback to resume before reflecting a speed change made while paused.
+- **Skip buttons showed "30" regardless of the configured interval.** The player's rewind/forward buttons used Material's `replay_30`/`forward_30` icons, which have the number baked into the glyph — set 15, 45, or 60 seconds in Settings and the buttons still claimed 30 (the skips themselves were always correct). The buttons now draw the actual configured interval inside the arc. Thanks to [@Kiffir](https://github.com/Kiffir) ([#7](https://github.com/gaut3/saga/issues/7))!
+
+---
+
 ## [1.0.13] - 2026-07-27
 
 ### Added

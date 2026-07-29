@@ -449,10 +449,10 @@ class _NoServerView extends StatelessWidget {
           ElevatedButton(
             onPressed: onSelectServer,
             style: ElevatedButton.styleFrom(
-              backgroundColor: SagaColors.accent,
+              backgroundColor: SagaColors.accentDim,
               foregroundColor: SagaColors.accentFg,
             ),
-            child: const Text('Select Server'),
+            child: const Text('Select server'),
           ),
         ],
       ),
@@ -792,8 +792,10 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
               ),
             ),
             // ── Accent footer: the primary play/pause action ──
+            // accentDim, not accent: this is the widest amber area in the app
+            // (see SagaColors.accentDim). Identical outside Onyx.
             Material(
-              color: SagaColors.accent,
+              color: SagaColors.accentDim,
               child: InkWell(
                 onTap: _loading ? null : (isNowPlaying ? _pause : _resume),
                 child: SizedBox(
@@ -883,9 +885,7 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
         startPositionMs: savedPos?.positionMs ?? 0,
         applyResumeRewind: true,
       );
-      final savedSpeed = SettingsStore.getBookSpeed(widget.book.ratingKey);
-      await service.setSpeed(savedSpeed);
-      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
+      await service.setSpeed(SettingsStore.getBookSpeed(widget.book.ratingKey));
     } catch (_) {}
   }
 
@@ -908,9 +908,7 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
           : -1;
       // Speed before load: with playWhenReady, audio can start the instant
       // buffering completes — it must already be at the book's saved speed.
-      final savedSpeed = SettingsStore.getBookSpeed(widget.book.ratingKey);
-      await service.setSpeed(savedSpeed);
-      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
+      await service.setSpeed(SettingsStore.getBookSpeed(widget.book.ratingKey));
       await service.loadBook(
         bookRatingKey: widget.book.ratingKey,
         tracks: tracks,

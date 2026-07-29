@@ -35,6 +35,33 @@ int absoluteFromTrack(
   return (index: trackDurationsMs.length - 1, positionMs: ms);
 }
 
+/// Index of the chapter containing [posMs], given ascending chapter start
+/// offsets — the last chapter whose start is at or before the position.
+///
+/// The single definition of "which chapter am I in": the notification title,
+/// the mini player's subtitle, both chapter lists' highlight, and chapter
+/// skipping all resolve it through here. They were six hand-rolled loops that
+/// had already drifted — the book detail list highlighted nothing for a
+/// position before the first chapter mark while the player highlighted the
+/// first chapter.
+///
+/// A position before the first start (some books' first chapter mark isn't at
+/// 0:00) resolves to chapter 0: you are ahead of chapter 1's mark, and every
+/// display of this wants to say "chapter 1" rather than nothing. Note this is
+/// the one place [chapterRangeAt] differs — it reports that lead-in as its own
+/// `[0, firstStart)` range, which is what scrubbing wants. Empty list → 0.
+int chapterIndexAt(List<int> chapterStartsMs, int posMs) {
+  var index = 0;
+  for (var i = 0; i < chapterStartsMs.length; i++) {
+    if (chapterStartsMs[i] <= posMs) {
+      index = i;
+    } else {
+      break;
+    }
+  }
+  return index;
+}
+
 /// Book-absolute start/end of the chapter containing [posMs], given ascending
 /// chapter start offsets. Chapter i spans `[start_i, start_{i+1})`; the last
 /// chapter runs to [totalMs]. A position before the first start (unusual, but

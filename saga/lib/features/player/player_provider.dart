@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:audio_service/audio_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,9 +42,7 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
           : -1;
       // Speed before load: with playWhenReady, audio can start the instant
       // buffering completes — it must already be at the book's saved speed.
-      final savedSpeed = SettingsStore.getBookSpeed(bookRatingKey);
-      await service.setSpeed(savedSpeed);
-      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
+      await service.setSpeed(SettingsStore.getBookSpeed(bookRatingKey));
       await service.loadBook(
         bookRatingKey: bookRatingKey,
         tracks: tracks,
@@ -154,21 +153,29 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
     return purged;
   }
 
-  /// Enqueues every not-yet-downloaded track of a book, persisting the full
-  /// track list to [TrackCacheStore] first so the book can be opened and
-  /// played (and the last session restored) with the server unreachable.
+  /// Enqueues every not-yet-downloaded track of a book.
   Future<void> downloadBook(
       String bookRatingKey, List<PlexTrack> tracks) async {
-    await TrackCacheStore.save(bookRatingKey, tracks);
     for (final track in tracks) {
-      await downloadTrack(track, bookRatingKey);
+      await downloadTrack(track, bookRatingKey, tracks);
     }
   }
 
   /// Enqueues [track] for download. Returns immediately; the job runs when a
   /// concurrency slot frees up. Safe to call repeatedly — already-downloaded,
   /// queued, or in-flight tracks are ignored.
-  Future<void> downloadTrack(PlexTrack track, String bookRatingKey) async {
+  ///
+  /// [bookTracks] is the book's *full* track list, required on every path so
+  /// the offline track cache can't be skipped: it makes the book openable with
+  /// the server unreachable, and it's the only record of how many files the
+  /// book has — without it [isBookFullyDownloaded] falls back to "any download
+  /// counts" and the completed badge lights up on the first file of a 20-file
+  /// book (the per-chapter download button used to do exactly that).
+  Future<void> downloadTrack(PlexTrack track, String bookRatingKey,
+      List<PlexTrack> bookTracks) async {
+    if (TrackCacheStore.trackCount(bookRatingKey) != bookTracks.length) {
+      await TrackCacheStore.save(bookRatingKey, bookTracks);
+    }
     final key = track.ratingKey;
     if (state.completed.contains(key)) return;
     if (state.progress.containsKey(key)) return; // queued or downloading
@@ -305,20 +312,24 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
     final paths =
         keys.map(DownloadStore.getPath).whereType<String>().toList();
 
-    // Update UI state immediately so the button reacts before file I/O finishes.
+    // Store metadata BEFORE the state update: the settings storage list
+    // refreshes when this notifier's state changes and rebuilds from the
+    // stores — with state first, it re-scanned while the stores still listed
+    // the book and stayed stale until the next state change (Kiffir's
+    // follow-up on issue #2). Hive ops are milliseconds, so the UI still
+    // reacts effectively immediately; only slow file I/O stays after.
+    for (final key in keys) {
+      await DownloadStore.remove(key);
+      BookDownloadStore.removeDownload(bookRatingKey, key);
+    }
+    await TrackCacheStore.delete(bookRatingKey);
+
     state = state.copyWith(
       completed: Set<String>.from(state.completed)..removeAll(keys),
       downloadedBooks: Set<String>.from(state.downloadedBooks)
         ..remove(bookRatingKey),
       failed: {...state.failed}..removeAll(keys),
     );
-
-    // Clean up store metadata.
-    for (final key in keys) {
-      await DownloadStore.remove(key);
-      BookDownloadStore.removeDownload(bookRatingKey, key);
-    }
-    await TrackCacheStore.delete(bookRatingKey);
 
     // Delete the actual files, then any book folders left empty.
     for (final path in paths) {
@@ -378,9 +389,11 @@ final nowPlayingKeyProvider = StreamProvider<String?>((ref) async* {
 
 enum SleepMode { timed, endOfChapter }
 
+typedef _PlaybackPhase = ({bool playing, AudioProcessingState processing});
+
 class SleepTimerNotifier extends StateNotifier<DateTime?> {
   Timer? _timer;
-  StreamSubscription<bool>? _playingSub;
+  StreamSubscription<_PlaybackPhase>? _playbackSub;
   final AudioPlayerService _service;
 
   // Set while playback is paused mid-countdown: the frozen time remaining, so
@@ -462,11 +475,26 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
   /// Pauses the countdown when playback pauses and resumes it when playback
   /// resumes, so the timer can't fire while paused or drift after an
   /// interruption. The countdown then measures listening time, not wall time.
+  /// Ends the timer outright when playback ends, which pausing can't be told
+  /// apart from otherwise.
   void _watchPlayback() {
-    _playingSub?.cancel();
-    _playingSub =
-        _service.playbackState.map((s) => s.playing).distinct().listen((playing) {
+    _playbackSub?.cancel();
+    _playbackSub = _service.playbackState
+        .map((s) => (playing: s.playing, processing: s.processingState))
+        .distinct()
+        .listen((phase) {
       if (state == null) return; // no active timer
+      // Playback is over (book finished, or the service stopped): there is no
+      // listening time left for the countdown to measure. Without this the
+      // timer froze as if merely paused, so the player kept showing an armed
+      // sleep timer after the book ended — and re-armed it against whatever
+      // was played next.
+      if (phase.processing == AudioProcessingState.completed ||
+          phase.processing == AudioProcessingState.idle) {
+        _cancelAll();
+        return;
+      }
+      final playing = phase.playing;
       if (!playing && _pausedRemaining == null) {
         _pausedRemaining = remaining; // freeze
         _timer?.cancel();
@@ -487,8 +515,8 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
   void _cancelAll() {
     _timer?.cancel();
     _timer = null;
-    _playingSub?.cancel();
-    _playingSub = null;
+    _playbackSub?.cancel();
+    _playbackSub = null;
     _pausedRemaining = null;
     state = null;
   }
@@ -507,5 +535,19 @@ final sleepTimerProvider =
 
 // ── Playback speed ────────────────────────────────────────────────────────────
 
-final playbackSpeedProvider =
-    StateProvider<double>((_) => SettingsStore.defaultSpeed);
+/// The speed the player is *actually* running at, read from the audio
+/// service's own broadcast state — deliberately not a second copy of it.
+///
+/// Every path that changes speed (book load from Home / Browse / book detail,
+/// the player's speed sheet, the Settings default, the auto-reload after a
+/// stream error, and session restore after process death) goes through
+/// [AudioPlayerService.setSpeed], which republishes `playbackState`. Deriving
+/// the UI from that is what stops the two from drifting: the hand-maintained
+/// mirror this replaced had six call sites that each had to remember to
+/// update it, and session restore didn't — so a book restored from the media
+/// notification played at its saved speed while the player screen showed the
+/// default.
+final playbackSpeedProvider = StreamProvider<double>((ref) {
+  final service = ref.watch(playerServiceProvider);
+  return service.playbackState.map((s) => s.speed).distinct();
+});

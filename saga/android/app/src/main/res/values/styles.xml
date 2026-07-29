@@ -13,6 +13,12 @@
 
          This Theme is only used starting with V2 of Flutter's Android embedding. -->
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <!-- Same ink as the launch splash, NOT ?android:colorBackground: this
+             window is what's visible from the moment the activity starts until
+             Flutter's first frame — the whole of Hive/Keystore/AudioService
+             startup. The platform attribute resolves to white under a
+             light-mode phone, which flashed white between the ink splash and a
+             dark app for anyone not using system dark mode. -->
+        <item name="android:windowBackground">@drawable/launch_background</item>
     </style>
 </resources>

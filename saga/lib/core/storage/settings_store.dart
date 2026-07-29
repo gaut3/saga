@@ -17,11 +17,11 @@ class SettingsStore {
     }
   }
 
+  // Legacy single skip interval, superseded by the independent forward/back
+  // values below. Read-only on purpose: it exists to seed those two for users
+  // who set it before they were split, so nothing writes it any more.
   static int get skipIntervalSeconds =>
       (_box.get('skipInterval', defaultValue: 30) as num).toInt();
-
-  static Future<void> setSkipInterval(int seconds) =>
-      _box.put('skipInterval', seconds);
 
   // Forward/back skip intervals — independent. Default to the legacy single
   // value so existing users keep their chosen interval on both directions.
@@ -96,7 +96,7 @@ class SettingsStore {
   static Future<void> setDefaultSleepTimerMinutes(int minutes) =>
       _box.put('defaultSleepTimer', minutes);
 
-  // 0 = ink, 1 = cream, 2 = terra
+  // 0 = ink, 1 = cream, 2 = terra, 3 = onyx
   static int get themeIndex =>
       (_box.get('themeIndex', defaultValue: 0) as num).toInt();
 

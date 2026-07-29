@@ -495,12 +495,14 @@ class _WeekCardState extends State<_WeekCard>
                                   width: double.infinity,
                                   height: barH,
                                   decoration: BoxDecoration(
+                                    // accentDim: a full-height column of amber
+                                    // is a large fill (see SagaColors.accentDim).
                                     color: isFuture
                                         ? SagaColors.heatEmpty
                                         : isToday
-                                            ? SagaColors.accent
+                                            ? SagaColors.accentDim
                                             : ms > 0
-                                                ? SagaColors.accent
+                                                ? SagaColors.accentDim
                                                     .withValues(alpha: 0.42)
                                                 : SagaColors.heatEmpty,
                                     borderRadius: BorderRadius.circular(7),

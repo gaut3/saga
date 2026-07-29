@@ -15,6 +15,7 @@ import '../../core/storage/want_to_read_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../player/player_provider.dart';
 import '../player/player_screen.dart';
+import '../player/track_position_math.dart';
 import '../../core/utils/format.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_sheet.dart';
@@ -326,7 +327,8 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                                     icon: const Icon(Icons.play_arrow),
                                     label: const Text('Resume'),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: SagaColors.accent,
+                                      // Half-width filled button — accentDim.
+                                      backgroundColor: SagaColors.accentDim,
                                       foregroundColor: SagaColors.accentFg,
                                       padding: const EdgeInsets.symmetric(
                                           vertical: 12),
@@ -355,7 +357,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: savedPosition != null
                                         ? SagaColors.surfaceAlt
-                                        : SagaColors.accent,
+                                        : SagaColors.accentDim,
                                     foregroundColor: savedPosition != null
                                         ? SagaColors.fg
                                         : SagaColors.accentFg,
@@ -506,10 +508,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
       final service = ref.read(playerServiceProvider);
       // Restore the book's saved speed before loading: with playWhenReady,
       // audio can start the instant buffering completes.
-      final savedSpeed =
-          SettingsStore.getBookSpeed(widget.book.ratingKey);
-      await service.setSpeed(savedSpeed);
-      ref.read(playbackSpeedProvider.notifier).state = savedSpeed;
+      await service.setSpeed(SettingsStore.getBookSpeed(widget.book.ratingKey));
       await service.loadBook(
         bookRatingKey: widget.book.ratingKey,
         tracks: tracks,
@@ -804,11 +803,13 @@ class _ChapterListSliver extends ConsumerWidget {
 
   Widget _m4bList(
       BuildContext context, WidgetRef ref, List<M4bChapter> chapters) {
+    // Resolved once for the whole list rather than per row.
+    final activeIdx = _activeChapterIndex(chapters);
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, i) {
           final chapter = chapters[i];
-          final active = _isActive(chapters, i);
+          final active = i == activeIdx;
           return ListTile(
             leading: CircleAvatar(
               backgroundColor: active
@@ -894,7 +895,7 @@ class _ChapterListSliver extends ConsumerWidget {
                         ? null
                         : () => ref
                             .read(downloadNotifierProvider.notifier)
-                            .downloadTrack(track, book.ratingKey),
+                            .downloadTrack(track, book.ratingKey, tracks),
                   ),
             onTap: () => _openAt(context, ref, 0, trackIndex: i),
           );
@@ -904,17 +905,18 @@ class _ChapterListSliver extends ConsumerWidget {
     );
   }
 
-  bool _isActive(List<M4bChapter> chapters, int i) {
-    if (savedPosition == null || tracks.isEmpty) return false;
-    if (savedPosition!.trackRatingKey != tracks[0].ratingKey) {
-      return false;
-    }
-    final pos = savedPosition!.positionMs;
-    final start = chapters[i].start.inMilliseconds;
-    final end = i + 1 < chapters.length
-        ? chapters[i + 1].start.inMilliseconds
-        : 999999999;
-    return pos >= start && pos < end;
+  /// Chapter the saved position sits in, or -1 when there's nothing to mark
+  /// (no saved position, or it belongs to a different track). Resolved through
+  /// the shared [chapterIndexAt] so this list agrees with the player's chapter
+  /// list, the mini player and the notification — its own start/end window
+  /// used to highlight nothing when the position preceded the first chapter
+  /// mark, where the player highlighted chapter 1.
+  int _activeChapterIndex(List<M4bChapter> chapters) {
+    if (savedPosition == null || tracks.isEmpty) return -1;
+    if (savedPosition!.trackRatingKey != tracks[0].ratingKey) return -1;
+    return chapterIndexAt(
+        [for (final c in chapters) c.start.inMilliseconds],
+        savedPosition!.positionMs);
   }
 
   Future<void> _openAt(BuildContext context, WidgetRef ref,

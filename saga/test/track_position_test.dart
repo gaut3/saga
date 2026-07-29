@@ -119,4 +119,58 @@ void main() {
           (startMs: 0, endMs: bookMs));
     });
   });
+
+  group('chapterIndexAt', () {
+    // Chapter starts at 0, 10 min, 25 min in a 40-min book.
+    const starts = [0, 600000, 1500000];
+    const bookMs = 2400000;
+
+    test('position inside a middle chapter', () {
+      expect(chapterIndexAt(starts, 700000), 1);
+    });
+
+    test('position exactly on a chapter start belongs to that chapter', () {
+      expect(chapterIndexAt(starts, 600000), 1);
+    });
+
+    test('position one ms before a start stays on the earlier chapter', () {
+      expect(chapterIndexAt(starts, 599999), 0);
+    });
+
+    test('first chapter at zero', () {
+      expect(chapterIndexAt(starts, 0), 0);
+    });
+
+    test('last chapter catches everything after its start', () {
+      expect(chapterIndexAt(starts, 2000000), 2);
+      // Past the end of the audio — clamps to the last chapter, never throws.
+      expect(chapterIndexAt(starts, 99999999), 2);
+    });
+
+    test('position before a non-zero first start resolves to chapter 0', () {
+      // The book detail list used to show no active chapter here while the
+      // player showed chapter 1; both now say chapter 1.
+      expect(chapterIndexAt(const [300000, 900000], 100000), 0);
+    });
+
+    test('no chapters resolves to 0', () {
+      expect(chapterIndexAt(const [], 500), 0);
+    });
+
+    test('negative position resolves to the first chapter', () {
+      expect(chapterIndexAt(starts, -1), 0);
+    });
+
+    test('agrees with chapterRangeAt for every position within a chapter', () {
+      // The two must not drift: for any position at or after the first start,
+      // the index's chapter bounds are exactly the range the scrubber uses.
+      for (final pos in [0, 1, 599999, 600000, 1499999, 1500000, 2399999]) {
+        final idx = chapterIndexAt(starts, pos);
+        final range = chapterRangeAt(starts, pos, bookMs);
+        expect(range.startMs, starts[idx], reason: 'position $pos');
+        expect(range.endMs, idx + 1 < starts.length ? starts[idx + 1] : bookMs,
+            reason: 'position $pos');
+      }
+    });
+  });
 }

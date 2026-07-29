@@ -24,7 +24,7 @@ class _ServerSelectionScreenState extends ConsumerState<ServerSelectionScreen> {
     return Scaffold(
       backgroundColor: SagaColors.bg,
       appBar: AppBar(
-        title: Text(widget.isSetup ? 'Connect to Plex' : 'Select Server'),
+        title: Text(widget.isSetup ? 'Connect to Plex' : 'Select server'),
         backgroundColor: SagaColors.surface,
         foregroundColor: SagaColors.fg,
         automaticallyImplyLeading: !widget.isSetup,
@@ -46,7 +46,7 @@ class _ServerSelectionScreenState extends ConsumerState<ServerSelectionScreen> {
               ElevatedButton(
                 onPressed: () => ref.invalidate(serverListProvider),
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: SagaColors.accent),
+                    backgroundColor: SagaColors.accentDim),
                 child: Text('Retry',
                     style: TextStyle(color: SagaColors.accentFg)),
               ),

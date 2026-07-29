@@ -52,7 +52,7 @@ class _SagaErrorViewState extends State<SagaErrorView> {
               ElevatedButton(
                 onPressed: widget.onRetry,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: SagaColors.accent,
+                  backgroundColor: SagaColors.accentDim,
                   foregroundColor: SagaColors.accentFg,
                 ),
                 child: const Text('Retry'),

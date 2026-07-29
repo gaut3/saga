@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 // ── Per-theme data ─────────────────────────────────────────────────────────────
 
-enum SagaThemeVariant { ink, cream, terra }
+// `onyx` must stay LAST-appended: the variant is persisted by index.
+enum SagaThemeVariant { ink, cream, terra, onyx }
 
 class SagaThemeData {
   final SagaThemeVariant variant;
@@ -16,6 +17,10 @@ class SagaThemeData {
   final Color border;
   final Color accent;
   final Color accentFg;
+  // Dimmed accent for large filled areas (anything bigger than a pill/chip) —
+  // full-brightness amber over big regions blooms on OLED black. Null means
+  // "same as accent" (all non-Onyx themes).
+  final Color? accentDim;
   final Color markSide;
   final Color markMiddle;
   final Color heatEmpty;
@@ -37,6 +42,7 @@ class SagaThemeData {
     required this.border,
     required this.accent,
     required this.accentFg,
+    this.accentDim,
     required this.markSide,
     required this.markMiddle,
     required this.heatEmpty,
@@ -116,10 +122,43 @@ class SagaThemeData {
     heatMax:    Color(0xFFF4EAD8),
   );
 
+  // ── ONYX (OLED true black, opt-in) ────────────────────────────────────────────
+  // Per the design spec (July 2026): page is #000 (pixels off); surfaces step
+  // to #0C0908 / #16100D and nothing sits below #0C0908 (panels crush
+  // near-blacks). Ink drops from cream #F4EAD8 (17.8:1, blooms at night) to
+  // #E4D9C6 (~15:1). No shadows — elevation comes from hairlines/borders (the
+  // app's few BoxShadows are dark-on-dark here and vanish on their own);
+  // border sits at 14% ink. Amber stays the brand accent for pill-sized
+  // fills; [accentDim] for anything bigger. The heatmap floor is lifted above
+  // surfaceAlt so empty cells don't vanish into the black page.
+  static const onyx = SagaThemeData(
+    variant:    SagaThemeVariant.onyx,
+    isDark:     true,
+    bg:         Color(0xFF000000),
+    surface:    Color(0xFF0C0908),
+    surfaceAlt: Color(0xFF16100D),
+    fg:         Color(0xFFE4D9C6),
+    fgMuted:    Color(0xA6E4D9C6),
+    fgSubtle:   Color(0x66E4D9C6),
+    border:     Color(0x24E4D9C6),
+    accent:     Color(0xFFE0A050),
+    accentFg:   Color(0xFF000000),
+    accentDim:  Color(0xFFB77E3C),
+    markSide:   Color(0xFFE4D9C6),
+    markMiddle: Color(0xFFE0A050),
+    heatEmpty:  Color(0xFF1E1712),
+    heat1:      Color(0xFF4D3520),
+    heat2:      Color(0xFF6E4E2A),
+    heat3:      Color(0xFF946A38),
+    heat4:      Color(0xFFBF8C4A),
+    heatMax:    Color(0xFFE0A050),
+  );
+
   static SagaThemeData fromVariant(SagaThemeVariant v) => switch (v) {
         SagaThemeVariant.ink   => ink,
         SagaThemeVariant.cream => cream,
         SagaThemeVariant.terra => terra,
+        SagaThemeVariant.onyx  => onyx,
       };
 }
 
@@ -156,6 +195,11 @@ abstract final class SagaColors {
   static Color get border     => _current.border;
   static Color get accent     => _current.accent;
   static Color get accentFg   => _current.accentFg;
+
+  /// Accent for LARGE filled areas (bigger than a pill/chip/mark). Identical
+  /// to [accent] except on Onyx, where full amber over big regions blooms on
+  /// OLED black. Use for any new full-width or panel-sized accent fill.
+  static Color get accentDim  => _current.accentDim ?? _current.accent;
   static Color get markSide   => _current.markSide;
   static Color get markMiddle => _current.markMiddle;
   static Color get heatEmpty  => _current.heatEmpty;
