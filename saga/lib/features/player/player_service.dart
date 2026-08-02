@@ -170,11 +170,40 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         AppLog.log('playback', 'audio session configure failed: $e');
       }
       session.becomingNoisyEventStream.listen((_) {
+        // Recorded because this path used to stop a book silently: no entry in
+        // the log, nothing in the UI, just a book that isn't playing any more.
+        // It fires on headphone unplug, but also on some Bluetooth transitions
+        // that have nothing to do with where the audio is going.
+        AppLog.log('playback',
+            'becoming noisy${_player.playing ? ' → pausing' : ' (not playing)'}');
         if (_player.playing) pause();
       }, onError: (Object e, StackTrace st) {
       // Should never fire — which is exactly why it's worth recording.
       AppLog.log('playback', 'listener error: $e');
     });
+
+      // Output route changes, by device *type* only. A device name is someone's
+      // car or their own name, and this log is meant to be pasteable into a
+      // public issue. Worth recording at all because a pause that follows a
+      // route change and one that doesn't look identical from the outside, and
+      // which it is decides where to look.
+      session.devicesChangedEventStream.listen((event) {
+        String types(Set<AudioDevice> devices) => devices
+            .where((d) => d.isOutput)
+            .map((d) => d.type.name)
+            .toSet()
+            .join(',');
+        final added = types(event.devicesAdded);
+        final removed = types(event.devicesRemoved);
+        if (added.isEmpty && removed.isEmpty) return;
+        AppLog.log(
+            'playback',
+            'audio route: ${added.isEmpty ? '' : '+$added '}'
+                '${removed.isEmpty ? '' : '-$removed '}'
+                '(playing: ${_player.playing})');
+      }, onError: (Object e, StackTrace st) {
+        AppLog.log('playback', 'listener error: $e');
+      });
 
       // Interruption policy for spoken word: ducking (lowering volume under a
       // nav prompt or notification) means missed words — unlike music, speech

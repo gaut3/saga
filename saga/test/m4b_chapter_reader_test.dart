@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -74,6 +75,7 @@ Uint8List m4bWithChapterTrack(
   String handler = 'text',
   int chunkCount = 1,
   List<Uint8List> extraMoovChildren = const [],
+  List<Uint8List> moovChildrenBefore = const [],
 }) {
   final samples = [
     for (final (_, title) in chapters) _textSample(title, utf16: utf16)
@@ -160,6 +162,9 @@ Uint8List m4bWithChapterTrack(
     final trak = atom('trak', [...atom('tkhd', List.filled(84, 0)), ...mdia]);
 
     final moov = atom('moov', [
+      // Stands in for the audio track, whose sample tables come first in a real
+      // file and run to megabytes on a long book.
+      for (final extra in moovChildrenBefore) ...extra,
       ...trak,
       for (final extra in extraMoovChildren) ...extra,
     ]);
@@ -376,6 +381,102 @@ void main() {
     });
   });
 
+  // ── long books (issue #8, the second half) ─────────────────────────────────
+  //
+  // Enagan's 13½-hour book: `moov 8.1 MB overruns the 8.0 MB window`. Four
+  // bytes of index per audio frame means the audio track's own tables outgrow
+  // any fixed window, and every chapter form sits behind them. The reader walks
+  // the box tree instead, so the length of the book stops being a factor.
+
+  group('long books', () {
+    /// A stand-in for the audio track: bigger than the 8 MB window the reader
+    /// used to rely on, sitting where the audio track sits — in front.
+    Uint8List oversizedFiller() =>
+        atom('free', List.filled(9 * 1024 * 1024, 0));
+
+    test('chapters survive a moov bigger than the old window', () async {
+      final data = m4bWithChapterTrack(
+        const [(0, 'One'), (30000, 'Two'), (95500, 'Three')],
+        moovChildrenBefore: [oversizedFiller()],
+      );
+      expect(data.length, greaterThan(9 * 1024 * 1024),
+          reason: 'the fixture has to be past the window to prove anything');
+
+      final chapters = await M4bChapterReader.parseBuffer(data);
+      expect(chapters.map((c) => c.title).toList(), ['One', 'Two', 'Three']);
+      expect(chapters.map((c) => c.start.inMilliseconds).toList(),
+          [0, 30000, 95500]);
+    });
+
+    test('and it reads kilobytes to do it, not megabytes', () async {
+      final data = m4bWithChapterTrack(
+        const [(0, 'One'), (30000, 'Two')],
+        moovChildrenBefore: [oversizedFiller()],
+      );
+
+      var totalRead = 0;
+      var largestRead = 0;
+      var calls = 0;
+      Future<Uint8List?> counting(int start, int length) async {
+        if (start < 0 || start >= data.length || length <= 0) return null;
+        final end = start + length;
+        final chunk =
+            Uint8List.sublistView(data, start, end > data.length ? data.length : end);
+        calls++;
+        totalRead += chunk.length;
+        if (chunk.length > largestRead) largestRead = chunk.length;
+        return chunk;
+      }
+
+      final chapters =
+          await M4bChapterReader.parseWithReader(counting, data.length);
+      expect(chapters, hasLength(2));
+
+      // The 9 MB filler is stepped over on a 16-byte header, never read.
+      expect(totalRead, lessThan(64 * 1024),
+          reason: 'read $totalRead bytes over $calls calls');
+      expect(largestRead, lessThan(64 * 1024));
+    });
+
+    test('a real file on disk, end to end', () async {
+      final dir = await Directory.systemTemp.createTemp('saga_chapters_');
+      final file = File('${dir.path}/long.m4b');
+      try {
+        await file.writeAsBytes(m4bWithChapterTrack(
+          const [(0, 'Opening'), (60000, 'Later')],
+          moovChildrenBefore: [oversizedFiller()],
+        ));
+
+        final chapters = await M4bChapterReader.fromFile(file.path);
+        expect(chapters.map((c) => c.title).toList(), ['Opening', 'Later']);
+      } finally {
+        try {
+          await dir.delete(recursive: true);
+        } catch (_) {
+          // Windows can hold the handle briefly; a leaked temp file is harmless.
+        }
+      }
+    });
+
+    test('a moov at the end of a long file is still found', () async {
+      // Non-faststart layout: mdat first, moov last. The walk hops the mdat
+      // header and lands on moov regardless of how far in it starts.
+      final normal = m4bWithChapterTrack(const [(0, 'Tail')]);
+      final ftypLen = atom('ftyp', ascii.encode('M4B ')).length;
+      final moovAndRest = normal.sublist(ftypLen);
+      final bigMdat = atom('mdat', List.filled(9 * 1024 * 1024, 0));
+      // Rebuild with a large mdat in front; the chapter track's own sample
+      // offsets still point into the original trailing mdat, which moves, so
+      // this only asserts that moov is *located*, not that titles resolve.
+      final data = Uint8List.fromList(
+          [...normal.sublist(0, ftypLen), ...bigMdat, ...moovAndRest]);
+
+      final notes = <String>[];
+      await M4bChapterReader.parseBuffer(data, notes: notes);
+      expect(notes.join(), isNot(contains('no moov')));
+    });
+  });
+
   // ── diagnostics ────────────────────────────────────────────────────────────
   //
   // These notes are what a user pastes into a bug report, so they have to name
@@ -405,12 +506,13 @@ void main() {
           reason: 'a rejected handler is the likeliest cause, so name it');
     });
 
-    test('a moov larger than the window says so', () async {
-      // The failure that looks identical to every other one from the outside:
-      // on a long book the audio track alone can outgrow the read window, so
-      // the chapter data after it is never in the buffer.
+    test('a moov larger than the window says so, on the window fallback',
+        () async {
+      // Only reachable now that the walk handles size properly: a file whose
+      // leading boxes can't be walked at all falls back to scanning, and the
+      // scan is still bounded by the window it was handed.
       final full = m4bWithChapterTrack(const [(0, 'A'), (1000, 'B')]);
-      final cut = Uint8List.fromList(full.sublist(0, 60));
+      final cut = Uint8List.fromList([9, 9, 9, 9, 9, 9, 9, ...full.sublist(0, 60)]);
       final notes = <String>[];
       expect(await M4bChapterReader.parseBuffer(cut, notes: notes), isEmpty);
       expect(notes.join(), contains('overruns'));
@@ -421,7 +523,7 @@ void main() {
       await M4bChapterReader.parseBuffer(
           Uint8List.fromList(atom('ftyp', ascii.encode('M4B '))),
           notes: notes);
-      expect(notes.single, contains('no moov'));
+      expect(notes.join(), contains('no moov'));
     });
 
     test('an unprintable handler fourcc cannot mangle the log', () async {

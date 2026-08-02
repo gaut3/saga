@@ -59,6 +59,27 @@ class _ChapterSample {
 /// end), and never reads the whole file — an audiobook is routinely hundreds of
 /// MB and loading it to find one atom risks an OOM kill on small devices.
 ///
+/// **How it gets there matters as much as what it parses.** The reader walks the
+/// box tree using headers alone: sixteen bytes tell you a box's type and size,
+/// which is enough to step over a 700 MB `mdat` or an audio track's sample
+/// tables without touching them. Only the small boxes that actually hold
+/// chapters are read whole.
+///
+/// The previous approach — pull 8 MB from each end of the file and hunt through
+/// it — worked until the audio track's own index outgrew the window. `stsz`
+/// stores four bytes per audio frame, so 44.1 kHz AAC costs about 172 bytes of
+/// index per second of audio, and at roughly 13½ hours the audio track alone
+/// exceeds 8 MB. Every chapter form lives *behind* it in `moov`, so a long book
+/// reported no chapters whatever format it used, and the length of the book was
+/// nowhere in the symptom (issue #8, confirmed by a diagnostics line reading
+/// `moov 8.1 MB overruns the 8.0 MB window`). Walking makes length irrelevant,
+/// and as a side effect a streamed book now costs a handful of small range
+/// requests instead of up to 16 MB.
+///
+/// The window survives as a fallback for files whose leading boxes can't be
+/// walked at all — a junk prefix, a truncated first box — where scanning for the
+/// raw `moov` signature is the only way in.
+///
 /// Every attempt writes one line to the diagnostics log saying what it found
 /// and where it gave up. A file with no chapters and a file we failed to read
 /// look the same from the outside, and the difference is the entire content of
@@ -73,6 +94,15 @@ class M4bChapterReader {
   /// chapters.
   static const int _maxSampleSpan = 4 * 1024 * 1024;
 
+  /// The largest box the walk will pull in whole. Chapter tables and Nero lists
+  /// are kilobytes; anything claiming more is not what we came for.
+  static const int _maxBoxRead = 2 * 1024 * 1024;
+
+  /// Stand-in upper bound when the server won't say how big the file is. The
+  /// walk stops on the first read that comes back empty, so this only has to be
+  /// larger than any real audiobook.
+  static const int _noCeiling = 1 << 42;
+
   static Future<List<M4bChapter>> fromFile(String path) async {
     final notes = <String>[];
     var total = 0;
@@ -83,25 +113,12 @@ class M4bChapterReader {
       final raf = await file.open();
       try {
         Future<Uint8List?> readRange(int start, int length) async {
-          if (start < 0 || start >= total) return null;
+          if (start < 0 || start >= total || length <= 0) return null;
           await raf.setPosition(start);
           return raf.read(length.clamp(0, total - start));
         }
 
-        // Head first (fast-start files), then the tail (moov after mdat).
-        final head = await raf.read(_readSize.clamp(0, total));
-        var result = await _chaptersIn(head, 0, readRange, notes, where: 'head');
-        if (result.isNotEmpty) return result;
-
-        if (total > _readSize) {
-          final tailStart = total - _readSize;
-          await raf.setPosition(tailStart);
-          final tail = await raf.read(_readSize);
-          result =
-              await _chaptersIn(tail, tailStart, readRange, notes, where: 'tail');
-          if (result.isNotEmpty) return result;
-        }
-        return [];
+        return await _chapters(readRange, total, notes);
       } finally {
         await raf.close();
       }
@@ -143,35 +160,11 @@ class M4bChapterReader {
       // without it the moov-at-end path used to be skipped entirely.
       total = _parseTotal(probe.headers.value('content-range')) ??
           int.tryParse(probe.headers.value('content-length') ?? '');
-      final header = Uint8List.fromList(probe.data!);
-      final moovFirst = _moovBeforeMdat(header);
 
       Future<Uint8List?> readRange(int start, int length) =>
           _fetchRange(dio, url, start, start + length, headers: headers);
 
-      final firstBlock = await readRange(0, _readSize);
-      if (firstBlock != null) {
-        final result =
-            await _chaptersIn(firstBlock, 0, readRange, notes, where: 'head');
-        if (result.isNotEmpty) return result;
-      } else {
-        notes.add('head: server refused the first range request');
-      }
-
-      // moov may still be at the end — and when the probe couldn't tell us the
-      // order, try anyway rather than give up.
-      if (!moovFirst && total != null && total > _readSize) {
-        final start = total - _readSize;
-        final lastBlock = await readRange(start, _readSize);
-        if (lastBlock != null) {
-          return _chaptersIn(lastBlock, start, readRange, notes, where: 'tail');
-        }
-        notes.add('tail: server refused the closing range request');
-      } else if (total == null) {
-        notes.add('tail: skipped, server never reported the file size');
-      }
-
-      return [];
+      return await _chapters(readRange, total, notes);
     } catch (e) {
       AppLog.log('chapters', 'parse failed for stream: $e');
       return [];
@@ -180,6 +173,207 @@ class M4bChapterReader {
         AppLog.log('chapters', 'stream, ${_size(total)}: ${notes.join('; ')}');
       }
     }
+  }
+
+  // ── walking the box tree ────────────────────────────────────────────────────
+
+  /// Chapters from anything we can read arbitrary ranges of.
+  ///
+  /// Two strategies, in order.
+  ///
+  /// The **walk** is the real one: step through the box tree reading headers
+  /// only, so the audio track's sample tables are skipped rather than
+  /// swallowed. `stsz` alone costs four bytes per audio frame, which on a
+  /// 13-hour book is over 8 MB, and every chapter form sits *behind* it — the
+  /// reason a long book used to report no chapters whatever its format
+  /// (issue #8). Reading headers makes the length of the book irrelevant.
+  ///
+  /// The **window** is what Saga did before: pull 8 MB from each end and hunt
+  /// through it. Kept only for files whose leading boxes can't be walked at
+  /// all — a junk prefix, a truncated first box — where scanning for the raw
+  /// `moov` signature is the only way in. If the walk finds `moov`, its answer
+  /// is final: the window would be looking at the same bytes, and a book that
+  /// genuinely has no chapters shouldn't cost 16 MB of downloading to confirm.
+  static Future<List<M4bChapter>> _chapters(
+      ByteRangeReader read, int? total, List<String> notes) async {
+    final moov = await _moovByWalking(read, total ?? _noCeiling);
+    if (moov != null) return _chaptersInMoov(read, moov, notes);
+
+    notes.add('walk: no moov at a box boundary');
+
+    final head = await read(0, _readSize);
+    if (head != null) {
+      final found = await _chaptersIn(head, 0, read, notes, where: 'head');
+      if (found.isNotEmpty) return found;
+    } else {
+      notes.add('head: could not read the opening ${_size(_readSize)}');
+    }
+
+    if (total != null && total > _readSize) {
+      final start = total - _readSize;
+      final tail = await read(start, _readSize);
+      if (tail != null) {
+        return _chaptersIn(tail, start, read, notes, where: 'tail');
+      }
+      notes.add('tail: could not read the closing ${_size(_readSize)}');
+    }
+    return [];
+  }
+
+  /// The header at [offset]: total size, type, and how many bytes the header
+  /// itself took. `size == 1` means a 64-bit length follows the type.
+  static Future<({int size, String type, int headerSize})?> _boxAt(
+      ByteRangeReader read, int offset) async {
+    final head = await read(offset, 16);
+    if (head == null || head.length < 8) return null;
+    final type = _cc(head, 4);
+    var size = _u32(head, 0);
+    var headerSize = 8;
+    if (size == 1) {
+      if (head.length < 16) return null;
+      size = _u64(head, 8);
+      headerSize = 16;
+    }
+    if (size != 0 && size < headerSize) return null;
+    return (size: size, type: type, headerSize: headerSize);
+  }
+
+  /// Every box between [start] and [end], as payload bounds, from headers
+  /// alone. The whole point: a 700 MB `mdat` is one 16-byte read and a jump.
+  ///
+  /// [limit] guards against a malformed file walking forever — a real one has
+  /// a handful of boxes at any level.
+  static Future<List<({String type, int start, int end})>> _boxesIn(
+      ByteRangeReader read, int start, int end,
+      {int limit = 64}) async {
+    final out = <({String type, int start, int end})>[];
+    var cursor = start;
+    while (cursor + 8 <= end && out.length < limit) {
+      final box = await _boxAt(read, cursor);
+      if (box == null) break;
+      // A declared size of 0 means "to the end of the container".
+      final size = box.size == 0 ? end - cursor : box.size;
+      if (size < box.headerSize) break;
+      final boxEnd = cursor + size;
+      out.add((
+        type: box.type,
+        start: cursor + box.headerSize,
+        end: boxEnd < end ? boxEnd : end,
+      ));
+      if (boxEnd <= cursor) break;
+      cursor = boxEnd;
+    }
+    return out;
+  }
+
+  static Future<({int start, int end})?> _moovByWalking(
+      ByteRangeReader read, int end) async {
+    for (final box in await _boxesIn(read, 0, end)) {
+      if (box.type == 'moov') return (start: box.start, end: box.end);
+    }
+    return null;
+  }
+
+  static ({String type, int start, int end})? _firstOfType(
+      List<({String type, int start, int end})> boxes, String type) {
+    for (final b in boxes) {
+      if (b.type == type) return b;
+    }
+    return null;
+  }
+
+  /// A box's whole payload, refused if it's larger than [_maxBoxRead].
+  ///
+  /// Everything read whole here is small by nature (a chapter track's tables, a
+  /// Nero list). The cap is what keeps "read it whole" from turning back into
+  /// the thing this replaced.
+  static Future<Uint8List?> _readWhole(
+      ByteRangeReader read, ({String type, int start, int end}) box) async {
+    final size = box.end - box.start;
+    if (size <= 0 || size > _maxBoxRead) return null;
+    return read(box.start, size);
+  }
+
+  static Future<List<M4bChapter>> _chaptersInMoov(ByteRangeReader read,
+      ({int start, int end}) moov, List<String> notes) async {
+    final children = await _boxesIn(read, moov.start, moov.end);
+
+    // Nero first: self-contained, and when a file carries both they agree.
+    for (final udta in children.where((c) => c.type == 'udta')) {
+      for (final box in await _boxesIn(read, udta.start, udta.end)) {
+        if (box.type != 'chpl') continue;
+        final payload = await _readWhole(read, box);
+        if (payload == null) continue;
+        final nero = _chpl(payload, 0, payload.length);
+        if (nero.isNotEmpty) {
+          notes.add('walk: ${nero.length} from chpl');
+          return nero;
+        }
+      }
+    }
+
+    final handlers = <String>[];
+    for (final trak in children.where((c) => c.type == 'trak')) {
+      final samples = await _chapterSamplesIn(read, trak, handlers, notes);
+      if (samples == null || samples.isEmpty) continue;
+      final titles = await _readSampleTitles(samples, read, notes, 'walk');
+      if (titles.isNotEmpty) {
+        notes.add('walk: ${titles.length} from a chapter track');
+        return titles;
+      }
+    }
+
+    notes.add('walk: no chapter track '
+        '(tracks: ${handlers.isEmpty ? 'none' : handlers.join(' ')})');
+    return [];
+  }
+
+  /// Identifies one track and, if it's the chapter track, resolves its samples.
+  ///
+  /// Only `hdlr` is read to decide — 12 bytes — so the audio track costs four
+  /// small reads and is then left alone with its megabytes of tables.
+  static Future<List<_ChapterSample>?> _chapterSamplesIn(
+    ByteRangeReader read,
+    ({String type, int start, int end}) trak,
+    List<String> handlers,
+    List<String> notes,
+  ) async {
+    final mdia =
+        _firstOfType(await _boxesIn(read, trak.start, trak.end), 'mdia');
+    if (mdia == null) return null;
+
+    final inMdia = await _boxesIn(read, mdia.start, mdia.end);
+    final hdlr = _firstOfType(inMdia, 'hdlr');
+    if (hdlr == null) return null;
+    // version+flags(4) + pre_defined(4) + handler_type(4).
+    final hdlrHead = await read(hdlr.start, 12);
+    if (hdlrHead == null || hdlrHead.length < 12) return null;
+    final handler = _cc(hdlrHead, 8);
+    handlers.add(_printable(handler));
+    if (handler != 'text' && handler != 'sbtl') return null;
+
+    final mdhd = _firstOfType(inMdia, 'mdhd');
+    final mdhdHead = mdhd == null ? null : await read(mdhd.start, 32);
+    final timescale = mdhdHead == null ? null : _timescaleFrom(mdhdHead);
+    if (timescale == null || timescale == 0) {
+      notes.add('walk: $handler track has no usable timescale');
+      return null;
+    }
+
+    final minf = _firstOfType(inMdia, 'minf');
+    if (minf == null) return null;
+    final stbl =
+        _firstOfType(await _boxesIn(read, minf.start, minf.end), 'stbl');
+    if (stbl == null) return null;
+
+    final tables = await _readWhole(read, stbl);
+    if (tables == null) {
+      notes.add('walk: $handler track sample table is '
+          '${_size(stbl.end - stbl.start)}, past the ${_size(_maxBoxRead)} limit');
+      return null;
+    }
+    return _samplesFromTables(
+        tables, (start: 0, end: tables.length), timescale, notes, 'walk');
   }
 
   // ── chapter extraction ──────────────────────────────────────────────────────
@@ -222,7 +416,7 @@ class M4bChapterReader {
         _chapterTrackSamples(buf, moov.start, moov.end, notes, where);
     if (samples == null || samples.isEmpty) return [];
 
-    final titles = await _readSampleTitles(samples, buf, bufOffset, read, notes, where);
+    final titles = await _readSampleTitles(samples, read, notes, where);
     if (titles.isNotEmpty) {
       notes.add('$where: ${titles.length} from a chapter track');
     }
@@ -236,8 +430,6 @@ class M4bChapterReader {
   /// round trip per chapter.
   static Future<List<M4bChapter>> _readSampleTitles(
     List<_ChapterSample> samples,
-    Uint8List buf,
-    int bufOffset,
     ByteRangeReader read,
     List<String> notes,
     String where,
@@ -252,15 +444,8 @@ class M4bChapterReader {
       return [];
     }
 
-    Uint8List? span;
-    var spanStart = lo;
-    // Often the samples are already in the block we parsed moov from.
-    if (lo >= bufOffset && hi <= bufOffset + buf.length) {
-      span = buf;
-      spanStart = bufOffset;
-    } else {
-      span = await read(lo, hi - lo);
-    }
+    final spanStart = lo;
+    final span = await read(lo, hi - lo);
     if (span == null) {
       notes.add('$where: could not read the ${_size(hi - lo)} '
           'holding the chapter titles');
@@ -442,20 +627,6 @@ class M4bChapterReader {
     return int.tryParse(contentRange.substring(slash + 1));
   }
 
-  static bool _moovBeforeMdat(Uint8List d) {
-    int off = 0;
-    while (off + 8 <= d.length) {
-      final sz = _u32(d, off);
-      if (sz < 8) break;
-      final tp = _cc(d, off + 4);
-      if (tp == 'moov') return true;
-      if (tp == 'mdat') return false;
-      if (off + sz > d.length) break;
-      off += sz;
-    }
-    return false;
-  }
-
   // ── Nero chpl ───────────────────────────────────────────────────────────────
 
   static List<M4bChapter> _chplIn(Uint8List d, int s, int e) {
@@ -531,31 +702,49 @@ class M4bChapterReader {
         continue;
       }
 
-      final starts = _sampleStarts(d, stbl, timescale);
-      final sizes = _sampleSizes(d, stbl);
-      final offsets = _sampleOffsets(d, stbl, sizes);
-      if (starts.isEmpty || sizes.isEmpty || offsets.isEmpty) {
-        notes.add('$where: $handler track sample table incomplete '
-            '(${starts.length} times, ${sizes.length} sizes, '
-            '${offsets.length} offsets)');
-        continue;
-      }
-
-      final n = [starts.length, sizes.length, offsets.length]
-          .reduce((a, b) => a < b ? a : b);
-      if (n == 0 || n > 5000) {
-        notes.add('$where: $handler track claims $n chapters, ignored');
-        continue;
-      }
-      return [
-        for (var i = 0; i < n; i++)
-          _ChapterSample(
-              startMs: starts[i], offset: offsets[i], size: sizes[i])
-      ];
+      final samples =
+          _samplesFromTables(d, stbl, timescale, notes, where, handler);
+      if (samples != null) return samples;
     }
     notes.add('$where: no chapter track '
         '(tracks: ${handlers.isEmpty ? 'none' : handlers.join(' ')})');
     return null;
+  }
+
+  /// `stts` + `stsz` + `stsc`/`stco` resolved to (time, offset, size) per
+  /// sample, from a buffer holding the `stbl` payload.
+  ///
+  /// Shared by the walk (which reads that box on its own) and the window
+  /// (which has it inside a larger block), because two copies of sample-offset
+  /// arithmetic would be two chances to get it subtly wrong.
+  static List<_ChapterSample>? _samplesFromTables(
+    Uint8List d,
+    ({int start, int end}) stbl,
+    int timescale,
+    List<String> notes,
+    String where, [
+    String handler = 'chapter',
+  ]) {
+    final starts = _sampleStarts(d, stbl, timescale);
+    final sizes = _sampleSizes(d, stbl);
+    final offsets = _sampleOffsets(d, stbl, sizes);
+    if (starts.isEmpty || sizes.isEmpty || offsets.isEmpty) {
+      notes.add('$where: $handler track sample table incomplete '
+          '(${starts.length} times, ${sizes.length} sizes, '
+          '${offsets.length} offsets)');
+      return null;
+    }
+
+    final n = [starts.length, sizes.length, offsets.length]
+        .reduce((a, b) => a < b ? a : b);
+    if (n == 0 || n > 5000) {
+      notes.add('$where: $handler track claims $n chapters, ignored');
+      return null;
+    }
+    return [
+      for (var i = 0; i < n; i++)
+        _ChapterSample(startMs: starts[i], offset: offsets[i], size: sizes[i])
+    ];
   }
 
   /// mdhd: version+flags(4), then v0 creation/modification(4+4) or v1 (8+8),
@@ -563,10 +752,15 @@ class M4bChapterReader {
   static int? _timescale(Uint8List d, ({int start, int end}) mdia) {
     final mdhd = _child(d, mdia.start, mdia.end, 'mdhd');
     if (mdhd == null) return null;
-    final version = d[mdhd.start];
-    final off = mdhd.start + (version == 1 ? 4 + 16 : 4 + 8);
-    if (off + 4 > mdhd.end) return null;
-    return _u32(d, off);
+    return _timescaleFrom(
+        Uint8List.sublistView(d, mdhd.start, mdhd.end));
+  }
+
+  static int? _timescaleFrom(Uint8List mdhd) {
+    if (mdhd.isEmpty) return null;
+    final off = mdhd[0] == 1 ? 4 + 16 : 4 + 8;
+    if (off + 4 > mdhd.length) return null;
+    return _u32(mdhd, off);
   }
 
   /// stts (time-to-sample) accumulated into per-sample start times in ms.
@@ -697,14 +891,30 @@ class M4bChapterReader {
 
   // ── test entry points ───────────────────────────────────────────────────────
 
-  /// Parses a buffer that begins at file offset 0 and contains everything the
-  /// chapters need — both the atom tables and, for a chapter track, the sample
-  /// bytes. Production goes through [fromFile] / [fromUrl].
+  /// Parses a whole file held in memory, serving ranged reads out of it.
+  ///
+  /// Takes the same path production does — the walk first, the window behind it
+  /// — so a test here is a test of what actually runs. Production goes through
+  /// [fromFile] / [fromUrl], which differ only in where the bytes come from.
   @visibleForTesting
   static Future<List<M4bChapter>> parseBuffer(Uint8List d,
-          {List<String>? notes}) =>
-      _chaptersIn(d, 0, (_, _) async => null, notes ?? <String>[],
-          where: 'buffer');
+      {List<String>? notes}) {
+    Future<Uint8List?> read(int start, int length) async {
+      if (start < 0 || start >= d.length || length <= 0) return null;
+      final end = start + length;
+      return Uint8List.sublistView(d, start, end > d.length ? d.length : end);
+    }
+
+    return _chapters(read, d.length, notes ?? <String>[]);
+  }
+
+  /// Same path, but the test supplies the reader — so a test can count what was
+  /// read. "Finds the chapters" and "doesn't haul in the file to do it" are
+  /// separate claims, and the second one is the whole point of the walk.
+  @visibleForTesting
+  static Future<List<M4bChapter>> parseWithReader(
+          ByteRangeReader read, int? total, {List<String>? notes}) =>
+      _chapters(read, total, notes ?? <String>[]);
 
   /// Synchronous Nero-only parse, kept for the tests that predate chapter-track
   /// support and for callers that only have a moov-sized buffer.

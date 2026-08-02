@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.16] - 2026-08-02
+
+### Fixed
+- **Long books showed no chapters at all, whatever format they were in.** To find chapters without loading a whole audiobook into memory, Saga read 8 MB from each end of the file and searched that. But an MP4 keeps an index of the audio itself, four bytes for every frame, and it sits in front of everything else — so at around thirteen and a half hours that index fills the entire 8 MB on its own and the chapters behind it were never reached. The length of the book was nowhere in the symptom: the same file that worked in other players simply came up empty here, and a shorter book from the same encoder was fine. Saga now steps through the file's structure instead, reading the sixteen bytes that describe each section and skipping the ones it doesn't need, so the audio index is stepped over rather than swallowed and the length of a book stops mattering. Found by [@Enagan](https://github.com/Enagan) ([#8](https://github.com/gaut3/saga/issues/8)), whose diagnostics pinned it to the byte.
+- **A book could stop with nothing in the log to say why.** The pause that fires when headphones are unplugged wrote no diagnostics entry, so from the outside it was indistinguishable from a crash or a stall: the book simply wasn't playing any more. That pause is now recorded, along with changes to where audio is being sent — by device kind only ("bluetooth", "speaker"), never the device's name, which is usually someone's car or their own.
+- **Opening a streamed book pulled megabytes just to look for chapters.** The same 8 MB-from-each-end approach ran against the server as two large range requests on every book open, even for a book with no chapters to find. Walking the structure needs a handful of small reads instead, so a book opens quicker and a book with nothing to find stops costing anything much.
+
+---
+
 ## [1.0.15] - 2026-08-02
 
 ### Added
