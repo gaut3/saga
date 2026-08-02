@@ -5,6 +5,8 @@
 
 **Saga** is a native Android audiobook player for [Plex Media Server](https://www.plex.tv/), built with Flutter. It picks up where Plex's own app leaves off — a focused listening experience designed around how audiobooks are actually consumed.
 
+**[saga-app.no](https://saga-app.no)** — screenshots, themes, and the mark in motion.
+
 > **Vibecoded** — but not blindly. Saga was built through conversational AI-assisted development with Claude: screens, fixes, and architecture worked out collaboratively in chat. Every decision was reviewed and reasoned through, not just accepted — and the result is fully open source, so you can audit exactly what it does. A personal project to make a Plex audiobook app I'd actually want to use.
 
 ---
@@ -12,19 +14,25 @@
 ## Features
 
 **Playback**
-- M4B and multi-track audiobook support with embedded chapter detection and jump-to
-- Book-level progress bar and seek across the full book (multi-file aware)
+- M4B and multi-track audiobook support with embedded chapter detection and jump-to — both MP4 chapter conventions (Nero `chpl` and QuickTime chapter tracks)
+- Book-level progress bar and seek across the full book (multi-file aware), or scrub within the current chapter instead
+- Time remaining at your actual playback speed; tap to switch to the book's total length
 - Variable speed playback (0.75×–3×) with per-book speed memory and configurable default
 - Background playback with lock-screen and notification controls (rewind / play-pause / fast-forward)
 - Configurable skip interval (15 / 30 / 45 / 60 s) applied to notification and in-app controls
 - Sleep timer — fixed duration or end-of-current-chapter
 - Smart rewind on resume — proportional seek-back after a pause, capped at 60 s
+- Auto-play the next book in a collection, with a cancellable countdown (off by default)
+- Tap the cover on the player to look through it at the book's details
+- Always-visible mini player; swipe it away to dismiss, long-press to stop playback
 - Chromecast support via native Cast SDK
-- Headphone unplug auto-pause; audio focus duck / pause for calls and notifications
+- Headphone unplug auto-pause; auto-resume after calls and brief interruptions (on by default, and never over another app's media)
 
 **Library**
-- Browse your Plex audiobook library: full-text search, sort by title / author, grid or list toggle
+- Browse your Plex audiobook library: search across titles, authors and narrators; sort by title, author, length or narrator (each reversible); grid or list toggle
+- Filter to Saved or Downloaded books
 - Browse by author with Plex thumbnail photos
+- Narrator and genre on the book screen — Plex has no narrator field, so Saga reads the **Style** tags audiobook libraries use for it, fetched once per book and kept for offline
 - Continue Listening — most recently played books surfaced at the top of Home
 - Up Next in Series — next unstarted book per custom collection, deduped against Continue Listening
 - Recently Added — deduped against both upper sections
@@ -44,17 +52,26 @@
 **Downloads**
 - Download individual tracks or full books for offline playback
 - Download badge on cover tiles; seamless switch between local and stream playback
+- Downloaded books open and play with the server unreachable — track metadata is stored alongside the audio
 
 **Listening Stats — 3-tab History screen**
 - **Day** — streak banner (current + longest), animated weekly bar chart, expandable day rows showing which book was played with session-level detail and jump-to-position
 - **Month** — navigable monthly calendar heatmap with bookmark and completion indicators, stat cards (days listened / best day / avg per day), by-week bars, books-touched list
 - **Total** — lifetime hours, finished-books shelf, 13-week contribution heatmap, streak and best-day records
 
+**The mark**
+
+The four-spine mark is the play/pause control and the playback indicator in one — it morphs between a play triangle and four spines, and carries buffering, downloading and finished states in the same shape. Three motion modes while playing: **Reactive**, where the spines track the audio's real loudness (read from the decoded stream, so no microphone permission), **Gentle**, a synthetic envelope, or static **Pause bars**.
+
+A still image undersells it — [tap through every state at saga-app.no](https://saga-app.no/#mark-demo).
+
 **Themes**
 
-| Ink (dark) | Cream (light) | Terracotta |
-|---|---|---|
-| <img src="brand/assets/svg/mark/saga-mark-ink-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-cream-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-terra-bg.svg" width="80"> |
+| Ink (dark) | Cream (light) | Terracotta | Onyx (OLED) |
+|---|---|---|---|
+| <img src="brand/assets/svg/mark/saga-mark-ink-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-cream-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-terra-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-onyx-bg.svg" width="80"> |
+
+Onyx is true black — the page is `#000000`, so those pixels are physically off on an OLED screen — with warm near-black surfaces and slightly softened text so nothing blooms during night listening.
 
 
 ---
@@ -62,7 +79,7 @@
 ## Requirements
 
 - A running [Plex Media Server](https://www.plex.tv/) with an audiobook library
-- An Android device (API 21+)
+- An Android device running 7.0 or later (API 24+)
 - A Plex account (free or Plex Pass)
 
 ---
@@ -99,7 +116,7 @@ adb install -r build/app/outputs/flutter-apk/app-release.apk
 | Secure storage | `flutter_secure_storage` (Android Keystore) |
 | Networking | `dio` + `cached_network_image` |
 | Cast | Google Cast SDK (Default Media Receiver) |
-| M4B chapters | Custom FFmpeg metadata reader |
+| M4B chapters | Hand-written MP4 atom parser — no FFmpeg, no native decoder |
 
 ---
 
@@ -111,6 +128,7 @@ Saga is local-first with no analytics, no crash reporting SDK, and nothing trans
 - All local data (bookmarks, history, settings) encrypted with AES-256 via Hive
 - `android:allowBackup="false"` — data cannot be swept into Google cloud backup or pulled via `adb backup`
 - Progress export is credentials-free (no token, no server URL)
+- Diagnostics are written to a small local log for bug reports — never transmitted, and never sent anywhere by Saga at all. "Copy diagnostics" puts it on your clipboard; it goes somewhere only if you paste it there. Your token, your server's address and its machine identifier are masked before anything is written, and again when it's copied
 - No Google Fonts, no Firebase, no third-party analytics of any kind
 
 ### Network audit — every endpoint Saga contacts
@@ -138,6 +156,8 @@ Saga is local-first with no analytics, no crash reporting SDK, and nothing trans
 | `POST_NOTIFICATIONS` | The media playback notification (Android 13+) |
 | `WRITE_EXTERNAL_STORAGE` (≤ Android 9) / `READ_EXTERNAL_STORAGE` (≤ Android 12) | Legacy download support on old Android versions; auto-dropped on modern Android |
 | `ACCESS_NETWORK_STATE` | Wi-Fi-only downloads setting (merged in by `connectivity_plus`; read-only network-type query) |
+
+The built manifest also carries `com.gaut3.saga.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, which AndroidX defines and grants to Saga alone so its own runtime broadcast receivers aren't reachable by other apps. It grants no access to anything on the device.
 
 ---
 

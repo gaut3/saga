@@ -4,8 +4,9 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 /// Local-only diagnostics log. No telemetry: entries are written to a small
-/// rotating file in app-private storage and leave the device only when the
-/// user explicitly taps "Copy diagnostics" in Settings → About.
+/// rotating file in app-private storage, and nothing here ever sends them
+/// anywhere. "Copy diagnostics" in Settings → About puts them on the clipboard;
+/// where they go after that is the user's doing.
 ///
 /// Entries are redacted at write time — the Plex token and any server host
 /// are masked before a line ever reaches disk, so the log can never leak
@@ -68,8 +69,8 @@ class AppLog {
   /// Full log content for the "Copy diagnostics" action.
   ///
   /// Redacted again on the way out, not just on the way in. Entries written by
-  /// an older build are still sitting in the file, and this is the one moment
-  /// they leave the device.
+  /// an older build are still sitting in the file, and this is the last point
+  /// at which anything can be done about them.
   static String dump() => _buffer.map(_redact).join('\n');
 
   static Future<void> clear() async {
