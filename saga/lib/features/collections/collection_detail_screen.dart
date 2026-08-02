@@ -58,7 +58,8 @@ class _CollectionDetailScreenState
               )
             else
               SizedBox(
-                height: 120,
+                // 90 px square tiles + the list's 16 px bottom padding.
+                height: 106,
                 child: ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   scrollDirection: Axis.horizontal,
@@ -78,6 +79,7 @@ class _CollectionDetailScreenState
                         },
                         child: Container(
                           width: 90,
+                          height: 90,
                           decoration: BoxDecoration(
                             color: SagaColors.surfaceAlt,
                             borderRadius: BorderRadius.circular(8),
@@ -108,11 +110,15 @@ class _CollectionDetailScreenState
                             .state++;
                         if (ctx.mounted) Navigator.pop(ctx);
                       },
+                      // Square: a 90×120 box cropped the sides off the very
+                      // covers the user is picking between.
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: SizedBox(
                           width: 90,
-                          child: BookCoverImage(thumbPath: book.thumbPath, cacheWidth: 180),
+                          height: 90,
+                          child: BookCoverImage(
+                              thumbPath: book.thumbPath, cacheWidth: 180),
                         ),
                       ),
                     );

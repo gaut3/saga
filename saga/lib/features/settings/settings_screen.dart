@@ -1,5 +1,6 @@
 ﻿import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -28,7 +29,9 @@ import '../../core/storage/track_cache_store.dart';
 import '../../core/update/update_checker.dart';
 import '../auth/server_selection_screen.dart';
 import '../player/player_provider.dart';
-import '../../shared/widgets/saga_mark.dart' show SagaWordmark, SagaMark;
+import '../../core/audio/canned_audio_level.dart';
+import '../../shared/widgets/saga_mark.dart'
+    show SagaWordmark, SagaMark, AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_sheet.dart';
 import '../../shared/widgets/saga_toast.dart';
 
@@ -61,6 +64,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late int _skipBackward;
   late double _defaultSpeed;
   late bool _autoRewind;
+  late bool _autoPlayNextBook;
   late bool _resumeAfterInterruption;
   late bool _chapterScrub;
   late bool _wifiOnly;
@@ -78,6 +82,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _skipBackward = SettingsStore.skipBackwardSeconds;
     _defaultSpeed = SettingsStore.defaultSpeed;
     _autoRewind = SettingsStore.autoRewindEnabled;
+    _autoPlayNextBook = SettingsStore.autoPlayNextBook;
     _resumeAfterInterruption = SettingsStore.resumeAfterInterruption;
     _chapterScrub = SettingsStore.chapterScrub;
     _wifiOnly = SettingsStore.downloadWifiOnly;
@@ -198,6 +203,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     await SettingsStore.setAutoRewindEnabled(v);
                     if (!mounted) return;
                     setState(() => _autoRewind = v);
+                  },
+                ),
+                _SwitchTile(
+                  icon: Icons.playlist_play_rounded,
+                  title: 'Auto-play next book',
+                  subtitle:
+                      'Start the next book when one finishes — only for books '
+                      'in a custom collection',
+                  value: _autoPlayNextBook,
+                  onChanged: (v) async {
+                    await SettingsStore.setAutoPlayNextBook(v);
+                    if (!mounted) return;
+                    setState(() => _autoPlayNextBook = v);
                   },
                 ),
                 _SwitchTile(
@@ -949,6 +967,10 @@ class _PlayerAnimationTile extends StatelessWidget {
 
   void _openSheet(BuildContext context) {
     int localDelay = animationSyncDelay;
+    // The sheet stays open on selection so the preview can be compared across
+    // modes, so it tracks the choice itself rather than reading the (stale)
+    // widget field captured when it opened.
+    int localMotion = markMotion;
     final bottomPad = MediaQuery.of(context).padding.bottom;
     showSagaSheet(context, (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) => Padding(
@@ -959,8 +981,11 @@ class _PlayerAnimationTile extends StatelessWidget {
           children: [
             SagaSheetTitle('Player animation',
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
+            // Shows the selected motion for real: live audio when something is
+            // playing, otherwise a recorded speech trace.
+            const _MotionPreview(),
             ..._options.asMap().entries.map((e) {
-              final selected = markMotion == e.key;
+              final selected = localMotion == e.key;
               return ListTile(
                 title: Text(e.value, style: TextStyle(color: SagaColors.fg)),
                 subtitle: Text(_descriptions[e.key],
@@ -968,13 +993,16 @@ class _PlayerAnimationTile extends StatelessWidget {
                 trailing: selected
                     ? Icon(Icons.check_rounded, color: SagaColors.accent)
                     : null,
+                // Applies immediately and keeps the sheet open — the preview
+                // above switches so the modes can be compared side by side.
                 onTap: () {
                   onMarkMotionChanged(e.key);
-                  Navigator.pop(ctx);
+                  setLocal(() => localMotion = e.key);
                 },
               );
             }),
-            if (markMotion == 0) ...[
+            if (kDebugMode) _CaptureTraceTile(),
+            if (localMotion == 0) ...[
               Divider(color: SagaColors.border, height: 24),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
@@ -1020,6 +1048,19 @@ class _PlayerAnimationTile extends StatelessWidget {
               ),
             ] else
               const SizedBox(height: 8),
+            // The sheet no longer closes on selection, so it needs a way out
+            // that isn't "swipe it down and hope".
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('Done',
+                      style: TextStyle(color: SagaColors.accent)),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -1068,6 +1109,94 @@ class _PlayerAnimationTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The player-animation preview: one large mark in the playing state, showing
+/// whichever motion is currently selected.
+///
+/// It reads through a [CannedAudioLevel], which prefers the real tap when a
+/// book happens to be playing and otherwise replays a recorded speech trace.
+/// One mark, one ticker — three small side-by-side previews were too small to
+/// tell the motions apart and cost three tickers to run.
+class _MotionPreview extends StatefulWidget {
+  const _MotionPreview();
+
+  @override
+  State<_MotionPreview> createState() => _MotionPreviewState();
+}
+
+class _MotionPreviewState extends State<_MotionPreview> {
+  late final CannedAudioLevel _source;
+
+  @override
+  void initState() {
+    super.initState();
+    _source = CannedAudioLevel()..start();
+  }
+
+  @override
+  void dispose() {
+    _source.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // No motion selector here: AnimatedSagaMark already listens to
+    // markMotionListenable, and selecting an option writes it — so the preview
+    // follows the selection without being told.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      child: Container(
+        height: 132,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: SagaColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: AnimatedSagaMark(
+          size: 84,
+          state: SagaMarkState.playing,
+          levelSource: _source,
+        ),
+      ),
+    );
+  }
+}
+
+/// Debug-only: records the loudness trace that backs [_MotionPreview] when
+/// nothing is playing. See `lib/core/audio/speech_trace.dart` for the full
+/// procedure — this button is step 2.
+class _CaptureTraceTile extends StatefulWidget {
+  @override
+  State<_CaptureTraceTile> createState() => _CaptureTraceTileState();
+}
+
+class _CaptureTraceTileState extends State<_CaptureTraceTile> {
+  bool _busy = false;
+
+  Future<void> _capture() async {
+    setState(() => _busy = true);
+    final snippet = await AudioLevel.instance.captureTrace();
+    await Clipboard.setData(ClipboardData(text: snippet));
+    debugPrint(snippet);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    showSagaToast(context, 'Trace copied — paste into speech_trace.dart');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(Icons.fiber_manual_record_rounded,
+          color: SagaColors.fgSubtle, size: 18),
+      title: Text(_busy ? 'Recording 6 s…' : 'Capture RMS trace (debug)',
+          style: TextStyle(color: SagaColors.fgMuted, fontSize: 14)),
+      subtitle: Text('Play a book first; sync delay must be 0',
+          style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12)),
+      onTap: _busy ? null : _capture,
     );
   }
 }

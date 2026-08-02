@@ -62,6 +62,15 @@ class SettingsStore {
 
   static Future<void> setChapterScrub(bool v) => _box.put('chapterScrub', v);
 
+  // Start the next book in the collection automatically when one finishes.
+  // Default OFF: finishing a book is a moment, not a cue to start another one
+  // without being asked.
+  static bool get autoPlayNextBook =>
+      _box.get('autoPlayNextBook', defaultValue: false) as bool;
+
+  static Future<void> setAutoPlayNextBook(bool v) =>
+      _box.put('autoPlayNextBook', v);
+
   // Restrict downloads to Wi-Fi / unmetered connections.
   static bool get downloadWifiOnly =>
       _box.get('downloadWifiOnly', defaultValue: false) as bool;

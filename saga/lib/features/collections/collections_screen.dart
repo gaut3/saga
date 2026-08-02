@@ -260,7 +260,12 @@ class _CollectionTile extends StatelessWidget {
           children: [
             // Cover image or placeholder
             if (collection.thumbPath != null)
-              BookCoverImage(thumbPath: collection.thumbPath)
+              // Tile is 1.1:1 — letterbox so square covers keep their top and
+              // bottom. cacheWidth matches the ~half-screen tile.
+              BookCoverImage(
+                  thumbPath: collection.thumbPath,
+                  cacheWidth: 400,
+                  letterboxed: true)
             else
               _coverPlaceholder(),
             // Gradient + text overlay at the bottom

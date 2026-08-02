@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'app.dart';
 import 'core/audio/audio_level.dart';
@@ -16,6 +17,8 @@ import 'core/plex/plex_client.dart';
 import 'core/storage/artwork_cache.dart';
 import 'core/storage/bookmark_store.dart';
 import 'core/storage/book_download_store.dart';
+import 'core/storage/book_metadata_store.dart';
+import 'core/storage/narrator_index_store.dart';
 import 'core/storage/chapter_store.dart';
 import 'core/storage/completed_books_store.dart';
 import 'core/storage/custom_collection_store.dart';
@@ -51,6 +54,13 @@ Future<void> _run() async {
   };
 
   await AppLog.init();
+  // One line per launch, so a pasted log always says which build produced it
+  // and always has something recent in it. Without it a quiet week reads as a
+  // log that has stopped working.
+  unawaited(PackageInfo.fromPlatform().then(
+    (i) => AppLog.log('app', 'launch ${i.version}+${i.buildNumber}'),
+    onError: (_) => AppLog.log('app', 'launch'),
+  ));
 
   try {
     await Hive.initFlutter();
@@ -58,6 +68,8 @@ Future<void> _run() async {
     await BookmarkStore.init(hiveKey);
     await CustomCollectionStore.init(hiveKey);
     await BookDownloadStore.init(hiveKey);
+    await BookMetadataStore.init(hiveKey);
+    await NarratorIndexStore.init(hiveKey);
     await ChapterStore.init(hiveKey);
     await CompletedBooksStore.init(hiveKey);
     await DownloadStore.init(hiveKey);

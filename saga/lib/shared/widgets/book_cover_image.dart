@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -24,12 +25,21 @@ class BookCoverImage extends StatefulWidget {
   /// excluded from the semantics tree.
   final String? semanticLabel;
 
+  /// Fill a non-square box without cropping the artwork: a blurred, cropped
+  /// copy fills the box behind a dimming scrim, with the whole cover contained
+  /// on top. Use wherever the box isn't square — `BoxFit.cover` there silently
+  /// eats the top/bottom (or sides) of covers that are.
+  ///
+  /// Overrides [fit]. Leave off for square boxes; plain cover is cheaper.
+  final bool letterboxed;
+
   const BookCoverImage({
     super.key,
     required this.thumbPath,
     this.cacheWidth = 200,
     this.fit = BoxFit.cover,
     this.semanticLabel,
+    this.letterboxed = false,
   });
 
   @override
@@ -73,6 +83,8 @@ class _BookCoverImageState extends State<BookCoverImage> {
         memCacheWidth: widget.cacheWidth,
         fadeInDuration: Duration.zero,
         fadeOutDuration: Duration.zero,
+        // One download, one cache entry — the letterbox draws it twice.
+        imageBuilder: widget.letterboxed ? _buildLetterbox : null,
         placeholder: (_, _) => _placeholder(),
         errorWidget: (_, _, _) {
           if (_attempt < _maxRetries) {
@@ -85,6 +97,32 @@ class _BookCoverImageState extends State<BookCoverImage> {
           );
         },
       ),
+    );
+  }
+
+  /// Blurred cropped backdrop + scrim + contained artwork. Same treatment the
+  /// player screen uses for its hero cover, so letterboxed covers read the same
+  /// everywhere.
+  Widget _buildLetterbox(BuildContext context, ImageProvider provider) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Scale the blur to the box: a sigma tuned for a full-screen cover
+        // flattens a 180 px tile to a single colour.
+        final shortest = constraints.biggest.shortestSide;
+        final sigma =
+            shortest.isFinite ? (shortest / 12).clamp(6.0, 28.0) : 28.0;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+              child: Image(image: provider, fit: BoxFit.cover),
+            ),
+            ColoredBox(color: Colors.black.withValues(alpha: 0.30)),
+            Image(image: provider, fit: BoxFit.contain),
+          ],
+        );
+      },
     );
   }
 

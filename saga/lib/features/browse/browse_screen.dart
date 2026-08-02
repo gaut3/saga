@@ -5,6 +5,7 @@ import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/plex/models/plex_book.dart';
+import '../../core/plex/narrator_index.dart';
 import '../../core/providers.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/custom_collection_store.dart';
@@ -26,6 +27,8 @@ enum _SortOption {
   byAuthorDesc,
   byDurationAsc,
   byDurationDesc,
+  byNarratorAsc,
+  byNarratorDesc,
 }
 
 class BrowseScreen extends ConsumerWidget {
@@ -89,6 +92,8 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
         _SortOption.byAuthorDesc => 'Author Z→A',
         _SortOption.byDurationAsc => 'Duration ↑',
         _SortOption.byDurationDesc => 'Duration ↓',
+        _SortOption.byNarratorAsc => 'Narrator A→Z',
+        _SortOption.byNarratorDesc => 'Narrator Z→A',
       };
 
   void _showSortSheet() {
@@ -131,6 +136,11 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
             setState(() {
               _sort = active && desc != null ? (isAsc ? desc : asc) : asc;
             });
+            // Choosing narrator is the "first use" that earns the index.
+            if (_sort == _SortOption.byNarratorAsc ||
+                _sort == _SortOption.byNarratorDesc) {
+              _ensureNarratorIndex();
+            }
             Navigator.pop(ctx);
           },
         );
@@ -161,6 +171,10 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                 desc: _SortOption.byDurationDesc,
                 ascLabel: 'Shortest first',
                 descLabel: 'Longest first'),
+            option(
+                label: 'Narrator',
+                asc: _SortOption.byNarratorAsc,
+                desc: _SortOption.byNarratorDesc),
           ],
         ),
       );
@@ -185,6 +199,105 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
     _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// Narrators for a book, from the index. Empty until it has been built.
+  List<String> _narratorsOf(String bookRatingKey) =>
+      ref.read(narratorIndexProvider(widget.libraryKey)).index[bookRatingKey] ??
+      const [];
+
+  String _narratorKey(PlexBook b) {
+    final n = _narratorsOf(b.ratingKey);
+    return n.isEmpty ? '' : n.first.toLowerCase();
+  }
+
+  /// Kicks off the one-time index build. Cheap to call repeatedly — the
+  /// notifier ignores it while building or once ready.
+  void _ensureNarratorIndex() {
+    ref.read(narratorIndexProvider(widget.libraryKey).notifier).build();
+  }
+
+  bool get _narratorSortActive =>
+      _sort == _SortOption.byNarratorAsc ||
+      _sort == _SortOption.byNarratorDesc;
+
+  /// Shown only when narrator is actually being used: while the one-time index
+  /// builds, if it failed, or to offer it when a search could match narrators
+  /// but can't yet.
+  Widget _narratorIndexBanner() {
+    final state = ref.watch(narratorIndexProvider(widget.libraryKey));
+    final searching = _debouncedQuery.isNotEmpty;
+    final wantsNarrators = _narratorSortActive || searching;
+    if (!wantsNarrators) return const SizedBox.shrink();
+
+    Widget wrap(Widget child) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: child,
+        );
+
+    if (state.building) {
+      return wrap(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              state.total == 0
+                  ? 'Finding narrators…'
+                  : 'Indexing narrators… ${state.done}/${state.total}',
+              style: TextStyle(color: SagaColors.fgMuted, fontSize: 12),
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: state.total == 0 ? null : state.progress,
+                minHeight: 3,
+                color: SagaColors.accent,
+                backgroundColor: SagaColors.surfaceAlt,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (state.error != null) {
+      return wrap(Row(
+        children: [
+          Expanded(
+            child: Text(state.error!,
+                style: TextStyle(color: SagaColors.fgMuted, fontSize: 12)),
+          ),
+          TextButton(
+            onPressed: () => ref
+                .read(narratorIndexProvider(widget.libraryKey).notifier)
+                .build(force: true),
+            child: Text('Retry',
+                style: TextStyle(color: SagaColors.accent, fontSize: 12.5)),
+          ),
+        ],
+      ));
+    }
+
+    // Searching is the one case worth offering the index unprompted: the user
+    // may well be typing a narrator's name and getting nothing back.
+    if (!state.isReady && searching) {
+      return wrap(Row(
+        children: [
+          Expanded(
+            child: Text('Narrators aren\'t indexed yet.',
+                style: TextStyle(color: SagaColors.fgMuted, fontSize: 12)),
+          ),
+          TextButton(
+            onPressed: _ensureNarratorIndex,
+            child: Text('Search narrators too',
+                style: TextStyle(color: SagaColors.accent, fontSize: 12.5)),
+          ),
+        ],
+      ));
+    }
+
+    return const SizedBox.shrink();
   }
 
   void _onSearch(String value) {
@@ -268,8 +381,18 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                                   color: SagaColors.fgSubtle, fontSize: 12)),
                           onTap: () async {
                             final navigator = Navigator.of(ctx);
+                            // Thumbs so an empty collection can adopt a cover
+                            // from the first book added.
+                            final loaded = ref
+                                    .read(booksProvider(widget.libraryKey))
+                                    .valueOrNull ??
+                                const <PlexBook>[];
+                            final thumbs = {
+                              for (final b in loaded) b.ratingKey: b.thumbPath
+                            };
                             for (final key in keys) {
-                              await CustomCollectionStore.addBook(col.id, key);
+                              await CustomCollectionStore.addBook(col.id, key,
+                                  coverThumbPath: thumbs[key]);
                             }
                             if (!mounted) return;
                             ref
@@ -309,15 +432,18 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
   }
 
   List<PlexBook> _applySortAndFilter(List<PlexBook> books) {
+    final q = _debouncedQuery.toLowerCase();
     List<PlexBook> list = _debouncedQuery.isEmpty
         ? books
         : books
             .where((b) =>
-                b.title.toLowerCase().contains(_debouncedQuery.toLowerCase()) ||
-                (b.authorName
-                        ?.toLowerCase()
-                        .contains(_debouncedQuery.toLowerCase()) ??
-                    false))
+                b.title.toLowerCase().contains(q) ||
+                (b.authorName?.toLowerCase().contains(q) ?? false) ||
+                // Narrator only matches once the index exists; before that it
+                // simply doesn't contribute, rather than silently excluding
+                // books.
+                _narratorsOf(b.ratingKey)
+                    .any((n) => n.toLowerCase().contains(q)))
             .toList();
 
     if (_onlyWanted) {
@@ -374,6 +500,28 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
             if (bMs == null) return -1;
             return bMs.compareTo(aMs); // longest first
           });
+      // Books with no narrator sink to the bottom in both directions — an
+      // unknown isn't "before A" or "after Z", it's just unknown.
+      case _SortOption.byNarratorAsc:
+        list = [...list]
+          ..sort((a, b) {
+            final an = _narratorKey(a);
+            final bn = _narratorKey(b);
+            if (an.isEmpty || bn.isEmpty) {
+              return an.isEmpty && bn.isEmpty ? 0 : (an.isEmpty ? 1 : -1);
+            }
+            return an.compareTo(bn);
+          });
+      case _SortOption.byNarratorDesc:
+        list = [...list]
+          ..sort((a, b) {
+            final an = _narratorKey(a);
+            final bn = _narratorKey(b);
+            if (an.isEmpty || bn.isEmpty) {
+              return an.isEmpty && bn.isEmpty ? 0 : (an.isEmpty ? 1 : -1);
+            }
+            return bn.compareTo(an);
+          });
       case _SortOption.defaultOrder:
         break;
     }
@@ -395,6 +543,10 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
     // leaves (its card would even drop its badge while staying in the list).
     // Same pairing as wantToReadRevisionProvider above for the "Saved" chip.
     ref.watch(downloadNotifierProvider);
+    // Narrator sort and search read the index in _applySortAndFilter, so the
+    // list must rebuild when the one-time build finishes — otherwise it would
+    // stay sorted by an index that has since arrived. Same pairing again.
+    ref.watch(narratorIndexProvider(widget.libraryKey));
     final booksAsync = ref.watch(booksProvider(widget.libraryKey));
 
     final bottomPad = MediaQuery.of(context).padding.bottom;
@@ -506,8 +658,12 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                               style:
                                   TextStyle(color: SagaColors.fg),
                               decoration: InputDecoration(
+                                // Names narrator even before the index exists:
+                                // the prompt under the field offers to build it
+                                // the moment a search is typed, so the hint is
+                                // what makes the feature findable at all.
                                 hintText:
-                                    'Search by title or author…',
+                                    'Search by title, author or narrator…',
                                 hintStyle: TextStyle(
                                     color: SagaColors.fgSubtle),
                                 prefixIcon: Icon(Icons.search,
@@ -610,6 +766,8 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                   backgroundColor: Colors.transparent,
                 ),
               ),
+
+            SliverToBoxAdapter(child: _narratorIndexBanner()),
 
             booksAsync.when(
               loading: () => SliverToBoxAdapter(

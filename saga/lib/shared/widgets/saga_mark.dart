@@ -50,6 +50,12 @@ class AnimatedSagaMark extends StatefulWidget {
   /// shimmer to signal buffering, then settle to solid bars when cleared.
   final bool loading;
 
+  /// Where the reactive bars read loudness from. Defaults to the live tap
+  /// ([AudioLevel.instance]); the settings preview substitutes a recorded trace
+  /// so the motion can be shown with nothing playing. As with the live tap, a
+  /// source that isn't `isLive` degrades to the synthetic envelope.
+  final AudioLevelSource? levelSource;
+
   const AnimatedSagaMark({
     super.key,
     this.size = 40,
@@ -58,6 +64,7 @@ class AnimatedSagaMark extends StatefulWidget {
     this.monoColor,
     this.playPauseControl = false,
     this.loading = false,
+    this.levelSource,
   });
 
   @override
@@ -157,7 +164,7 @@ class _AnimatedSagaMarkState extends State<AnimatedSagaMark>
     _phase += 0.09; // ~matches the reference rAF cadence at 60fps
     switch (widget.state) {
       case SagaMarkState.playing:
-        final live = AudioLevel.instance;
+        final live = widget.levelSource ?? AudioLevel.instance;
         final reactive =
             markMotionListenable.value == MarkMotion.reactive && live.isLive;
         if (reactive) {

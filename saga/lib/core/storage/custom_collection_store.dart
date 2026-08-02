@@ -95,14 +95,28 @@ class CustomCollectionStore {
     await _box.delete(id);
   }
 
-  static Future<void> addBook(String collectionId, String bookRatingKey) async {
+  /// Adds a book, and — when this is the collection's *first* book and it has
+  /// no cover yet — adopts that book's artwork as the collection cover.
+  ///
+  /// Gated on the collection being empty rather than just `thumbPath == null`
+  /// so that a user who deliberately picked "None" in Set cover doesn't get
+  /// artwork silently re-applied on the next add.
+  static Future<void> addBook(String collectionId, String bookRatingKey,
+      {String? coverThumbPath}) async {
     final col = get(collectionId);
     if (col == null) return;
     if (col.bookRatingKeys.contains(bookRatingKey)) return;
+    final adoptCover = col.bookRatingKeys.isEmpty &&
+        col.thumbPath == null &&
+        coverThumbPath != null;
     await _box.put(
         collectionId,
         col
-            .copyWith(bookRatingKeys: [...col.bookRatingKeys, bookRatingKey])
+            .copyWith(
+              bookRatingKeys: [...col.bookRatingKeys, bookRatingKey],
+              // _unset, not null — null would *clear* an existing cover.
+              thumbPath: adoptCover ? coverThumbPath : _unset,
+            )
             .toMap());
   }
 

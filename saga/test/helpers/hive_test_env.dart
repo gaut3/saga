@@ -18,6 +18,15 @@ Future<Directory> startHiveTestEnv() async {
   return dir;
 }
 
+/// Closes every open box, leaving the directory in place, so the next `init`
+/// re-reads from disk.
+///
+/// Without this a "survives a restart" test proves nothing: `Hive.openBox` on
+/// a box that is still open hands back the same in-memory instance, values and
+/// all, so the round trip through storage — where a nested `Map` of strings
+/// comes back loosely typed — never actually happens.
+Future<void> coldRestartHive() => Hive.close();
+
 /// Closes all boxes and removes the temp directory. Call in `tearDown`.
 Future<void> stopHiveTestEnv(Directory dir) async {
   await Hive.close();

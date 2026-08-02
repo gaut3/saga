@@ -8,6 +8,8 @@ import '../../core/plex/models/plex_track.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/providers.dart';
 import '../../shared/widgets/book_cover_image.dart';
+import '../../shared/widgets/meta_chip.dart';
+import 'effective_chapter_count.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/completed_books_store.dart';
 import '../../core/storage/custom_collection_store.dart';
@@ -17,6 +19,7 @@ import '../player/player_provider.dart';
 import '../player/player_screen.dart';
 import '../player/track_position_math.dart';
 import '../../core/utils/format.dart';
+import '../../core/utils/text_measure.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_sheet.dart';
 import '../../shared/widgets/saga_toast.dart';
@@ -112,7 +115,8 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                                     col.id, widget.book.ratingKey);
                               } else {
                                 await CustomCollectionStore.addBook(
-                                    col.id, widget.book.ratingKey);
+                                    col.id, widget.book.ratingKey,
+                                    coverThumbPath: widget.book.thumbPath);
                               }
                               ref
                                   .read(customCollectionRevisionProvider.notifier)
@@ -135,35 +139,16 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final book = widget.book;
+    // The library listing is abbreviated — narrator and genre only exist on the
+    // per-book record, fetched lazily the first time a book is opened. Until it
+    // lands (or if it fails) this is the listing record unchanged.
+    final book = enrichedBook(ref, widget.book);
     final tracksAsync = ref.watch(tracksProvider(book.ratingKey));
     final savedPosition = BookmarkStore.load(book.ratingKey);
 
-    // Resolve effective chapter count: prefer M4B embedded chapters over Plex
-    // leafCount (which is always 1 for a single M4B file regardless of chapters).
-    int? effectiveChapterCount;
-    final resolvedTracks = tracksAsync.valueOrNull;
-    if (resolvedTracks == null) {
-      effectiveChapterCount = book.leafCount;
-    } else if (resolvedTracks.length != 1) {
-      effectiveChapterCount = resolvedTracks.length;
-    } else {
-      final track = resolvedTracks[0];
-      final m4bParam = PlexClient.instance.resolveM4bParam(track);
-      if (m4bParam != null) {
-        final m4bAsync =
-            ref.watch(m4bChaptersProvider(m4bParam));
-        final m4bChapters = m4bAsync.valueOrNull;
-        if (m4bChapters != null && m4bChapters.isNotEmpty) {
-          effectiveChapterCount = m4bChapters.length;
-        } else if (!m4bAsync.isLoading) {
-          effectiveChapterCount = 1;
-        }
-        // still loading → keep null so the chip stays hidden until resolved
-      } else {
-        effectiveChapterCount = 1;
-      }
-    }
+    // Prefers M4B embedded chapters over Plex leafCount (which is always 1 for
+    // a single M4B file regardless of how many chapters it holds).
+    final chapterCount = effectiveChapterCount(ref, book);
 
     return Scaffold(
       backgroundColor: SagaColors.bg,
@@ -187,7 +172,10 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                   ? Stack(
                       fit: StackFit.expand,
                       children: [
-                        BookCoverImage(thumbPath: book.thumbPath, cacheWidth: 400),
+                        BookCoverImage(
+                            thumbPath: book.thumbPath,
+                            cacheWidth: 400,
+                            letterboxed: true),
                         // Gradient scrim — stronger at the bottom where title sits
                         DecoratedBox(
                           decoration: BoxDecoration(
@@ -221,6 +209,16 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                           fontSize: 15,
                           fontWeight: FontWeight.w500),
                     ),
+                  // Who reads it matters as much as who wrote it, so it sits
+                  // with the author rather than in the chip row.
+                  if (book.narratorLabel != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Narrated by ${book.narratorLabel}',
+                      style:
+                          TextStyle(color: SagaColors.fgMuted, fontSize: 13),
+                    ),
+                  ],
                   const SizedBox(height: 8),
 
                   Wrap(
@@ -228,25 +226,27 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                     runSpacing: 4,
                     children: [
                       if (book.year != null)
-                        _MetaChip(Icons.calendar_today_outlined,
+                        MetaChip(Icons.calendar_today_outlined,
                             '${book.year}'),
                       if (book.totalDurationMs != null)
-                        _MetaChip(Icons.schedule_outlined,
+                        MetaChip(Icons.schedule_outlined,
                             fmtDurationMs(book.totalDurationMs!)),
-                      if (effectiveChapterCount != null)
-                        _MetaChip(
+                      if (chapterCount != null)
+                        MetaChip(
                           Icons.format_list_numbered_outlined,
-                          effectiveChapterCount == 1
+                          chapterCount == 1
                               ? '1 chapter'
-                              : '$effectiveChapterCount chapters',
+                              : '$chapterCount chapters',
                         ),
                       if (book.studio != null)
-                        _MetaChip(
+                        MetaChip(
                             Icons.business_outlined, book.studio!),
+                      for (final g in book.genres.take(2))
+                        MetaChip(Icons.local_offer_outlined, g),
                       if (CompletedBooksStore.completionCount(
                               book.ratingKey) >
                           0)
-                        _MetaChip(
+                        MetaChip(
                             Icons.replay_rounded,
                             'Listened ${CompletedBooksStore.completionCount(book.ratingKey)}×'),
                       GestureDetector(
@@ -663,33 +663,6 @@ class _CoverPlaceholder extends StatelessWidget {
   }
 }
 
-class _MetaChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _MetaChip(this.icon, this.label);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: SagaColors.surface,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: SagaColors.fgSubtle),
-          const SizedBox(width: 4),
-          Text(label,
-              style:
-                  TextStyle(color: SagaColors.fgMuted, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-}
-
 class _ProgressInfo extends StatelessWidget {
   final int positionMs;
   final int totalMs;
@@ -739,31 +712,50 @@ class _ExpandableSummary extends StatefulWidget {
 }
 
 class _ExpandableSummaryState extends State<_ExpandableSummary> {
+  static const _collapsedLines = 3;
+
   bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => setState(() => _expanded = !_expanded),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            widget.summary,
-            style: TextStyle(
-                color: SagaColors.fgMuted, fontSize: 14, height: 1.5),
-            maxLines: _expanded ? null : 3,
-            overflow:
-                _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+    final style =
+        TextStyle(color: SagaColors.fgMuted, fontSize: 14, height: 1.5);
+    // Measured against the real maxWidth, not an assumed one — the whole reason
+    // the toggle used to appear on summaries with nothing to expand.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final overflows = textOverflows(
+          text: widget.summary,
+          style: style,
+          maxWidth: constraints.maxWidth,
+          maxLines: _collapsedLines,
+          textScaler: MediaQuery.textScalerOf(context),
+        );
+        return GestureDetector(
+          onTap: overflows
+              ? () => setState(() => _expanded = !_expanded)
+              : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.summary,
+                style: style,
+                maxLines: _expanded ? null : _collapsedLines,
+                overflow:
+                    _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+              ),
+              if (overflows) ...[
+                const SizedBox(height: 4),
+                Text(
+                  _expanded ? 'Show less' : 'Show more',
+                  style: TextStyle(color: SagaColors.accent, fontSize: 12),
+                ),
+              ],
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            _expanded ? 'Show less' : 'Show more',
-            style:
-                TextStyle(color: SagaColors.accent, fontSize: 12),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

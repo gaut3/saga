@@ -13,6 +13,7 @@ import 'plex/plex_auth.dart';
 import 'plex/plex_client.dart';
 import 'plex/plex_server.dart';
 import 'storage/book_download_store.dart';
+import 'storage/book_metadata_store.dart';
 import 'storage/bookmark_store.dart';
 import 'storage/chapter_store.dart';
 import 'storage/completed_books_store.dart';
@@ -112,6 +113,40 @@ final booksProvider =
     FutureProvider.family<List<PlexBook>, String>((ref, sectionKey) async {
   return ref.watch(plexApiProvider).fetchBooks(sectionKey);
 });
+
+/// The full record for one book, fetched lazily and cached forever.
+///
+/// The library listing is abbreviated: it has no `Style` (the narrator) and no
+/// `Genre`. Those only exist on `/library/metadata/{ratingKey}`, so rather than
+/// make the library load N times slower, the detail is fetched the first time a
+/// book is actually opened and then read from the cache — which also means it
+/// still fills in offline.
+///
+/// Returns null rather than throwing when the server is unreachable and nothing
+/// is cached: the caller already has the abbreviated record and simply shows
+/// less.
+final bookMetadataProvider =
+    FutureProvider.family<PlexBook?, String>((ref, bookRatingKey) async {
+  final cached = BookMetadataStore.load(bookRatingKey);
+  if (cached != null) return cached;
+  try {
+    final raw =
+        await ref.watch(plexApiProvider).fetchBookMetadataRaw(bookRatingKey);
+    if (raw == null) return null;
+    await BookMetadataStore.save(bookRatingKey, raw);
+    return PlexBook.fromJson(raw);
+  } catch (e) {
+    AppLog.log('plex', 'book metadata fetch failed for $bookRatingKey: $e');
+    return null;
+  }
+});
+
+/// [book] with anything the full record adds (narrator, genre) filled in.
+///
+/// Call from a `build`. Falls back to the passed-in record untouched while the
+/// fetch is in flight or if it fails, so the screen never waits on it.
+PlexBook enrichedBook(WidgetRef ref, PlexBook book) =>
+    ref.watch(bookMetadataProvider(book.ratingKey)).valueOrNull ?? book;
 
 final recentlyAddedProvider =
     FutureProvider.family<List<PlexBook>, String>((ref, sectionKey) async {
@@ -455,5 +490,8 @@ final m4bChaptersProvider =
     await ChapterStore.save(ratingKey, chapters);
   }
 
-  return chapters;
+  // Unmodifiable on both paths. The cache hit above already returns a shared,
+  // unmodifiable list, and a provider whose result is mutable only on the first
+  // run is the kind of thing that works in testing and throws in the field.
+  return List<M4bChapter>.unmodifiable(chapters);
 });

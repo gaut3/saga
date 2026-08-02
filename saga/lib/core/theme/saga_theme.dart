@@ -30,6 +30,14 @@ class SagaThemeData {
   final Color heat4;
   final Color heatMax;
 
+  // ── Cover reveal (player screen) ────────────────────────────────────────────
+  // Tapping the cover defocuses it and surfaces the book's detail through it.
+  // How far the theme background scrims the defocused artwork, and how much
+  // saturation the artwork keeps. Light themes need a heavier scrim: pale cover
+  // art over a pale background leaves text with nothing to sit on.
+  final double coverRevealScrim;
+  final double coverRevealSaturation;
+
   const SagaThemeData({
     required this.variant,
     required this.isDark,
@@ -51,6 +59,8 @@ class SagaThemeData {
     required this.heat3,
     required this.heat4,
     required this.heatMax,
+    this.coverRevealScrim = 0.55,
+    this.coverRevealSaturation = 0.35,
   });
 
   // ── INK (dark) ────────────────────────────────────────────────────────────────
@@ -97,6 +107,9 @@ class SagaThemeData {
     heat3:      Color(0xFFBC7448),
     heat4:      Color(0xFFB05530),
     heatMax:    Color(0xFFC25A3A),
+    // Light theme: a pale cover behind pale text needs a much heavier scrim.
+    coverRevealScrim: 0.74,
+    coverRevealSaturation: 0.30,
   );
 
   // ── TERRA (terracotta bold) ────────────────────────────────────────────────────
@@ -120,6 +133,8 @@ class SagaThemeData {
     heat3:      Color(0xFFCFA890),
     heat4:      Color(0xFFE0D0B8),
     heatMax:    Color(0xFFF4EAD8),
+    // Terra is a mid-tone, not a dark: secondary text needs more behind it.
+    coverRevealScrim: 0.68,
   );
 
   // ── ONYX (OLED true black, opt-in) ────────────────────────────────────────────
@@ -200,6 +215,8 @@ abstract final class SagaColors {
   /// to [accent] except on Onyx, where full amber over big regions blooms on
   /// OLED black. Use for any new full-width or panel-sized accent fill.
   static Color get accentDim  => _current.accentDim ?? _current.accent;
+  static double get coverRevealScrim      => _current.coverRevealScrim;
+  static double get coverRevealSaturation => _current.coverRevealSaturation;
   static Color get markSide   => _current.markSide;
   static Color get markMiddle => _current.markMiddle;
   static Color get heatEmpty  => _current.heatEmpty;

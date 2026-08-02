@@ -1,6 +1,6 @@
 import 'models/plex_author.dart';
 import 'models/plex_book.dart';
-import 'models/plex_genre.dart';
+import 'models/plex_tag.dart';
 import 'models/plex_library.dart';
 import 'models/plex_track.dart';
 import 'plex_client.dart';
@@ -111,15 +111,36 @@ class PlexApi {
     return items3.map(PlexBook.fromJson).toList();
   }
 
+  /// The full record for one book, as the raw Plex map.
+  ///
+  /// The list endpoints return an abbreviated item — `Style` (where audiobook
+  /// libraries keep the narrator), `Genre` and friends only appear here. Raw
+  /// rather than a [PlexBook] so the caller can cache exactly what the server
+  /// said and re-parse it later against a newer model.
+  ///
+  /// Returns null when the server has no such item.
+  Future<Map<String, dynamic>?> fetchBookMetadataRaw(String ratingKey) async {
+    final response = await _client.get<Map<String, dynamic>>(
+      '/library/metadata/$ratingKey',
+    );
+    final items =
+        response.data?['MediaContainer']?['Metadata'] as List<dynamic>?;
+    if (items == null || items.isEmpty) return null;
+    final first = items.first;
+    return first is Map<String, dynamic>
+        ? first
+        : Map<String, dynamic>.from(first as Map);
+  }
+
   Future<List<PlexBook>> fetchCollections(String sectionKey) =>
       _fetchList('/library/sections/$sectionKey/collections',
           fromJson: PlexBook.fromJson);
 
-  Future<List<PlexGenre>> fetchGenres(String sectionKey) async {
+  Future<List<PlexTag>> fetchGenres(String sectionKey) async {
     final items = await _fetchList(
       '/library/sections/$sectionKey/genre',
       containerKey: 'Directory',
-      fromJson: PlexGenre.fromJson,
+      fromJson: PlexTag.fromJson,
     );
     return items.where((g) => g.title.isNotEmpty).toList();
   }
@@ -128,6 +149,27 @@ class PlexApi {
           String sectionKey, String genreId) =>
       _fetchList('/library/sections/$sectionKey/all',
           queryParameters: {'type': 9, 'genre': genreId},
+          fromJson: PlexBook.fromJson);
+
+  /// Every narrator in the section, in one request.
+  ///
+  /// Plex has no narrator concept — audiobook libraries put it in Style, and
+  /// Plex indexes Style, which is what makes narrator searchable and sortable
+  /// without fetching each book's record separately.
+  Future<List<PlexTag>> fetchNarrators(String sectionKey) async {
+    final items = await _fetchList(
+      '/library/sections/$sectionKey/style',
+      containerKey: 'Directory',
+      fromJson: PlexTag.fromJson,
+    );
+    return items.where((s) => s.title.isNotEmpty).toList();
+  }
+
+  /// The books credited to one narrator (Style), server-side filtered.
+  Future<List<PlexBook>> fetchBooksByNarrator(
+          String sectionKey, String styleId) =>
+      _fetchList('/library/sections/$sectionKey/all',
+          queryParameters: {'type': 9, 'style': styleId},
           fromJson: PlexBook.fromJson);
 
   Future<List<PlexBook>> searchBooks(String sectionKey, String query) =>

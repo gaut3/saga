@@ -14,6 +14,12 @@ class AppLog {
   static const _fileName = 'saga_diagnostics.log';
   static const _maxLines = 400;
 
+  /// A crash entry carries a native stack of 60-odd frames. Three of those and
+  /// the 400-line budget is gone, which is exactly what happened: a log full of
+  /// hex from one bad afternoon and no room for the week around it. The top
+  /// frames are the ones worth symbolicating, so keep those and drop the rest.
+  static const _maxLinesPerEntry = 12;
+
   static File? _file;
   static final List<String> _buffer = [];
   static Timer? _flushTimer;
@@ -39,7 +45,7 @@ class AppLog {
   static void log(String tag, String message) {
     try {
       final ts = DateTime.now().toIso8601String();
-      final line = '$ts [$tag] ${_redact(message)}';
+      final line = '$ts [$tag] ${_redact(_clip(message))}';
       _buffer.add(line);
       if (_buffer.length > _maxLines) {
         _buffer.removeRange(0, _buffer.length - _maxLines);
@@ -60,7 +66,11 @@ class AppLog {
   }
 
   /// Full log content for the "Copy diagnostics" action.
-  static String dump() => _buffer.join('\n');
+  ///
+  /// Redacted again on the way out, not just on the way in. Entries written by
+  /// an older build are still sitting in the file, and this is the one moment
+  /// they leave the device.
+  static String dump() => _buffer.map(_redact).join('\n');
 
   static Future<void> clear() async {
     _buffer.clear();
@@ -69,17 +79,53 @@ class AppLog {
     } catch (_) {}
   }
 
+  /// Trims a multi-line entry to its first [_maxLinesPerEntry] lines, noting
+  /// what was dropped so the entry doesn't read as a complete stack.
+  static String _clip(String message) {
+    final lines = message.split('\n');
+    if (lines.length <= _maxLinesPerEntry) return message;
+    final dropped = lines.length - _maxLinesPerEntry;
+    return '${lines.take(_maxLinesPerEntry).join('\n')}\n'
+        '  … $dropped more lines';
+  }
+
   /// Strips credentials and server addresses so no entry can identify or
   /// authenticate against the user's server: Plex tokens are masked and any
-  /// http(s) host is replaced with bullets (same convention as the
-  /// redact-server-address display toggle).
+  /// host is replaced with bullets (same convention as the redact-server-address
+  /// display toggle).
+  ///
+  /// A host does not need a `http://` in front of it to identify someone. The
+  /// rules below run in order, narrowest first, because a plex.direct name
+  /// carries *two* secrets at once: the label is the server's public IP with
+  /// dots swapped for dashes, and the one after it is the machine identifier.
+  /// Errors thrown by the socket layer quote that name on its own, with no
+  /// scheme anywhere near it, which is how one reached a log that was supposed
+  /// to be safe to paste into a public issue.
+  ///
+  /// Deliberately not masked: the 32-hex `build_id` in a crash dump, which is
+  /// the same for every install of a release and is what makes the stack
+  /// symbolicatable. It is only ever quoted as `build_id: '…'`, so the rules
+  /// here are written to leave a bare hex run alone.
   static String _redact(String input) {
     var out = input.replaceAll(
         RegExp(r'X-Plex-Token=[^&\s"]+'), 'X-Plex-Token=••••');
+    // Whole plex.direct name: <ip-with-dashes>.<machine id>.plex.direct
+    out = out.replaceAll(
+      RegExp(r'[\w-]+\.[\w-]+\.plex\.direct', caseSensitive: false),
+      '••••••••.plex.direct',
+    );
     out = out.replaceAllMapped(
       RegExp(r'(https?://)([^/\s:"]+)'),
       (m) => '${m[1]}••••••••',
     );
+    // Bare addresses: dotted IPv4, and the dash-encoded form Plex uses.
+    out = out.replaceAll(
+        RegExp(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'), '••••••••');
+    out = out.replaceAll(
+        RegExp(r'\b\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}\b'), '••••••••');
+    out = out.replaceAll(
+        RegExp(r'machineIdentifier[=:]\s*[\w-]+', caseSensitive: false),
+        'machineIdentifier=••••');
     return out;
   }
 }

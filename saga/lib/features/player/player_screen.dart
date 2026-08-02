@@ -20,9 +20,13 @@ import '../../core/storage/playback_log_store.dart';
 import '../../core/cast/cast_service.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/utils/format.dart';
+import '../../core/utils/text_measure.dart';
+import '../library/effective_chapter_count.dart';
+import '../../shared/widgets/meta_chip.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_sheet.dart';
 import '../../shared/widgets/saga_toast.dart';
+import 'play_next.dart';
 import 'player_provider.dart';
 import 'player_service.dart';
 import 'track_position_math.dart';
@@ -33,17 +37,10 @@ class PlayerScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final service = ref.watch(playerServiceProvider);
-    final bookKey = service.currentBookRatingKey;
     final libraryKey = ref.watch(activeLibraryKeyProvider).valueOrNull;
     final books = libraryKey != null
         ? ref.watch(booksProvider(libraryKey)).valueOrNull
         : null;
-    PlexBook? currentBook;
-    try {
-      if (books != null && bookKey != null) {
-        currentBook = books.firstWhere((b) => b.ratingKey == bookKey);
-      }
-    } catch (_) {}
 
     return Scaffold(
       backgroundColor: SagaColors.bg,
@@ -56,6 +53,19 @@ class PlayerScreen extends ConsumerWidget {
         stream: service.mediaItem,
         builder: (context, snap) {
           final item = snap.data;
+
+          // Resolved here, not in the enclosing build: every screen that opens
+          // the player pushes the route *before* awaiting loadBook, so at the
+          // first build the service still holds the previous book (or none).
+          // The media item is what changes when the book does, so reading the
+          // key alongside it is what keeps the two describing the same book.
+          final bookKey = service.currentBookRatingKey;
+          PlexBook? currentBook;
+          try {
+            if (books != null && bookKey != null) {
+              currentBook = books.firstWhere((b) => b.ratingKey == bookKey);
+            }
+          } catch (_) {}
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -77,7 +87,18 @@ class PlayerScreen extends ConsumerWidget {
                           aspectRatio: 1.0,
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: _CoverArt(artUri: item?.artUri),
+                            child: _RevealCover(
+                              artUri: item?.artUri,
+                              book: currentBook,
+                              onFullDetails: currentBook != null
+                                  ? () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (_) => BookDetailScreen(
+                                                book: currentBook!)),
+                                      )
+                                  : null,
+                            ),
                           ),
                         ),
                       ),
@@ -543,50 +564,457 @@ class _PillButton extends StatelessWidget {
 
 // ── Cover art ─────────────────────────────────────────────────────────────────
 
-class _CoverArt extends StatelessWidget {
+/// The cover art, which defocuses to reveal the book's detail through it.
+///
+/// Not a flip. A flip is a rigid-body rotation of a physical card, and nothing
+/// else in Saga rotates or has a back side — the app's motion vocabulary is
+/// light: blur, opacity, desaturation, gradient masks. A flip also destroys the
+/// artwork mid-turn, and that artwork is the source of the whole screen's colour
+/// field. So the cover stays exactly where it is and goes *out of focus* while
+/// the text surfaces through it, which makes the ambient glow the mechanism of
+/// the transition rather than something to protect from it.
+///
+/// Deliberately a *peek*: it never navigates, the same tap reverses it, and the
+/// blurb is truncated under a fade rather than made scrollable. Going deep is
+/// the title row's job ([BookDetailScreen]), which the revealed face also links
+/// to — two affordances at clearly different depths.
+class _RevealCover extends ConsumerStatefulWidget {
   final Uri? artUri;
-  const _CoverArt({this.artUri});
+  final PlexBook? book;
+  final VoidCallback? onFullDetails;
+
+  const _RevealCover({this.artUri, this.book, this.onFullDetails});
+
+  @override
+  ConsumerState<_RevealCover> createState() => _RevealCoverState();
+}
+
+class _RevealCoverState extends ConsumerState<_RevealCover>
+    with SingleTickerProviderStateMixin {
+  /// Out is a touch slower than back: revealing is the deliberate act, and
+  /// dismissing should get out of the way.
+  late final AnimationController _reveal = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 360),
+    reverseDuration: const Duration(milliseconds: 260),
+  );
+
+  /// The artwork's own recession.
+  late final Animation<double> _defocus =
+      CurvedAnimation(parent: _reveal, curve: Curves.easeOutCubic);
+
+  /// Chips lead, summary follows ~60 ms later — the stagger reads as text
+  /// rising through the cover rather than being switched on.
+  late final Animation<double> _chips = CurvedAnimation(
+      parent: _reveal, curve: const Interval(0.40, 0.90, curve: Curves.easeOut));
+  late final Animation<double> _blurb = CurvedAnimation(
+      parent: _reveal, curve: const Interval(0.57, 1.0, curve: Curves.easeOut));
+
+  static const _maxBlurSigma = 40.0;
+
+  @override
+  void initState() {
+    super.initState();
+    // The Semantics label sits outside the AnimatedBuilder, so it needs a nudge
+    // to stop announcing the state we just left.
+    _reveal.addStatusListener((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _RevealCover old) {
+    super.didUpdateWidget(old);
+    // A new book (auto-advance, or the user starting another) should show its
+    // cover, not the detail of a book they never opened.
+    if (old.book?.ratingKey != widget.book?.ratingKey) _reveal.value = 0;
+  }
+
+  @override
+  void dispose() {
+    _reveal.dispose();
+    super.dispose();
+  }
+
+  bool get _revealed => _reveal.value > 0.5;
+
+  bool get _reduceMotion =>
+      MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+  void _toggle() {
+    if (_reduceMotion) {
+      // No tween at all — land on the end state.
+      _reveal.value = _revealed ? 0 : 1;
+      return;
+    }
+    _revealed ? _reveal.reverse() : _reveal.forward();
+  }
+
+  ImageProvider? get _provider {
+    final uri = widget.artUri;
+    if (uri == null) return null;
+    return uri.scheme == 'file'
+        ? FileImage(File(uri.toFilePath()))
+        : ResizeImage(NetworkImage(uri.toString()), width: 600);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: artUri != null ? _buildImage(artUri!) : _placeholder(),
+    final provider = _provider;
+    // Nothing to reveal without the book record.
+    final canReveal = widget.book != null;
+
+    return GestureDetector(
+      onTap: canReveal ? _toggle : null,
+      child: Semantics(
+        button: canReveal,
+        label:
+            canReveal ? (_revealed ? 'Show cover' : 'Show book details') : null,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: AnimatedBuilder(
+            animation: _reveal,
+            // The glow is expensive (a full-size blur) and doesn't change
+            // during the reveal, so it's built once and rasterised once rather
+            // than re-filtered on all 60 frames alongside the artwork's own
+            // animating blur.
+            child: RepaintBoundary(child: _glow(provider)),
+            builder: (context, glow) =>
+                _buildLayers(provider, canReveal, glow!),
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildImage(Uri uri) {
-    final ImageProvider provider = uri.scheme == 'file'
-        ? FileImage(File(uri.toFilePath()))
-        : ResizeImage(NetworkImage(uri.toString()), width: 600);
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // Blurred, cropped fill — hides letterbox bars
-        ImageFiltered(
+  /// The ambient glow: the artwork blurred to fill the square. Static across
+  /// the reveal, so it's hoisted out of the per-frame rebuild.
+  Widget _glow(ImageProvider? provider) => provider != null
+      ? ImageFiltered(
           imageFilter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
           child: Image(
             image: provider,
             fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => Container(color: SagaColors.surface),
+            errorBuilder: (_, _, _) => ColoredBox(color: SagaColors.surface),
           ),
+        )
+      : ColoredBox(color: SagaColors.surface);
+
+  Widget _buildLayers(ImageProvider? provider, bool canReveal, Widget glow) {
+    final t = _defocus.value;
+    final sigma = t * _maxBlurSigma;
+    final saturation = 1.0 - t * (1.0 - SagaColors.coverRevealSaturation);
+
+    Widget artwork = provider != null
+        ? Image(
+            image: provider,
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => _coverPlaceholder(),
+          )
+        : _coverPlaceholder();
+    if (t > 0) {
+      artwork = ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+        child: ColorFiltered(
+          colorFilter: ColorFilter.matrix(_saturationMatrix(saturation)),
+          child: Opacity(opacity: 1.0 - 0.65 * t, child: artwork),
         ),
-        Container(color: Colors.black.withValues(alpha: 0.30)),
-        // Contained artwork centred on top
-        Image(
-          image: provider,
-          fit: BoxFit.contain,
-          errorBuilder: (_, _, _) => _placeholder(),
-        ),
+      );
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // The glow, derived from the art. It never stops being painted, and it
+        // comes *forward* as the artwork recedes: the scrim over it lightens by
+        // ~0.1, so light fills the space the detail vacates.
+        glow,
+        ColoredBox(color: Colors.black.withValues(alpha: 0.30 - 0.10 * t)),
+        artwork,
+        // Theme scrim, so the blurb has something to sit on however pale the
+        // cover is. Per-theme: light themes need much more of it.
+        if (t > 0)
+          ColoredBox(
+            color:
+                SagaColors.bg.withValues(alpha: t * SagaColors.coverRevealScrim),
+          ),
+        if (t > 0 && widget.book != null)
+          IgnorePointer(
+            ignoring: t < 0.5,
+            child: _CoverDetail(
+              book: widget.book!,
+              onFullDetails: widget.onFullDetails,
+              chips: _chips,
+              blurb: _blurb,
+            ),
+          ),
+        // Anchored cue: the cover never moves, so this stays put and simply
+        // crossfades from "there's more here" to "close".
+        if (canReveal)
+          Positioned(
+            right: 10,
+            bottom: 10,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.45),
+                shape: BoxShape.circle,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(5),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Opacity(
+                      opacity: 1 - t,
+                      child: Icon(Icons.info_outline_rounded,
+                          size: 16,
+                          color: Colors.white.withValues(alpha: 0.9)),
+                    ),
+                    Opacity(
+                      opacity: t,
+                      child: Icon(Icons.close_rounded,
+                          size: 16,
+                          color: Colors.white.withValues(alpha: 0.9)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
+}
 
-  Widget _placeholder() => Container(
-        color: SagaColors.surface,
-        child: Center(
-            child: Icon(Icons.book, size: 80, color: SagaColors.fgSubtle)),
-      );
+/// Saturation as a colour matrix. 1 = untouched, 0 = greyscale.
+List<double> _saturationMatrix(double s) {
+  // Rec. 709 luminance weights.
+  const r = 0.2126, g = 0.7152, b = 0.0722;
+  final inv = 1 - s;
+  return <double>[
+    inv * r + s, inv * g, inv * b, 0, 0, //
+    inv * r, inv * g + s, inv * b, 0, 0, //
+    inv * r, inv * g, inv * b + s, 0, 0, //
+    0, 0, 0, 1, 0, //
+  ];
+}
+
+Widget _coverPlaceholder() => ColoredBox(
+      color: SagaColors.surface,
+      child: Center(
+          child: Icon(Icons.book, size: 80, color: SagaColors.fgSubtle)),
+    );
+
+/// The detail that surfaces through the defocused cover: a blurb, not a
+/// document.
+///
+/// Carries no background of its own — the theme scrim behind it belongs to the
+/// reveal, so the two fade together. The summary is truncated under a fade
+/// rather than made scrollable: a small scroller inside a transitioning surface
+/// feels bad and buries text behind a gesture nobody tries. "Full details" is
+/// the way to the rest.
+class _CoverDetail extends ConsumerWidget {
+  final PlexBook book;
+  final VoidCallback? onFullDetails;
+
+  /// Staggered entries, driven by the reveal — chips first, then the blurb.
+  final Animation<double> chips;
+  final Animation<double> blurb;
+
+  const _CoverDetail({
+    required this.book,
+    required this.chips,
+    required this.blurb,
+    this.onFullDetails,
+  });
+
+  /// Fades up with a small lift, so the text reads as rising through the cover.
+  Widget _rise(Animation<double> a, Widget child) {
+    return AnimatedBuilder(
+      animation: a,
+      builder: (context, inner) => Opacity(
+        opacity: a.value.clamp(0.0, 1.0),
+        child: Transform.translate(
+          offset: Offset(0, 8 * (1 - a.value)),
+          child: inner,
+        ),
+      ),
+      child: child,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Narrator and genre come from the per-book record, not the listing.
+    final book = enrichedBook(ref, this.book);
+    final chapters = effectiveChapterCount(ref, book);
+    final summaryStyle =
+        TextStyle(color: SagaColors.fgMuted, fontSize: 13, height: 1.45);
+
+    return ShaderMask(
+      // Soften both edges so lines don't butt into the square. Same gradient
+      // language as the glow layer.
+      shaderCallback: (rect) => const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.transparent,
+          Colors.white,
+          Colors.white,
+          Colors.transparent,
+        ],
+        stops: [0.0, 0.06, 0.94, 1.0],
+      ).createShader(rect),
+      blendMode: BlendMode.dstIn,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _rise(
+              chips,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    book.title,
+                    style: TextStyle(
+                        color: SagaColors.fg,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (book.authorName != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      book.authorName!,
+                      style: TextStyle(color: SagaColors.accent, fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  if (book.narratorLabel != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Narrated by ${book.narratorLabel}',
+                      style: TextStyle(color: SagaColors.fgMuted, fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (book.year != null)
+                        MetaChip(Icons.calendar_today_outlined, '${book.year}'),
+                      if (book.totalDurationMs != null)
+                        MetaChip(Icons.schedule_outlined,
+                            fmtDurationMs(book.totalDurationMs!)),
+                      if (chapters != null)
+                        MetaChip(Icons.format_list_numbered_outlined,
+                            chapters == 1
+                                ? '1 chapter'
+                                : '$chapters chapters'),
+                      if (book.studio != null)
+                        MetaChip(Icons.business_outlined, book.studio!),
+                      for (final g in book.genres.take(2))
+                        MetaChip(Icons.local_offer_outlined, g),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: _rise(
+                blurb,
+                (book.summary?.isNotEmpty ?? false)
+                    ? _FadedSummary(summary: book.summary!, style: summaryStyle)
+                    : Text('No description.',
+                        style: TextStyle(
+                            color: SagaColors.fgSubtle, fontSize: 13)),
+              ),
+            ),
+            if (onFullDetails != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: onFullDetails,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Full details',
+                          style: TextStyle(
+                              color: SagaColors.accent, fontSize: 13)),
+                      Icon(Icons.chevron_right,
+                          color: SagaColors.accent, size: 16),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Summary clipped to the space available, faded out at the bottom when there's
+/// more than fits.
+class _FadedSummary extends StatelessWidget {
+  final String summary;
+  final TextStyle style;
+
+  const _FadedSummary({required this.summary, required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scaler = MediaQuery.textScalerOf(context);
+        final lineHeight =
+            scaler.scale(style.fontSize!) * (style.height ?? 1.0);
+        final maxLines =
+            (constraints.maxHeight / lineHeight).floor().clamp(1, 999);
+        // Measured against the real width — see textOverflows' doc.
+        final overflows = textOverflows(
+          text: summary,
+          style: style,
+          maxWidth: constraints.maxWidth,
+          maxLines: maxLines,
+          textScaler: scaler,
+        );
+        final text = Text(
+          summary,
+          style: style,
+          maxLines: maxLines,
+          // The fade replaces the ellipsis when there's more to read.
+          overflow: overflows ? TextOverflow.clip : TextOverflow.ellipsis,
+        );
+        if (!overflows) return Align(alignment: Alignment.topLeft, child: text);
+        return ShaderMask(
+          shaderCallback: (rect) => LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: const [Colors.white, Colors.white, Colors.transparent],
+            stops: const [0.0, 0.72, 1.0],
+          ).createShader(rect),
+          blendMode: BlendMode.dstIn,
+          child: Align(alignment: Alignment.topLeft, child: text),
+        );
+      },
+    );
+  }
 }
 
 // ── Track info ────────────────────────────────────────────────────────────────
@@ -1893,38 +2321,56 @@ class _NextInSeriesButton extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () => _playNext(ref, book),
-            icon: const Icon(Icons.skip_next_rounded, size: 20),
-            label: Text(
-              book.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: SagaColors.accent,
-              foregroundColor: SagaColors.accentFg,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
+        // When auto-advance is armed this becomes a countdown with a way out.
+        ValueListenableBuilder<int?>(
+          valueListenable: service.autoAdvanceCountdown,
+          builder: (context, secondsLeft, _) => Column(
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _playNext(context, ref, book),
+                  icon: const Icon(Icons.skip_next_rounded, size: 20),
+                  label: Text(
+                    secondsLeft != null
+                        ? 'Playing in ${secondsLeft}s — ${book.title}'
+                        : book.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: SagaColors.accent,
+                    foregroundColor: SagaColors.accentFg,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              if (secondsLeft != null)
+                TextButton(
+                  onPressed: service.cancelAutoAdvance,
+                  child: Text('Cancel',
+                      style:
+                          TextStyle(color: SagaColors.fgMuted, fontSize: 13)),
+                ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Future<void> _playNext(WidgetRef ref, PlexBook book) async {
-    try {
-      final tracks = await ref.read(tracksProvider(book.ratingKey).future);
-      // Speed before load: with playWhenReady, audio can start the instant
-      // buffering completes — it must already be at the book's saved speed.
-      await service.setSpeed(SettingsStore.getBookSpeed(book.ratingKey));
-      await service.loadBook(
-          bookRatingKey: book.ratingKey, tracks: tracks, playWhenReady: true);
-      await service.play();
-    } catch (_) {}
+  Future<void> _playNext(
+      BuildContext context, WidgetRef ref, PlexBook book) async {
+    final ok = await playNextBook(
+      service: service,
+      book: book,
+      loadTracks: (key) => ref.read(tracksProvider(key).future),
+    );
+    // Used to fail silently, which looked identical to a dead button.
+    if (!ok && context.mounted) {
+      showSagaToast(context, 'Could not start "${book.title}"', isError: true);
+    }
   }
 }

@@ -15,6 +15,7 @@ import '../../core/storage/book_download_store.dart';
 import '../../core/storage/download_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/storage/track_cache_store.dart';
+import 'play_next.dart';
 import 'player_service.dart';
 
 // Initialized in main.dart before runApp
@@ -24,6 +25,7 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
   final service = _serviceInstance!;
   service.onBookCompleted = () {
     ref.read(completionRevisionProvider.notifier).state++;
+    _maybeAutoAdvance(ref, service);
   };
   service.onBookmarkSaved = () {
     ref.read(bookmarkRevisionProvider.notifier).state++;
@@ -62,6 +64,54 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
 
 void setPlayerServiceInstance(AudioPlayerService s) {
   _serviceInstance = s;
+}
+
+/// Seconds the finished panel counts down before the next book starts.
+const _kAutoAdvanceSeconds = 5;
+
+/// Starts the next book in the collection when one finishes, if the user has
+/// opted in.
+///
+/// This lives here rather than in the finished panel because the panel only
+/// exists while `PlayerScreen` is on screen — and books usually finish with the
+/// phone in a pocket. Completion is observed here, so the decision is too.
+///
+/// The 5-second countdown is the escape hatch for the case where the user *is*
+/// looking: the panel renders it with a Cancel. With the screen off it just
+/// elapses.
+void _maybeAutoAdvance(Ref ref, AudioPlayerService service) {
+  if (!SettingsStore.autoPlayNextBook) return;
+  final bookKey = service.currentBookRatingKey;
+  if (bookKey == null) return;
+
+  Future<void>(() async {
+    try {
+      final libraryKey = await ref.read(activeLibraryKeyProvider.future);
+      if (libraryKey == null) return;
+      // Only resolves for books in a user-made collection — there's no
+      // Plex-metadata series fallback yet. The setting's subtitle says so.
+      final next =
+          await ref.read(nextInSeriesProvider('$libraryKey|$bookKey').future);
+      if (next == null) return;
+      // The user may have acted while the lookup was in flight: dismissed the
+      // finished panel, started another book, or hit play to hear this one
+      // again. Any of those means don't arm anything.
+      if (service.justFinishedBook.value != bookKey) return;
+      if (service.currentBookRatingKey != bookKey) return;
+      if (service.playbackState.value.playing) return;
+
+      service.scheduleAutoAdvance(_kAutoAdvanceSeconds, () async {
+        AppLog.log('playback', 'auto-advancing to ${next.$2.ratingKey}');
+        await playNextBook(
+          service: service,
+          book: next.$2,
+          loadTracks: (key) => ref.read(tracksProvider(key).future),
+        );
+      });
+    } catch (e) {
+      AppLog.log('playback', 'auto-advance lookup failed: $e');
+    }
+  });
 }
 
 // ── Download notifier ─────────────────────────────────────────────────────────

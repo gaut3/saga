@@ -34,4 +34,7 @@ jobs:
         env:
           # The DST regression tests target Europe/Oslo boundaries.
           TZ: Europe/Oslo
-        run: flutter test
+        # Goldens are excluded: they're rasterized by the host's Skia/font stack
+        # and are checked in from a developer machine, so they don't byte-match
+        # this runner. See saga/dart_test.yaml.
+        run: flutter test --exclude-tags golden

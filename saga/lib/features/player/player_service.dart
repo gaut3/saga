@@ -42,6 +42,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   Future<void> Function(String bookRatingKey, BookPosition? position)? onStreamError;
   bool _reloadInProgress = false;
   bool _restoringSession = false; // re-entry guard for _restoreLastSession
+  bool _clearing = false; // re-entry guard for stopAndClear
   // True while paused *by* an audio interruption (call, alarm) rather than by
   // the user — the only case where interruption-end may auto-resume. Cleared
   // by any user-initiated play (see [play]).
@@ -65,6 +66,41 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   // on the next loadBook.
   final ValueNotifier<String?> justFinishedBook = ValueNotifier<String?>(null);
 
+  /// Seconds left before the next book starts automatically, or null when no
+  /// advance is pending. Driven by the completion handler in player_provider;
+  /// the finished panel renders the countdown and its Cancel from this.
+  final ValueNotifier<int?> autoAdvanceCountdown = ValueNotifier<int?>(null);
+  Timer? _autoAdvanceTimer;
+
+  /// Stops a pending auto-advance. Called by any user action that implies they
+  /// want to stay put — play, pause, seek, dismissing the panel, loading
+  /// another book, or clearing the session.
+  void cancelAutoAdvance() {
+    if (_autoAdvanceTimer == null && autoAdvanceCountdown.value == null) return;
+    _autoAdvanceTimer?.cancel();
+    _autoAdvanceTimer = null;
+    autoAdvanceCountdown.value = null;
+  }
+
+  /// Counts [seconds] down and then runs [start], unless cancelled first.
+  ///
+  /// The delay is the escape hatch: the book has just finished, and if the user
+  /// is looking at the screen they get a beat to say no. With the screen off it
+  /// simply elapses.
+  void scheduleAutoAdvance(int seconds, Future<void> Function() start) {
+    cancelAutoAdvance();
+    autoAdvanceCountdown.value = seconds;
+    _autoAdvanceTimer = Timer.periodic(const Duration(seconds: 1), (t) async {
+      final left = (autoAdvanceCountdown.value ?? 0) - 1;
+      if (left > 0) {
+        autoAdvanceCountdown.value = left;
+        return;
+      }
+      cancelAutoAdvance();
+      await start();
+    });
+  }
+
   AudioPlayerService(this._api) {
     _player.playbackEventStream.listen(
       _broadcastState,
@@ -75,13 +111,21 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         // is Duration.zero and writing that would overwrite the real resume point.
         AppLog.log('playback', 'stream error: $e');
         _progressTimer?.cancel();
+        // Capture where playback *actually* is before anything else touches it.
+        // This used to reload from `BookmarkStore.load(key)`, which is up to a
+        // full progress-timer interval (10 s) behind — and the save above can't
+        // be awaited inside a stream callback, so the read landed before the
+        // write completed and got the older value regardless. On a flaky
+        // connection that reloaded the book seconds away from where the user
+        // was, which is audible as a jump.
+        final resumeFrom = _liveOrStoredPosition();
         if (_player.processingState == ProcessingState.ready) {
           _saveAndReportPosition(state: 'paused');
         }
         final key = _bookRatingKey;
         if (key != null && !_reloadInProgress) {
           _reloadInProgress = true;
-          onStreamError?.call(key, BookmarkStore.load(key));
+          onStreamError?.call(key, resumeFrom);
         }
       },
     );
@@ -243,6 +287,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _lastChapterIndex = -1; // recompute chapter title for the new book
     _completedThisSession = false; // a fresh listen can be counted again
     justFinishedBook.value = null; // any (re)load dismisses the finished panel
+    cancelAutoAdvance(); // including the advance that may have caused this load
     _previousAbsolutePositionMs = -1;
     canUndoSeekNotifier.value = false;
     // Only reset the reload guard on user-initiated loads. Auto-reloads keep it
@@ -403,6 +448,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> play() async {
+    // Pressing play on the finished panel means "replay this", not "carry on".
+    // (No-op during an auto-advance: the countdown clears itself before
+    // starting the next book.)
+    cancelAutoAdvance();
     // No book loaded means this play command reached a freshly cold-started
     // service (media controls after process death) — restore the session.
     // Without a successful restore we must return before _player.play():
@@ -446,6 +495,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> pause() async {
+    cancelAutoAdvance(); // a deliberate pause means "stay here"
     _progressTimer?.cancel();
     _pausedAt = DateTime.now();
     _logEvent('pause');
@@ -466,8 +516,48 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     await super.stop();
   }
 
+  /// Stops playback and tears the media session down completely: the mini
+  /// player pill and the system notification both disappear.
+  ///
+  /// Plain [stop] deliberately doesn't do this — it leaves `mediaItem` set so
+  /// the controls stay usable. Dismissing the pill is the one case where the
+  /// user has asked for the session to be *gone*.
+  ///
+  /// The position is saved first (inside [stop], from the live player position
+  /// while the source is still loaded), so dismissing never costs the user
+  /// their place — the book resumes from Continue Listening as usual.
+  Future<void> stopAndClear() async {
+    // A swipe and a media-button stop can both land; the second must no-op.
+    if (_clearing) return;
+    _clearing = true;
+    try {
+      await stop();
+      cancelAutoAdvance();
+      // Any load still in flight is now stale — without this it could
+      // repopulate the state we're about to clear.
+      _loadGeneration++;
+      _progressTimer?.cancel();
+      _trackingFrom = null;
+      justFinishedBook.value = null;
+      _bookRatingKey = null;
+      _tracks = [];
+      _lastChapterIndex = -1;
+      _completedThisSession = false;
+      _previousAbsolutePositionMs = -1;
+      canUndoSeekNotifier.value = false;
+      // Last, so listeners never see a half-cleared session. main_shell hides
+      // the pill on a null mediaItem, and audio_service drops the notification.
+      queue.add([]);
+      mediaItem.add(null);
+      AppLog.log('playback', 'session cleared by user');
+    } finally {
+      _clearing = false;
+    }
+  }
+
   @override
   Future<void> seek(Duration position) async {
+    cancelAutoAdvance(); // scrubbing back means "I'm not done with this book"
     _previousAbsolutePositionMs = absolutePositionMs;
     canUndoSeekNotifier.value = true;
     await _player.seek(position);
@@ -551,6 +641,29 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   Future<void> setSpeed(double speed) async {
     await _player.setSpeed(speed);
     playbackState.add(playbackState.value.copyWith(speed: speed));
+  }
+
+  /// Where playback is right now, for the stream-error reload.
+  ///
+  /// Prefers the live player position over the stored bookmark — the bookmark
+  /// is only as fresh as the last 10-second save. Falls back to the store when
+  /// the player isn't ready (mid-load its position is `Duration.zero`, and
+  /// resuming there would restart the book).
+  BookPosition? _liveOrStoredPosition() {
+    final key = _bookRatingKey;
+    if (key == null) return null;
+    final track = _currentTrack;
+    if (track == null || _player.processingState != ProcessingState.ready) {
+      return BookmarkStore.load(key);
+    }
+    final positionMs = _player.position.inMilliseconds;
+    return BookPosition(
+      trackRatingKey: track.ratingKey,
+      positionMs: positionMs,
+      absolutePositionMs: _absolutePositionMs(positionMs),
+      totalDurationMs: _tracks.fold<int>(0, (sum, t) => sum + t.durationMs),
+      savedAt: DateTime.now(),
+    );
   }
 
   /// Saves the current position immediately. Called by the periodic 10-s timer;

@@ -1,0 +1,6 @@
+tags:
+  golden:
+    # Golden images are rasterized by the host's Skia + font stack, so files
+    # generated on one platform don't byte-match another. CI (ubuntu) skips this
+    # tag; the goldens run locally, where their job is to catch a regression in
+    # the mark painter before it ships.

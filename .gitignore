@@ -18,6 +18,11 @@ Webpage/
 # Release obfuscation output — keep locally for crash symbolication
 build/debug-info/
 *.apk
+
+# Screen recordings used for reference/debugging — large, and not part of the
+# project. The repo tracks no video assets.
+*.mp4
+*.mov
 SAGA_NOTES_ADDENDUM.md
 SAGA_NOTES_STILL_MISSING.md
 SAGA_CI_RELEASE_SETUP.md

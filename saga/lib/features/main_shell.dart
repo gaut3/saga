@@ -6,12 +6,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/storage/settings_store.dart';
 import '../core/update/update_checker.dart';
 import '../shared/widgets/mini_player_pill.dart';
+import '../shared/widgets/saga_sheet.dart';
+import '../shared/widgets/swipe_away_pill.dart';
 import 'authors/authors_screen.dart';
 import 'browse/browse_screen.dart';
 import 'collections/collections_screen.dart';
 import 'home/home_screen.dart';
 import '../core/providers.dart' show sagaThemeVariantProvider, tabIndexProvider;
 import 'player/player_provider.dart';
+import 'player/player_service.dart';
 import 'settings/settings_screen.dart';
 
 class MainShell extends ConsumerStatefulWidget {
@@ -188,12 +191,21 @@ class _BottomArea extends ConsumerWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Mini player pill — only when something is loaded
+        // Mini player pill — only when something is loaded. stopAndClear()
+        // nulls mediaItem, which is what makes the pill (and the notification)
+        // actually go away after a swipe.
         StreamBuilder<MediaItem?>(
           stream: service.mediaItem,
           builder: (context, snap) {
-            if (snap.data == null) return const SizedBox.shrink();
-            return MiniPlayerPill(service: service, mediaItem: snap.data!);
+            final item = snap.data;
+            if (item == null) return const SizedBox.shrink();
+            return SwipeAwayPill(
+              // Keyed on the book so dismiss state resets for the next one.
+              key: ValueKey(item.id),
+              onDismissed: service.stopAndClear,
+              onLongPress: () => _showPillOptions(context, service),
+              child: MiniPlayerPill(service: service, mediaItem: item),
+            );
           },
         ),
         // Nav pill — gradient so content fades behind it
@@ -220,6 +232,42 @@ class _BottomArea extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// Long-press menu for the mini player.
+///
+/// The swipe is unlabeled by design — the motion carries the meaning — so this
+/// is the discoverable, screen-reader-reachable way to stop playback. Long-press
+/// on a mini player conventionally means "give me options", which leaves room
+/// for queue/speed here later.
+void _showPillOptions(BuildContext context, AudioPlayerService service) {
+  final bottomPad = MediaQuery.of(context).padding.bottom;
+  showSagaSheet(
+    context,
+    (ctx) => Padding(
+      padding: EdgeInsets.only(bottom: bottomPad),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SagaSheetTitle('Now playing',
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
+          ListTile(
+            leading: Icon(Icons.stop_rounded, color: SagaColors.fgMuted),
+            title: Text('Stop playback', style: TextStyle(color: SagaColors.fg)),
+            subtitle: Text('Keeps your place — resume from Continue Listening',
+                style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12)),
+            onTap: () {
+              Navigator.pop(ctx);
+              service.stopAndClear();
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+    scrollable: false,
+  );
 }
 
 class _NavPill extends StatelessWidget {
