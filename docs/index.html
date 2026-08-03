@@ -17,7 +17,7 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -52,6 +52,9 @@
       transform-box: fill-box;
       transform-origin: center center;
     }
+
+    /* Scrolled out of view — stop repainting (toggled by the observer in JS). */
+    .mark.offscreen .sp { animation-play-state: paused; }
 
     /* Playing — synthetic RMS envelope per spec:
        levels[i] = master + 0.18·sin(phase·rate[i] + off[i])
@@ -90,8 +93,9 @@
       position: sticky; top: 0; z-index: 100;
       display: flex; align-items: center; justify-content: space-between;
       padding: 0 56px; height: 68px;
-      background: rgba(21,14,10,0.88);
-      backdrop-filter: blur(14px);
+      /* No backdrop-filter: at this opacity the blur was invisible but still cost
+         a full-width re-composite on every scroll frame. */
+      background: rgba(21,14,10,0.94);
       border-bottom: 1px solid var(--border);
     }
 
@@ -148,7 +152,9 @@
         0 0 0 8px rgba(244,234,216,.04);
       flex-shrink: 0;
     }
-    .phone img { display: block; width: 100%; }
+    /* height:auto lets the intrinsic width/height attrs reserve space without
+       forcing the pixel height. */
+    .phone img { display: block; width: 100%; height: auto; }
 
     /* ─── HERO ─── */
     #hero {
@@ -161,8 +167,15 @@
     .hero-glow {
       position: absolute; right: -80px; top: -180px;
       width: 860px; height: 860px; pointer-events: none;
-      background: radial-gradient(circle, rgba(224,160,80,.2) 0%, rgba(194,90,58,.06) 45%, transparent 68%);
-      filter: blur(18px);
+      /* No filter: blur() — an 18px blur on an 860px box forced a large offscreen
+         buffer for softening a gradient that already falls off over ~390px.
+         The extra stops carry the same tail at zero compositor cost. */
+      background: radial-gradient(circle,
+        rgba(224,160,80,.20)  0%,
+        rgba(210,125,70,.11) 26%,
+        rgba(194,90,58,.06)  45%,
+        rgba(194,90,58,.02)  58%,
+        transparent          72%);
     }
 
     .hero-grid {
@@ -280,7 +293,6 @@
       align-items: center; gap: 28px;
     }
     .feature-card .phone { width: min(210px, 100%); }
-    .feature-card .phone img { aspect-ratio: 9 / 19.5; }
 
     .feature-copy { text-align: center; min-height: 100px; }
     .feature-copy .feature-eyebrow {
@@ -421,7 +433,7 @@
       .nav-links {
         display: none; flex-direction: column;
         position: absolute; top: 68px; left: 0; right: 0;
-        background: rgba(21,14,10,0.97); backdrop-filter: blur(14px);
+        background: rgba(21,14,10,0.97);
         padding: 8px 24px 20px; gap: 0;
         border-bottom: 1px solid var(--border); z-index: 99;
       }
@@ -528,10 +540,12 @@
 
     <div class="hero-phones">
       <div class="phone phone-a">
-        <img src="screens/home-cream.png" alt="Home screen, cream theme" />
+        <img src="screens/home-cream.webp" alt="Home screen, cream theme"
+             width="720" height="1517" decoding="async" fetchpriority="high" />
       </div>
       <div class="phone phone-b">
-        <img src="screens/player-ink.png" alt="Now Playing screen" />
+        <img src="screens/player-ink.webp" alt="Now Playing screen"
+             width="720" height="1517" decoding="async" fetchpriority="high" />
       </div>
     </div>
 
@@ -573,7 +587,7 @@
     <div class="features-grid">
 
       <div class="feature-card">
-        <div class="phone"><img src="screens/home-ink.png" alt="Library screen" loading="lazy" /></div>
+        <div class="phone"><img src="screens/home-ink.webp" alt="Library screen" width="720" height="1517" loading="lazy" decoding="async" /></div>
         <div class="feature-copy">
           <div class="feature-eyebrow">01 &middot; Library</div>
           <h3>Your Plex,<br>beautifully.</h3>
@@ -582,7 +596,7 @@
       </div>
 
       <div class="feature-card">
-        <div class="phone"><img src="screens/player-ink.png" alt="Player screen" loading="lazy" /></div>
+        <div class="phone"><img src="screens/player-ink.webp" alt="Player screen" width="720" height="1517" loading="lazy" decoding="async" /></div>
         <div class="feature-copy">
           <div class="feature-eyebrow">02 &middot; Playback</div>
           <h3>Built for<br>listeners.</h3>
@@ -591,7 +605,7 @@
       </div>
 
       <div class="feature-card">
-        <div class="phone"><img src="screens/history-day-ink.png" alt="History screen" loading="lazy" /></div>
+        <div class="phone"><img src="screens/history-day-ink.webp" alt="History screen" width="720" height="1517" loading="lazy" decoding="async" /></div>
         <div class="feature-copy">
           <div class="feature-eyebrow">03 &middot; Stats</div>
           <h3>Every session,<br>logged.</h3>
@@ -600,7 +614,7 @@
       </div>
 
       <div class="feature-card">
-        <div class="phone"><img src="screens/collections-ink.png" alt="Collections screen" loading="lazy" /></div>
+        <div class="phone"><img src="screens/collections-ink.webp" alt="Collections screen" width="720" height="1517" loading="lazy" decoding="async" /></div>
         <div class="feature-copy">
           <div class="feature-eyebrow">04 &middot; Collections</div>
           <h3>Your series,<br>in order.</h3>
@@ -620,7 +634,7 @@
     <div class="themes-grid">
 
       <div class="theme-card">
-        <div class="phone"><img src="screens/home-ink.png" alt="Ink theme" loading="lazy" /></div>
+        <div class="phone"><img src="screens/home-ink.webp" alt="Ink theme" width="720" height="1517" loading="lazy" decoding="async" /></div>
         <div class="theme-label">
           <div class="theme-swatch" style="background:#1E1410"></div>
           <span class="theme-name">Ink</span>
@@ -628,7 +642,7 @@
       </div>
 
       <div class="theme-card">
-        <div class="phone"><img src="screens/home-cream.png" alt="Cream theme" loading="lazy" /></div>
+        <div class="phone"><img src="screens/home-cream.webp" alt="Cream theme" width="720" height="1517" loading="lazy" decoding="async" /></div>
         <div class="theme-label">
           <div class="theme-swatch" style="background:#F4EAD8"></div>
           <span class="theme-name">Cream</span>
@@ -636,7 +650,7 @@
       </div>
 
       <div class="theme-card">
-        <div class="phone"><img src="screens/home-terra.png" alt="Terra theme" loading="lazy" /></div>
+        <div class="phone"><img src="screens/home-terra.webp" alt="Terra theme" width="720" height="1517" loading="lazy" decoding="async" /></div>
         <div class="theme-label">
           <div class="theme-swatch" style="background:#C25A3A"></div>
           <span class="theme-name">Terra</span>
@@ -644,7 +658,7 @@
       </div>
 
       <div class="theme-card">
-        <div class="phone"><img src="screens/home-onyx.png" alt="Onyx theme — true black for OLED" loading="lazy" /></div>
+        <div class="phone"><img src="screens/home-onyx.webp" alt="Onyx theme — true black for OLED" width="720" height="1517" loading="lazy" decoding="async" /></div>
         <div class="theme-label">
           <div class="theme-swatch" style="background:#000"></div>
           <span class="theme-name">Onyx</span>
@@ -874,6 +888,14 @@
   const MORPH_DUR = 470;  // ms, per spec
   let phase = 0, lastTs = null;
 
+  // States whose levels never change: once the morph settles there is nothing left
+  // to draw, so the loop stops outright rather than spinning on identical frames.
+  const STATIC = new Set(['paused', 'pausebars']);
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let rafId = null;                    // null = loop not running
+  let inView = false;                  // driven by the IntersectionObserver below
+  const lastPoints = ['', '', '', ''];
+
   function lerpShape(a, b, t) {
     return a.map((bar,i) => bar.map((_,k) => [
       a[i][k][0] + (b[i][k][0]-a[i][k][0])*t,
@@ -890,9 +912,9 @@
     return pts.map(p => [p[0], cy + (p[1]-cy)*el]);
   }
 
-  function tick(ts) {
-    const dt = lastTs ? (ts-lastTs)/1000 : 0;
-    lastTs = ts; phase += dt;
+  // Draws one frame. Returns false when the mark has nothing further to animate.
+  function draw(dt, ts) {
+    phase += dt;
 
     if (morphStart !== null) morphT = Math.min(1, (ts-morphStart)/MORPH_DUR);
     const et = eic(morphT);
@@ -902,18 +924,62 @@
 
     polys.forEach((poly, i) => {
       const pts = applyLevel(shape[i], levels[i], et, origin);
-      poly.setAttribute('points', pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' '));
+      const s = pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
+      // The attribute write is the costly half; skip it when geometry is unchanged.
+      if (s !== lastPoints[i]) { poly.setAttribute('points', s); lastPoints[i] = s; }
     });
 
     if (morphT >= 1) morphStart = null;
-    requestAnimationFrame(tick);
+    return !(morphT >= 1 && STATIC.has(state));
+  }
+
+  function tick(ts) {
+    const dt = lastTs === null ? 0 : (ts-lastTs)/1000;
+    lastTs = ts;
+    rafId = (draw(dt, ts) && inView) ? requestAnimationFrame(tick) : null;
+  }
+
+  function start() {
+    if (rafId !== null || !inView || reduceMotion.matches) return;
+    lastTs = null;                 // resume where we paused — no phase jump
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function stop() {
+    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+  }
+
+  // Reduced motion: no loop at all, just the settled shape for the chosen state.
+  function drawStatic() {
+    morphT = 1; morphStart = null;
+    fromShape = cp(toShape);
+    draw(0, 0);
   }
 
   // Init to breathing (idle/splash state — mark just sits quietly)
   state = 'breathing';
   fromShape = cp(BAR); toShape = cp(BAR);
-  polys.forEach((p,i) => p.setAttribute('points', BAR[i].map(pt=>pt.join(',')).join(' ')));
-  requestAnimationFrame(tick);
+  polys.forEach((p,i) => {
+    lastPoints[i] = BAR[i].map(pt=>pt.join(',')).join(' ');
+    p.setAttribute('points', lastPoints[i]);
+  });
+
+  // Only run while the demo is actually on screen.
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(entries => {
+      inView = entries[0].isIntersecting;
+      if (inView) start(); else stop();
+    }, { rootMargin: '120px' }).observe(svg);
+  } else {
+    inView = true;
+    start();
+  }
+
+  if (reduceMotion.addEventListener) {
+    reduceMotion.addEventListener('change', () => {
+      if (reduceMotion.matches) { stop(); drawStatic(); } else start();
+    });
+  }
 
   // ── State switching ───────────────────────────────────────────
   function setState(s) {
@@ -921,9 +987,11 @@
     const et = eic(morphT);
     fromShape = lerpShape(fromShape, toShape, et);
     toShape   = cp(SHAPES[s]);
+    state     = s;
+    if (reduceMotion.matches) { drawStatic(); return; }
     morphT    = 0;
     morphStart = performance.now();
-    state     = s;
+    start();                       // restart if a static state had stopped the loop
   }
 
   // Cycle order — mirrors the natural app experience
@@ -953,6 +1021,15 @@
       setActiveBtn(s);
     });
   });
+})();
+
+// Pause the hero mark's CSS animation once it scrolls out of view.
+(function () {
+  const heroMark = document.querySelector('#hero .mark');
+  if (!heroMark || !('IntersectionObserver' in window)) return;
+  new IntersectionObserver(entries => {
+    heroMark.classList.toggle('offscreen', !entries[0].isIntersecting);
+  }, { rootMargin: '80px' }).observe(heroMark);
 })();
 
 // Nav toggle
