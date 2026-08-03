@@ -98,6 +98,15 @@ class M4bChapterReader {
   /// are kilobytes; anything claiming more is not what we came for.
   static const int _maxBoxRead = 2 * 1024 * 1024;
 
+  /// Two title samples closer than this are fetched as one read: over HTTP a
+  /// second round trip costs more than a few unwanted kilobytes.
+  static const int _clusterGap = 64 * 1024;
+
+  /// How many separate reads the titles may cost. Interleaved chapter tracks
+  /// need one per chapter, which is fine for nineteen and not for nine hundred;
+  /// past this the chapters are numbered from their times instead.
+  static const int _maxTitleReads = 96;
+
   /// Stand-in upper bound when the server won't say how big the file is. The
   /// walk stops on the first read that comes back empty, so this only has to be
   /// larger than any real audiobook.
@@ -313,9 +322,11 @@ class M4bChapterReader {
     }
 
     final handlers = <String>[];
+    var sawChapterTrack = false;
     for (final trak in children.where((c) => c.type == 'trak')) {
       final samples = await _chapterSamplesIn(read, trak, handlers, notes);
       if (samples == null || samples.isEmpty) continue;
+      sawChapterTrack = true;
       final titles = await _readSampleTitles(samples, read, notes, 'walk');
       if (titles.isNotEmpty) {
         notes.add('walk: ${titles.length} from a chapter track');
@@ -323,8 +334,13 @@ class M4bChapterReader {
       }
     }
 
-    notes.add('walk: no chapter track '
-        '(tracks: ${handlers.isEmpty ? 'none' : handlers.join(' ')})');
+    // "No chapter track" and "a chapter track we couldn't read" are different
+    // reports, and saying the first when the second happened sends the next
+    // person looking at the wrong thing.
+    notes.add(sawChapterTrack
+        ? 'walk: found a chapter track but read no titles from it'
+        : 'walk: no chapter track '
+            '(tracks: ${handlers.isEmpty ? 'none' : handlers.join(' ')})');
     return [];
   }
 
@@ -434,37 +450,102 @@ class M4bChapterReader {
     List<String> notes,
     String where,
   ) async {
-    final lo = samples.map((s) => s.offset).reduce((a, b) => a < b ? a : b);
-    final hi = samples
-        .map((s) => s.offset + s.size)
-        .reduce((a, b) => a > b ? a : b);
-    if (hi <= lo || hi - lo > _maxSampleSpan) {
-      notes.add('$where: ${samples.length} chapter titles spread over '
-          '${_size(hi - lo)}, past the ${_size(_maxSampleSpan)} limit');
+    final clusters = _clusterSamples(samples);
+    if (clusters.isEmpty) {
+      notes.add('$where: chapter track samples have no readable extent');
       return [];
     }
 
-    final spanStart = lo;
-    final span = await read(lo, hi - lo);
-    if (span == null) {
-      notes.add('$where: could not read the ${_size(hi - lo)} '
-          'holding the chapter titles');
+    // Titles with no bytes behind them still have their times, and correctly
+    // timed "Chapter N" entries are worth more than no chapters at all — so a
+    // book scattered past the read budget degrades to numbering rather than
+    // vanishing. The log says which happened.
+    if (clusters.length > _maxTitleReads) {
+      notes.add('$where: ${samples.length} chapter titles scattered over '
+          '${clusters.length} places, past the $_maxTitleReads read limit — '
+          'numbering them instead');
+      return _numbered(samples);
+    }
+
+    final spans = <({int start, Uint8List bytes})>[];
+    for (final c in clusters) {
+      final bytes = await read(c.start, c.end - c.start);
+      if (bytes != null) spans.add((start: c.start, bytes: bytes));
+    }
+    if (spans.isEmpty) {
+      notes.add('$where: could not read the bytes holding the chapter titles');
       return [];
+    }
+    if (clusters.length > 1) {
+      notes.add('$where: titles gathered from ${spans.length} places '
+          'across ${_size(clusters.last.end - clusters.first.start)}');
     }
 
     final chapters = <M4bChapter>[];
     for (var i = 0; i < samples.length; i++) {
       final s = samples[i];
-      final from = s.offset - spanStart;
-      if (from < 0 || from + s.size > span.length) continue;
-      final title = _decodeTextSample(span.sublist(from, from + s.size));
+      final title = _titleFrom(spans, s);
       chapters.add(M4bChapter(
-        title: title.isNotEmpty ? title : 'Chapter ${i + 1}',
+        title: title != null && title.isNotEmpty ? title : 'Chapter ${i + 1}',
         start: Duration(milliseconds: s.startMs),
       ));
     }
     return chapters;
   }
+
+  /// Groups samples into as few reads as cover them all.
+  ///
+  /// Usually the titles sit together in one chunk and this is a single span.
+  /// But nothing requires that: some muxers interleave the chapter track with
+  /// the audio, storing each title next to the audio it belongs to, so a
+  /// 19-chapter book can have its titles strewn across 600 MB with a chapter's
+  /// worth of audio between each pair. Reading lowest-to-highest as one span
+  /// would mean pulling the whole book to collect a few hundred bytes, which is
+  /// why that used to be refused outright — the refusal was right, treating it
+  /// as one span was not.
+  static List<({int start, int end})> _clusterSamples(
+      List<_ChapterSample> samples) {
+    final ordered = [
+      for (final s in samples)
+        if (s.size > 0 && s.offset >= 0) s
+    ]..sort((a, b) => a.offset.compareTo(b.offset));
+
+    final out = <({int start, int end})>[];
+    for (final s in ordered) {
+      final end = s.offset + s.size;
+      if (out.isNotEmpty) {
+        final last = out.last;
+        // Close enough that one read is cheaper than two round trips, and
+        // still inside the budget for a single read.
+        if (s.offset - last.end <= _clusterGap &&
+            end - last.start <= _maxSampleSpan) {
+          out[out.length - 1] = (start: last.start, end: end);
+          continue;
+        }
+      }
+      out.add((start: s.offset, end: end));
+    }
+    return out;
+  }
+
+  static String? _titleFrom(
+      List<({int start, Uint8List bytes})> spans, _ChapterSample s) {
+    for (final span in spans) {
+      final from = s.offset - span.start;
+      if (from < 0 || from + s.size > span.bytes.length) continue;
+      return _decodeTextSample(
+          Uint8List.sublistView(span.bytes, from, from + s.size));
+    }
+    return null;
+  }
+
+  static List<M4bChapter> _numbered(List<_ChapterSample> samples) => [
+        for (var i = 0; i < samples.length; i++)
+          M4bChapter(
+            title: 'Chapter ${i + 1}',
+            start: Duration(milliseconds: samples[i].startMs),
+          )
+      ];
 
   /// QuickTime text sample: u16 length, then the text.
   ///

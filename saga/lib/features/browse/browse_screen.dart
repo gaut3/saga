@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/book_progress.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/plex/narrator_index.dart';
 import '../../core/providers.dart';
@@ -528,11 +529,8 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
     return list;
   }
 
-  static int? _durationMs(PlexBook book) {
-    final fromPlex = book.totalDurationMs;
-    if (fromPlex != null && fromPlex > 0) return fromPlex;
-    return BookmarkStore.load(book.ratingKey)?.totalDurationMs;
-  }
+  static int? _durationMs(PlexBook book) =>
+      bookTotalDurationMs(book, BookmarkStore.load(book.ratingKey));
 
   @override
   Widget build(BuildContext context) {
@@ -1102,7 +1100,8 @@ class _BookListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final duration = fmtDurationMs(book.totalDurationMs);
+    final duration = fmtDurationMs(
+        bookTotalDurationMs(book, BookmarkStore.load(book.ratingKey)));
 
     return InkWell(
       onTap: onTap,

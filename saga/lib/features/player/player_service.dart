@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
@@ -16,12 +15,12 @@ import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/chapter_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/storage/completed_books_store.dart';
-import '../../core/storage/download_store.dart';
 import '../../core/storage/listen_days_store.dart';
 import '../../core/storage/listening_history_store.dart';
 import '../../core/storage/playback_log_store.dart';
 import '../../core/storage/timeline_queue_store.dart';
 import '../../core/storage/track_cache_store.dart';
+import 'book_launch.dart';
 import 'resume_rewind.dart';
 import 'session_restore.dart';
 import 'track_position_math.dart';
@@ -340,8 +339,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     }
 
     final sources = tracks.map((t) {
-      final localPath = DownloadStore.getPath(t.ratingKey);
-      if (localPath != null && File(localPath).existsSync()) {
+      final localPath = PlexClient.localTrackPath(t);
+      if (localPath != null) {
         return AudioSource.file(localPath, tag: t.ratingKey);
       }
       final streamUrl = PlexClient.instance.buildStreamUrl(t.partKey);
@@ -447,26 +446,21 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     try {
       final bookKey = mostRecentBookRatingKey(BookmarkStore.allPositions());
       if (bookKey == null) return false;
-      final position = BookmarkStore.load(bookKey);
       // Cache first: instant, and works offline for downloaded books. The
       // network fetch covers streamed books (needs the server reachable).
       final tracks =
           TrackCacheStore.load(bookKey) ?? await _api.fetchTracks(bookKey);
       if (tracks.isEmpty) return false;
-      final idx = position != null
-          ? tracks.indexWhere((t) => t.ratingKey == position.trackRatingKey)
-          : -1;
-      await setSpeed(SettingsStore.getBookSpeed(bookKey));
-      await loadBook(
+      final started = await startBook(
+        service: this,
         bookRatingKey: bookKey,
         tracks: tracks,
-        startTrackIndex: idx < 0 ? 0 : idx,
-        startPositionMs: position?.positionMs ?? 0,
-        applyResumeRewind: true,
-        playWhenReady: true,
+        from: const BookStartPoint.resume(),
+        // The [play] that called this finishes the job.
+        playback: LaunchPlayback.intentOnly,
       );
-      AppLog.log('playback', 'restored last session: book $bookKey');
-      return true;
+      if (started) AppLog.log('playback', 'restored last session: book $bookKey');
+      return started;
     } catch (e) {
       AppLog.log('playback', 'session restore failed: $e');
       return false;

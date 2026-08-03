@@ -1,15 +1,15 @@
 import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/plex/models/plex_track.dart';
-import '../../core/storage/settings_store.dart';
+import 'book_launch.dart';
 import 'player_service.dart';
 
-/// Loads [book] and starts playing it.
+/// Loads [book] and starts playing it from the beginning.
 ///
 /// The single path for "move on to the next book" — the finished panel's button
 /// and the automatic advance both come through here, so the two can't drift
-/// apart (speed applied before the load, `playWhenReady` set, and resume rewind
-/// deliberately absent because a next book is by definition unstarted).
+/// apart. The launch itself belongs to [startBook]; all this adds is the choice
+/// of start point, which for a next book is the beginning by definition.
 ///
 /// Takes [loadTracks] rather than a ref because the two callers hold different
 /// ref types (`WidgetRef` in the panel, `Ref` in the provider) and Riverpod 2
@@ -25,16 +25,12 @@ Future<bool> playNextBook({
   try {
     final tracks = await loadTracks(book.ratingKey);
     if (tracks.isEmpty) return false;
-    // Speed before load: with playWhenReady, audio can start the instant
-    // buffering completes — it must already be at the book's saved speed.
-    await service.setSpeed(SettingsStore.getBookSpeed(book.ratingKey));
-    await service.loadBook(
+    return startBook(
+      service: service,
       bookRatingKey: book.ratingKey,
       tracks: tracks,
-      playWhenReady: true,
+      from: const BookStartPoint.beginning(),
     );
-    await service.play();
-    return true;
   } catch (e) {
     AppLog.log('playback', 'play next failed for ${book.ratingKey}: $e');
     return false;

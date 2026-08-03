@@ -54,23 +54,32 @@ class NamedBookmark {
         createdAt: DateTime.parse(map['createdAt'] as String),
       );
 
+  /// The name a bookmark gets when the listener doesn't type one.
+  ///
+  /// The player pre-fills its text field with this and [create] falls back to
+  /// it, so a bookmark saved without editing the field reads the same either
+  /// way. The two used to build the string separately.
+  static String defaultLabel(String trackTitle, int positionMs) {
+    final mins = positionMs ~/ 60000;
+    final secs =
+        ((positionMs % 60000) / 1000).round().toString().padLeft(2, '0');
+    return '$trackTitle • $mins:$secs';
+  }
+
   static NamedBookmark create({
     required String bookRatingKey,
     required String trackRatingKey,
     required int positionMs,
     required String trackTitle,
-  }) {
-    final mins = positionMs ~/ 60000;
-    final secs = ((positionMs % 60000) / 1000).round().toString().padLeft(2, '0');
-    return NamedBookmark(
-      id: const Uuid().v4(),
-      bookRatingKey: bookRatingKey,
-      trackRatingKey: trackRatingKey,
-      positionMs: positionMs,
-      label: '$trackTitle • $mins:$secs',
-      createdAt: DateTime.now(),
-    );
-  }
+  }) =>
+      NamedBookmark(
+        id: const Uuid().v4(),
+        bookRatingKey: bookRatingKey,
+        trackRatingKey: trackRatingKey,
+        positionMs: positionMs,
+        label: defaultLabel(trackTitle, positionMs),
+        createdAt: DateTime.now(),
+      );
 }
 
 class NamedBookmarkStore {

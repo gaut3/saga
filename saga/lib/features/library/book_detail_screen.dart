@@ -3,6 +3,7 @@ import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/audio/m4b_chapter_reader.dart';
+import '../../core/book_progress.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/plex/plex_client.dart';
@@ -14,7 +15,7 @@ import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/completed_books_store.dart';
 import '../../core/storage/custom_collection_store.dart';
 import '../../core/storage/want_to_read_store.dart';
-import '../../core/storage/settings_store.dart';
+import '../player/book_launch.dart';
 import '../player/player_provider.dart';
 import '../player/player_screen.dart';
 import '../player/track_position_math.dart';
@@ -145,6 +146,10 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     final book = enrichedBook(ref, widget.book);
     final tracksAsync = ref.watch(tracksProvider(book.ratingKey));
     final savedPosition = BookmarkStore.load(book.ratingKey);
+    // Falls back to the length recorded in the saved position when Plex hasn't
+    // reported one. This screen used to read Plex's field alone, so a book Home
+    // was drawing a progress bar for showed neither a length nor a bar here.
+    final bookLengthMs = bookTotalDurationMs(book, savedPosition);
 
     // Prefers M4B embedded chapters over Plex leafCount (which is always 1 for
     // a single M4B file regardless of how many chapters it holds).
@@ -228,9 +233,9 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                       if (book.year != null)
                         MetaChip(Icons.calendar_today_outlined,
                             '${book.year}'),
-                      if (book.totalDurationMs != null)
+                      if (bookLengthMs != null)
                         MetaChip(Icons.schedule_outlined,
-                            fmtDurationMs(book.totalDurationMs!)),
+                            fmtDurationMs(bookLengthMs)),
                       if (chapterCount != null)
                         MetaChip(
                           Icons.format_list_numbered_outlined,
@@ -289,13 +294,14 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                     ],
                   ),
 
-                  if (savedPosition != null &&
-                      book.totalDurationMs != null &&
-                      book.totalDurationMs! > 0) ...[
+                  if (savedPosition != null && bookLengthMs != null) ...[
                     const SizedBox(height: 14),
+                    // The book-absolute position, not the position within the
+                    // current file: on a twenty-file book the per-track figure
+                    // read as 2% while every other surface showed the truth.
                     _ProgressInfo(
-                        positionMs: savedPosition.positionMs,
-                        totalMs: book.totalDurationMs!),
+                        positionMs: savedPosition.absolutePositionMs,
+                        totalMs: bookLengthMs),
                   ],
 
                   if (book.summary != null &&
@@ -322,7 +328,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                                     onPressed: () => _openPlayer(
                                       context,
                                       tracks,
-                                      resumePosition: savedPosition,
+                                      resume: true,
                                     ),
                                     icon: const Icon(Icons.play_arrow),
                                     label: const Text('Resume'),
@@ -485,40 +491,21 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   Future<void> _openPlayer(
     BuildContext context,
     List<PlexTrack> tracks, {
-    BookPosition? resumePosition,
-    int startIndex = 0,
+    bool resume = false,
   }) async {
-    int trackIndex = startIndex;
-    int positionMs = 0;
-
-    if (resumePosition != null) {
-      final idx = tracks.indexWhere(
-          (t) => t.ratingKey == resumePosition.trackRatingKey);
-      if (idx >= 0) {
-        trackIndex = idx;
-        positionMs = resumePosition.positionMs;
-      }
-    }
-
     if (!context.mounted) return;
     Navigator.of(context, rootNavigator: true)
         .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
 
-    try {
-      final service = ref.read(playerServiceProvider);
-      // Restore the book's saved speed before loading: with playWhenReady,
-      // audio can start the instant buffering completes.
-      await service.setSpeed(SettingsStore.getBookSpeed(widget.book.ratingKey));
-      await service.loadBook(
-        bookRatingKey: widget.book.ratingKey,
-        tracks: tracks,
-        startTrackIndex: trackIndex,
-        startPositionMs: positionMs,
-        applyResumeRewind: resumePosition != null,
-        playWhenReady: true,
-      );
-      await service.play();
-    } catch (_) {
+    final started = await startBook(
+      service: ref.read(playerServiceProvider),
+      bookRatingKey: widget.book.ratingKey,
+      tracks: tracks,
+      from: resume
+          ? const BookStartPoint.resume()
+          : const BookStartPoint.beginning(),
+    );
+    if (!started) {
       if (context.mounted) {
         showSagaToast(context, 'Playback error — check your connection',
             isError: true, duration: const Duration(seconds: 4));
@@ -917,17 +904,13 @@ class _ChapterListSliver extends ConsumerWidget {
     if (!context.mounted) return;
     Navigator.of(context, rootNavigator: true)
         .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
-    try {
-      final service = ref.read(playerServiceProvider);
-      await service.loadBook(
-        bookRatingKey: book.ratingKey,
-        tracks: tracks,
-        startTrackIndex: trackIndex,
-        startPositionMs: positionMs,
-        playWhenReady: true,
-      );
-      await service.play();
-    } catch (_) {
+    final started = await startBook(
+      service: ref.read(playerServiceProvider),
+      bookRatingKey: book.ratingKey,
+      tracks: tracks,
+      from: BookStartPoint.atTrackIndex(trackIndex, positionMs: positionMs),
+    );
+    if (!started) {
       if (context.mounted) {
         showSagaToast(context, 'Playback error — check your connection',
             isError: true, duration: const Duration(seconds: 4));

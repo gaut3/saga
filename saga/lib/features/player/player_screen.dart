@@ -8,9 +8,11 @@ import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/audio/m4b_chapter_reader.dart';
+import '../../core/book_progress.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../library/book_detail_screen.dart';
 import '../../core/plex/models/plex_track.dart';
+import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/completed_books_store.dart';
 import '../../core/storage/listen_days_store.dart';
 import '../../core/storage/settings_store.dart';
@@ -442,21 +444,6 @@ class _TopPills extends ConsumerWidget {
     }
     sessions.sort((a, b) => b.start.compareTo(a.start));
 
-    String fmtTime(DateTime t) {
-      final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
-      final suffix = t.hour >= 12 ? 'PM' : 'AM';
-      return '$h:${t.minute.toString().padLeft(2, '0')} $suffix';
-    }
-
-    String fmtDate(DateTime t) {
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final day = DateTime(t.year, t.month, t.day);
-      if (day == today) return 'Today';
-      if (day == today.subtract(const Duration(days: 1))) return 'Yesterday';
-      return '${t.day}/${t.month}/${t.year}';
-    }
-
     showSagaSheet<void>(context, (_) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.5,
@@ -493,8 +480,13 @@ class _TopPills extends ConsumerWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // Shared formatters: the local pair these
+                              // replace printed a 12-hour clock where the rest
+                              // of the app prints 24-hour, and dated
+                              // "Yesterday" with a `Duration`, which stops
+                              // matching when the clocks change.
                               Text(
-                                fmtDate(s.start),
+                                relativeDayLabel(s.start),
                                 style: TextStyle(
                                     color: SagaColors.fg,
                                     fontSize: 14,
@@ -848,6 +840,7 @@ class _CoverDetail extends ConsumerWidget {
     // Narrator and genre come from the per-book record, not the listing.
     final book = enrichedBook(ref, this.book);
     final chapters = effectiveChapterCount(ref, book);
+    final lengthMs = bookTotalDurationMs(book, BookmarkStore.load(book.ratingKey));
     final summaryStyle =
         TextStyle(color: SagaColors.fgMuted, fontSize: 13, height: 1.45);
 
@@ -911,9 +904,9 @@ class _CoverDetail extends ConsumerWidget {
                     children: [
                       if (book.year != null)
                         MetaChip(Icons.calendar_today_outlined, '${book.year}'),
-                      if (book.totalDurationMs != null)
-                        MetaChip(Icons.schedule_outlined,
-                            fmtDurationMs(book.totalDurationMs!)),
+                      if (lengthMs != null)
+                        MetaChip(
+                            Icons.schedule_outlined, fmtDurationMs(lengthMs)),
                       if (chapters != null)
                         MetaChip(Icons.format_list_numbered_outlined,
                             chapters == 1
@@ -1489,10 +1482,8 @@ class _BottomActions extends ConsumerWidget {
     if (track == null) return;
 
     final positionMs = service.player.position.inMilliseconds;
-    final mins = positionMs ~/ 60000;
-    final secs =
-        ((positionMs % 60000) / 1000).round().toString().padLeft(2, '0');
-    final defaultLabel = '${track.title} • $mins:$secs';
+    final defaultLabel =
+        NamedBookmark.defaultLabel(track.title, positionMs);
 
     final labelCtrl = TextEditingController(text: defaultLabel);
     final noteCtrl = TextEditingController();

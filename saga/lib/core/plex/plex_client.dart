@@ -217,11 +217,21 @@ class PlexClient {
     return '$_serverUri$partKey?X-Plex-Token=$_token';
   }
 
+  /// The downloaded file for [track], or null to stream it.
+  ///
+  /// Recorded *and* present: a record whose file is gone must fall through to
+  /// the server rather than hand back a path that won't open. The audio service
+  /// makes the same call when it builds its sources, so "do we have this
+  /// locally" is decided once for chapter reading and playback alike.
+  static String? localTrackPath(PlexTrack track) {
+    final path = DownloadStore.getPath(track.ratingKey);
+    if (path == null || !File(path).existsSync()) return null;
+    return path;
+  }
+
   String? resolveTrackUrl(PlexTrack track) {
-    final localPath = DownloadStore.getPath(track.ratingKey);
-    if (localPath != null && File(localPath).existsSync()) {
-      return 'file://$localPath';
-    }
+    final localPath = localTrackPath(track);
+    if (localPath != null) return 'file://$localPath';
     return buildStreamUrl(track.partKey);
   }
 

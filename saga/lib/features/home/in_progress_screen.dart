@@ -4,12 +4,14 @@ import '../../shared/widgets/saga_error_view.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/book_progress.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/providers.dart';
 import '../../shared/widgets/book_cover_image.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/playback_log_store.dart';
 import '../library/book_detail_screen.dart';
+import '../player/book_launch.dart';
 import '../player/player_provider.dart';
 import '../player/player_screen.dart';
 import '../../core/utils/format.dart';
@@ -207,15 +209,12 @@ class _BookLogCardState extends ConsumerState<_BookLogCard> {
   @override
   Widget build(BuildContext context) {
     final savedPos = BookmarkStore.load(widget.book.ratingKey);
-    final total = widget.book.totalDurationMs ?? savedPos?.totalDurationMs;
-    final pct = (savedPos != null && total != null && total > 0)
-        ? (savedPos.absolutePositionMs / total).clamp(0.0, 1.0)
-        : 0.0;
+    final pct = bookProgressFraction(widget.book, savedPos) ?? 0.0;
 
     final log = PlaybackLogStore.getLog(widget.book.ratingKey);
     final Map<String, List<AudioLogEvent>> byDay = {};
     for (final e in log.reversed) {
-      byDay.putIfAbsent(_dayLabel(e.timestamp), () => []).add(e);
+      byDay.putIfAbsent(relativeDayLabel(e.timestamp), () => []).add(e);
     }
 
     return Container(
@@ -306,15 +305,6 @@ class _BookLogCardState extends ConsumerState<_BookLogCard> {
 
 
 
-  String _dayLabel(DateTime dt) {
-    final today = DateTime.now();
-    final todayClean = DateTime(today.year, today.month, today.day);
-    final day = DateTime(dt.year, dt.month, dt.day);
-    final diff = todayClean.difference(day).inDays;
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
-    return '${dt.day}/${dt.month}/${dt.year}';
-  }
 }
 
 class _DayGroup extends StatelessWidget {
@@ -373,20 +363,16 @@ class _EventTile extends ConsumerWidget {
       final tracks =
           await ref.read(tracksProvider(book.ratingKey).future);
       if (!context.mounted) return;
-      final idx = tracks
-          .indexWhere((t) => t.ratingKey == event.trackRatingKey);
-      if (idx < 0) return;
+      if (!tracks.any((t) => t.ratingKey == event.trackRatingKey)) return;
       Navigator.of(context, rootNavigator: true)
           .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
-      final service = ref.read(playerServiceProvider);
-      await service.loadBook(
+      await startBook(
+        service: ref.read(playerServiceProvider),
         bookRatingKey: book.ratingKey,
         tracks: tracks,
-        startTrackIndex: idx,
-        startPositionMs: event.positionMs,
-        playWhenReady: true,
+        from: BookStartPoint.atTrack(event.trackRatingKey,
+            positionMs: event.positionMs),
       );
-      await service.play();
     } catch (_) {}
   }
 

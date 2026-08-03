@@ -15,6 +15,7 @@ import '../../core/storage/book_download_store.dart';
 import '../../core/storage/download_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/storage/track_cache_store.dart';
+import 'book_launch.dart';
 import 'play_next.dart';
 import 'player_service.dart';
 
@@ -39,21 +40,19 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
           'auto-reload after stream error: book $bookRatingKey');
       final tracks = await ref.read(tracksProvider(bookRatingKey).future);
       if (tracks.isEmpty) return;
-      final idx = position != null
-          ? tracks.indexWhere((t) => t.ratingKey == position.trackRatingKey)
-          : -1;
-      // Speed before load: with playWhenReady, audio can start the instant
-      // buffering completes — it must already be at the book's saved speed.
-      await service.setSpeed(SettingsStore.getBookSpeed(bookRatingKey));
-      await service.loadBook(
+      await startBook(
+        service: service,
         bookRatingKey: bookRatingKey,
         tracks: tracks,
-        startTrackIndex: idx < 0 ? 0 : idx,
-        startPositionMs: position?.positionMs ?? 0,
+        // The live position captured when the stream died, which is fresher
+        // than the saved one; no rewind, because no time has passed. Falls
+        // back to the saved position if the error arrived before one existed.
+        from: position != null
+            ? BookStartPoint.atTrack(position.trackRatingKey,
+                positionMs: position.positionMs)
+            : const BookStartPoint.resume(),
         isAutoReload: true,
-        playWhenReady: true,
       );
-      await service.play();
     } catch (e) {
       // Server still unreachable — player stays paused, user can retry manually
       AppLog.log('playback', 'auto-reload failed: $e');

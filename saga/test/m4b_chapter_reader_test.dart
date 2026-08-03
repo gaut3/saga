@@ -76,11 +76,27 @@ Uint8List m4bWithChapterTrack(
   int chunkCount = 1,
   List<Uint8List> extraMoovChildren = const [],
   List<Uint8List> moovChildrenBefore = const [],
+  int interleaveGap = 0,
 }) {
   final samples = [
     for (final (_, title) in chapters) _textSample(title, utf16: utf16)
   ];
   final sizes = samples.map((s) => s.length).toList();
+
+  // mdat contents. With [interleaveGap] each title sample is separated by that
+  // much filler, standing in for the audio a muxer stores between them.
+  final mdatPayload = <int>[];
+  final offsetsInMdat = <int>[];
+  for (var i = 0; i < samples.length; i++) {
+    if (interleaveGap > 0 && i > 0) {
+      mdatPayload.addAll(List.filled(interleaveGap, 0));
+    }
+    offsetsInMdat.add(mdatPayload.length);
+    mdatPayload.addAll(samples[i]);
+  }
+  // Interleaved samples can't share a chunk: a chunk is contiguous by
+  // definition, and these aren't.
+  if (interleaveGap > 0) chunkCount = chapters.length;
 
   // stts deltas: the gap to the next chapter (the last one gets a nominal
   // tail), expressed in the track timescale.
@@ -169,24 +185,19 @@ Uint8List m4bWithChapterTrack(
       for (final extra in extraMoovChildren) ...extra,
     ]);
     final ftyp = atom('ftyp', ascii.encode('M4B '));
-    final mdat = atom('mdat', [for (final s in samples) ...s]);
+    final mdat = atom('mdat', mdatPayload);
     return Uint8List.fromList([...ftyp, ...moov, ...mdat]);
   }
 
   // Pass 1: lay it out with placeholder offsets to measure where mdat starts.
   final probe = build(List.filled(chunks.length, 0));
-  final mdatPayloadStart = probe.length -
-      samples.fold<int>(0, (a, s) => a + s.length);
+  final mdatPayloadStart = probe.length - mdatPayload.length;
 
-  // Pass 2: real offsets. Chunk n begins after every sample before it.
-  final chunkOffsets = <int>[];
-  var cursor = mdatPayloadStart;
-  for (final chunk in chunks) {
-    chunkOffsets.add(cursor);
-    for (final i in chunk) {
-      cursor += sizes[i];
-    }
-  }
+  // Pass 2: real offsets, read straight off the layout built above, so an
+  // interleaved file is described as honestly as a contiguous one.
+  final chunkOffsets = [
+    for (final chunk in chunks) mdatPayloadStart + offsetsInMdat[chunk.first]
+  ];
   return build(chunkOffsets);
 }
 
@@ -474,6 +485,69 @@ void main() {
       final notes = <String>[];
       await M4bChapterReader.parseBuffer(data, notes: notes);
       expect(notes.join(), isNot(contains('no moov')));
+    });
+  });
+
+  // ── interleaved chapter tracks (issue #8, the third act) ───────────────────
+  //
+  // Enagan's Hobbit: `19 chapter titles spread over 626.3 MB, past the 4.0 MB
+  // limit`. Nothing requires a chapter track's samples to sit together, and
+  // this muxer stored each title next to the audio it belongs to. Reading
+  // lowest-to-highest as one span would mean hauling in the whole book.
+
+  group('interleaved chapter track', () {
+    /// Wide enough that the samples span more than the 4 MB a single read is
+    /// allowed to cover, which is exactly what defeated the old reader.
+    const scattered = 2560 * 1024;
+
+    test('titles scattered through the file are still read', () async {
+      final data = m4bWithChapterTrack(
+        const [
+          (0, 'An Unexpected Party'),
+          (3678000, 'Roast Mutton'),
+          (5844008, 'A Short Rest'),
+        ],
+        interleaveGap: scattered,
+      );
+
+      final notes = <String>[];
+      final chapters = await M4bChapterReader.parseBuffer(data, notes: notes);
+      expect(chapters.map((c) => c.title).toList(),
+          ['An Unexpected Party', 'Roast Mutton', 'A Short Rest']);
+      expect(chapters.map((c) => c.start.inMilliseconds).toList(),
+          [0, 3678000, 5844008]);
+      expect(notes.join(), contains('gathered from 3 places'));
+    });
+
+    test('and it fetches them without hauling in the span between', () async {
+      final data = m4bWithChapterTrack(
+        const [(0, 'A'), (1000, 'B'), (2000, 'C')],
+        interleaveGap: scattered,
+      );
+
+      var totalRead = 0;
+      Future<Uint8List?> counting(int start, int length) async {
+        if (start < 0 || start >= data.length || length <= 0) return null;
+        final end = start + length;
+        final chunk = Uint8List.sublistView(
+            data, start, end > data.length ? data.length : end);
+        totalRead += chunk.length;
+        return chunk;
+      }
+
+      final chapters =
+          await M4bChapterReader.parseWithReader(counting, data.length);
+      expect(chapters, hasLength(3));
+      expect(totalRead, lessThan(64 * 1024),
+          reason: 'the megabytes of filler between titles must not be read');
+    });
+
+    test('titles sitting together still cost a single read', () async {
+      final data = m4bWithChapterTrack(const [(0, 'A'), (1000, 'B')]);
+      final notes = <String>[];
+      await M4bChapterReader.parseBuffer(data, notes: notes);
+      expect(notes.join(), isNot(contains('gathered from')),
+          reason: 'the contiguous case must not regress into many reads');
     });
   });
 

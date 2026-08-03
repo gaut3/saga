@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.17] - 2026-08-03
+
+### Changed
+- **The player's listening sessions show a 24-hour clock.** It was the one place in the app printing 8:30 PM rather than 20:30 — History and the per-book log have always used the 24-hour form.
+
+### Fixed
+- **Starting a book from a chapter, a bookmark or your history ignored its saved speed.** Saga keeps a playback speed per book, but only some of the ways into a book applied it: Resume and Play did, tapping a chapter in the book screen didn't. That book then played at whatever speed the *previous* book was using, or 1× from a cold start, with the speed button honestly reporting the wrong number it was actually playing. There is now one path from "you picked something" to audio, and it applies the speed before the first sound comes out, so there's no longer a list of entry points to remember. Same root cause as the speed display fixed in 1.0.14, on the other side of it.
+- **The book screen showed how far through the current file you were, not the book.** For a book split into many files, the percentage and the "left" figure under the cover were measured against whichever file you were in — twelve files into a twenty-file book read as 2%, while Home, Browse and History all showed the truth.
+- **A book whose length Plex doesn't report showed no length and no progress on its own screen.** Saga records a book's length itself the first time you play it, and Home has always fallen back to that; the book screen and the player's flipped cover only ever asked Plex. So a book could show a progress bar on Home and nothing at all on its own page. Both now use the recorded length when Plex has none, and a Plex length of zero no longer beats a real one.
+- **History and Home could disagree about which week "this week" is.** Both show the same Monday-to-Sunday week, but History built it in fixed 24-hour steps, which is an hour short on the day the clocks go forward and an hour long when they go back. On those two days a year the week could shift by a day, and the totals with it — the same arithmetic behind the empty heatmap fixed earlier.
+- **"Yesterday" could read as "Today", or as a bare date, when the clocks change.** Three screens each had their own way of turning a timestamp into "Today", "Yesterday" or a date, and all three counted in fixed 24-hour steps. On the days the clocks move, that made yesterday's bookmarks and listening sessions read as today's on two of them and as a plain date on the third.
+- **A stream that died and couldn't be reloaded where it stopped no longer restarts the book.** If the automatic reload after a connection drop couldn't find the file your position belonged to, Saga fell back to the beginning and played from there. It now stops instead, leaving your place saved where it was.
+- **Books storing their chapter titles scattered through the file showed none.** A chapter track keeps its titles as data sitting out among the audio, and Saga assumed they'd be stored together, fetching the stretch of file from the first to the last in one go. Nothing requires that: some tools store each title next to the audio it belongs to, so a nineteen-chapter book had its titles strewn across 626 MB, and Saga sensibly refused to pull in the whole book to collect a few hundred bytes. It now fetches them where they actually are, a few hundred bytes at a time, grouping any that sit close enough together to be worth taking in one go. Reported by [@Enagan](https://github.com/Enagan) ([#8](https://github.com/gaut3/saga/issues/8)).
+- **A book whose chapter titles can't be read now keeps its chapters anyway.** The times were always there; only the names were out of reach. Rather than showing nothing, Saga now numbers them, so the chapter list and skipping still work even in the rare case where the titles are beyond reach. The diagnostics log says when this has happened, so it can't quietly pass for the real thing.
+- **The diagnostics log said "no chapter track" when it had found one.** If the track was there but its titles couldn't be read, the log reported the same thing as a file with no chapters at all, which points the next person at entirely the wrong question.
+
+---
+
 ## [1.0.16] - 2026-08-02
 
 ### Fixed

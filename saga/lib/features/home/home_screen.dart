@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/book_progress.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/providers.dart';
@@ -16,13 +17,16 @@ import '../../core/storage/listening_history_store.dart';
 import '../../core/storage/want_to_read_store.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../core/utils/date_math.dart';
+import '../../core/utils/format.dart';
 import '../../shared/widgets/saga_mark.dart'
     show SagaWordmark, AnimatedSagaMark, SagaMarkState;
 import '../auth/server_selection_screen.dart';
 import '../collections/collection_detail_screen.dart';
 import '../library/book_detail_screen.dart';
+import '../player/book_launch.dart';
 import '../player/player_provider.dart';
 import '../player/player_screen.dart';
+import '../player/track_position_math.dart';
 import 'all_bookmarks_screen.dart';
 import 'history_screen.dart';
 
@@ -54,10 +58,11 @@ class BookProgressOverlay extends ConsumerWidget {
     final pos = BookmarkStore.load(book.ratingKey);
     if (pos == null || pos.absolutePositionMs <= 0) return const SizedBox.shrink();
 
-    final duration = book.totalDurationMs ?? pos.totalDurationMs;
-    final progress = (duration != null && duration > 0)
-        ? (pos.absolutePositionMs / duration).clamp(0.04, 1.0)
-        : 0.08;
+    // A started book always shows something: a floor of 4% when the fraction is
+    // known so the sliver is visible, and 8% when the length isn't known at all
+    // — "started, can't say how far" rather than an empty bar.
+    final fraction = bookProgressFraction(book, pos);
+    final progress = fraction?.clamp(0.04, 1.0) ?? 0.08;
 
     return Positioned(
       bottom: 0,
@@ -462,14 +467,6 @@ class _NoServerView extends StatelessWidget {
 
 // ── Listening strip ───────────────────────────────────────────────────────────
 
-String _homeFmtMs(int ms) {
-  final h = ms ~/ 3600000;
-  final m = (ms % 3600000) ~/ 60000;
-  if (h > 0) return '${h}h ${m}m';
-  if (m > 0) return '${m}m';
-  return '<1m';
-}
-
 int _homeStreak() =>
     computeStreak(msForDay: ListeningHistoryStore.getMs).current;
 
@@ -521,7 +518,7 @@ class _ListeningStrip extends ConsumerWidget {
                     ),
                     Text(
                       weekTotal > 0
-                          ? '${_homeFmtMs(weekTotal)} this week'
+                          ? '${fmtListenedMs(weekTotal)} this week'
                           : 'No listening this week',
                       style:
                           TextStyle(color: SagaColors.fgMuted, fontSize: 12),
@@ -678,13 +675,10 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
     });
 
     final savedPos = BookmarkStore.load(widget.book.ratingKey);
-    final total = widget.book.totalDurationMs ?? savedPos?.totalDurationMs;
+    final total = bookTotalDurationMs(widget.book, savedPos);
     final absolute = savedPos?.absolutePositionMs ?? 0;
-    final pct = (total != null && total > 0)
-        ? (absolute / total).clamp(0.0, 1.0)
-        : 0.0;
-    final remainingMs =
-        (total != null && total > 0) ? (total - absolute).clamp(0, total) : null;
+    final pct = bookProgressFraction(widget.book, savedPos) ?? 0.0;
+    final remainingMs = total != null ? (total - absolute).clamp(0, total) : null;
 
     final nowPlayingKey = ref.watch(nowPlayingKeyProvider).valueOrNull;
     final isNowPlaying = nowPlayingKey == widget.book.ratingKey;
@@ -758,7 +752,7 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
                               children: [
                                 if (remainingMs != null)
                                   Text(
-                                    '${_homeFmtMs(remainingMs)} left',
+                                    '${fmtListenedMs(remainingMs)} left',
                                     style: TextStyle(
                                         color: SagaColors.fg,
                                         fontSize: 13,
@@ -856,10 +850,11 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
     if (tracks.length == 1) {
       final chaps = ChapterStore.load(pos.trackRatingKey);
       if (chaps == null || chaps.isEmpty) return null;
-      var ci = 0;
-      for (var i = 0; i < chaps.length; i++) {
-        if (pos.positionMs >= chaps[i].start.inMilliseconds) ci = i;
-      }
+      // Through the shared [chapterIndexAt], like the player, the mini player,
+      // the notification and both chapter lists — this card was the seventh
+      // hand-rolled copy of the same loop.
+      final ci = chapterIndexAt(
+          [for (final c in chaps) c.start.inMilliseconds], pos.positionMs);
       return 'Ch. ${ci + 1} · ${chaps[ci].title}';
     }
     final idx = tracks.indexWhere((t) => t.ratingKey == pos.trackRatingKey);
@@ -874,18 +869,13 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
       final tracks =
           await ref.read(tracksProvider(widget.book.ratingKey).future);
       if (!mounted) return;
-      final savedPos = BookmarkStore.load(widget.book.ratingKey);
-      final idx = savedPos != null
-          ? tracks.indexWhere((t) => t.ratingKey == savedPos.trackRatingKey)
-          : -1;
-      await service.loadBook(
+      await startBook(
+        service: service,
         bookRatingKey: widget.book.ratingKey,
         tracks: tracks,
-        startTrackIndex: idx < 0 ? 0 : idx,
-        startPositionMs: savedPos?.positionMs ?? 0,
-        applyResumeRewind: true,
+        from: const BookStartPoint.resume(),
+        playback: LaunchPlayback.none,
       );
-      await service.setSpeed(SettingsStore.getBookSpeed(widget.book.ratingKey));
     } catch (_) {}
   }
 
@@ -902,22 +892,12 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
       final tracks =
           await ref.read(tracksProvider(widget.book.ratingKey).future);
       if (!mounted) return;
-      final savedPos = BookmarkStore.load(widget.book.ratingKey);
-      final idx = savedPos != null
-          ? tracks.indexWhere((t) => t.ratingKey == savedPos.trackRatingKey)
-          : -1;
-      // Speed before load: with playWhenReady, audio can start the instant
-      // buffering completes — it must already be at the book's saved speed.
-      await service.setSpeed(SettingsStore.getBookSpeed(widget.book.ratingKey));
-      await service.loadBook(
+      await startBook(
+        service: service,
         bookRatingKey: widget.book.ratingKey,
         tracks: tracks,
-        startTrackIndex: idx < 0 ? 0 : idx,
-        startPositionMs: savedPos?.positionMs ?? 0,
-        applyResumeRewind: true,
-        playWhenReady: true,
+        from: const BookStartPoint.resume(),
       );
-      await service.play();
     } catch (_) {
     } finally {
       if (mounted) setState(() => _loading = false);

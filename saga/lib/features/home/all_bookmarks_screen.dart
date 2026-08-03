@@ -7,6 +7,7 @@ import '../../core/storage/named_bookmark_store.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../core/utils/format.dart';
 import '../../shared/widgets/saga_sheet.dart';
+import '../player/book_launch.dart';
 import '../player/player_provider.dart';
 import '../player/player_screen.dart';
 
@@ -196,7 +197,7 @@ class _BookmarkTile extends ConsumerWidget {
           ],
         ),
         trailing: Text(
-          _fmtDate(bookmark.createdAt),
+          relativeDayLabel(bookmark.createdAt),
           style: TextStyle(color: SagaColors.fgSubtle, fontSize: 11),
         ),
         onTap: () => _showBookmarkSheet(context, ref),
@@ -214,20 +215,16 @@ class _BookmarkTile extends ConsumerWidget {
       final tracks =
           await ref.read(tracksProvider(bookmark.bookRatingKey).future);
       if (!context.mounted) return;
-      final idx =
-          tracks.indexWhere((t) => t.ratingKey == bookmark.trackRatingKey);
-      if (idx < 0) return;
+      if (!tracks.any((t) => t.ratingKey == bookmark.trackRatingKey)) return;
       Navigator.of(context, rootNavigator: true)
           .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
-      final service = ref.read(playerServiceProvider);
-      await service.loadBook(
+      await startBook(
+        service: ref.read(playerServiceProvider),
         bookRatingKey: bookmark.bookRatingKey,
         tracks: tracks,
-        startTrackIndex: idx,
-        startPositionMs: bookmark.positionMs,
-        playWhenReady: true,
+        from: BookStartPoint.atTrack(bookmark.trackRatingKey,
+            positionMs: bookmark.positionMs),
       );
-      await service.play();
     } catch (_) {}
   }
 
@@ -338,13 +335,4 @@ class _BookmarkTile extends ConsumerWidget {
     ));
   }
 
-  String _fmtDate(DateTime dt) {
-    final today = DateTime.now();
-    final d = DateTime(dt.year, dt.month, dt.day);
-    final t = DateTime(today.year, today.month, today.day);
-    final diff = t.difference(d).inDays;
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
-    return '${dt.day}/${dt.month}/${dt.year}';
-  }
 }

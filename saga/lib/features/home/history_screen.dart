@@ -12,7 +12,9 @@ import '../../core/storage/playback_log_store.dart';
 import '../../shared/widgets/saga_sheet.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../shared/widgets/book_cover_image.dart';
+import '../../core/book_progress.dart';
 import '../library/book_detail_screen.dart';
+import '../player/book_launch.dart';
 import '../player/player_provider.dart';
 import '../player/player_screen.dart';
 import '../../core/utils/date_math.dart';
@@ -163,14 +165,6 @@ class _SegControl extends StatelessWidget {
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-String _fmtMs(int ms) {
-  final h = ms ~/ 3600000;
-  final m = (ms % 3600000) ~/ 60000;
-  if (h > 0) return '${h}h ${m}m';
-  if (m > 0) return '${m}m';
-  return '<1m';
-}
-
 String _weekdayShort(DateTime d) =>
     const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d.weekday - 1];
 
@@ -218,8 +212,7 @@ class _DayTab extends ConsumerWidget {
     ref.watch(historyRevisionProvider);
     ref.watch(nowPlayingKeyProvider);
 
-    final today = DateTime.now();
-    final todayClean = DateTime(today.year, today.month, today.day);
+    final todayClean = dayOnly(DateTime.now());
 
     // Book map for cover/title lookup
     final booksAsync = libraryKey != null
@@ -238,14 +231,18 @@ class _DayTab extends ConsumerWidget {
       }
     }
 
-    final monday = todayClean.subtract(Duration(days: today.weekday - 1));
-    final weekDays = List.generate(7, (i) => monday.add(Duration(days: i)));
+    // Calendar days via [mondayWeek]/[addDays], the same helpers Home's
+    // listening strip uses. Built with `Duration(days:)` these landed at 23:00
+    // of the day before across a DST change, and the history box is keyed by
+    // y-m-d — so the two screens disagreed about which seven days "this week"
+    // meant, twice a year.
+    final weekDays = mondayWeek(todayClean);
     final weekMs = weekDays.map(ListeningHistoryStore.getMs).toList();
     final weekTotalMs = weekMs.fold(0, (a, b) => a + b);
     final weekListenedDays = weekMs.where((m) => m > 0).length;
 
     // 90 days matches the take(90) display cap — no need to scan a full year.
-    final start = todayClean.subtract(const Duration(days: 90));
+    final start = addDays(todayClean, -90);
     final activeDaysSet = ListeningHistoryStore.activeDays(start, todayClean).toSet();
 
     // Always include today if PlaybackLogStore already has events for it,
@@ -263,7 +260,7 @@ class _DayTab extends ConsumerWidget {
     });
 
     final streak = _computeStreak();
-    final last7 = List.generate(7, (i) => todayClean.subtract(Duration(days: 6 - i)));
+    final last7 = List.generate(7, (i) => addDays(todayClean, i - 6));
     final last7Ms = last7.map(ListeningHistoryStore.getMs).toList();
 
     final bottomPad = MediaQuery.of(context).padding.bottom;
@@ -448,7 +445,7 @@ class _WeekCardState extends State<_WeekCard>
           Text('THIS WEEK', style: _monoLabel.copyWith(color: SagaColors.fgSubtle)),
           const SizedBox(height: 4),
           Text(
-            widget.totalMs == 0 ? '0m' : _fmtMs(widget.totalMs),
+            widget.totalMs == 0 ? '0m' : fmtListenedMs(widget.totalMs),
             style: TextStyle(
               color: SagaColors.fg,
               fontSize: 30,
@@ -458,7 +455,7 @@ class _WeekCardState extends State<_WeekCard>
           ),
           if (widget.listenedDays > 0)
             Text(
-              '${widget.listenedDays} day${widget.listenedDays == 1 ? '' : 's'} · ${_fmtMs(avgMs)} / day',
+              '${widget.listenedDays} day${widget.listenedDays == 1 ? '' : 's'} · ${fmtListenedMs(avgMs)} / day',
               style: TextStyle(color: SagaColors.fgMuted, fontSize: 12),
             ),
           const SizedBox(height: 26),
@@ -640,7 +637,7 @@ class _DayRow extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    _fmtMs(ms),
+                    fmtListenedMs(ms),
                     style: TextStyle(
                       color: SagaColors.fg,
                       fontSize: 14,
@@ -724,8 +721,9 @@ class _DayBookEntryState extends ConsumerState<_DayBookEntry> {
 
     // Per-day progress: last event's positionMs (track-relative, but day-specific).
     double bookPct = 0.0;
-    final total = book?.totalDurationMs ?? BookmarkStore.load(widget.bookKey)?.totalDurationMs;
-    if (chrono.isNotEmpty && total != null && total > 0) {
+    final total = pickTotalDurationMs(book?.totalDurationMs,
+        BookmarkStore.load(widget.bookKey)?.totalDurationMs);
+    if (chrono.isNotEmpty && total != null) {
       bookPct = (chrono.last.positionMs / total).clamp(0.0, 1.0);
     }
 
@@ -800,7 +798,7 @@ class _DayBookEntryState extends ConsumerState<_DayBookEntry> {
                 const SizedBox(width: 8),
                 if (listenedMs > 0)
                   Text(
-                    _fmtMs(listenedMs),
+                    fmtListenedMs(listenedMs),
                     style: TextStyle(
                       color: SagaColors.fgMuted,
                       fontSize: 13,
@@ -948,20 +946,16 @@ class _BookSessionPanel extends ConsumerWidget {
       final tracks =
           await ref.read(tracksProvider(book!.ratingKey).future);
       if (!context.mounted) return;
-      final idx =
-          tracks.indexWhere((t) => t.ratingKey == event.trackRatingKey);
-      if (idx < 0) return;
+      if (!tracks.any((t) => t.ratingKey == event.trackRatingKey)) return;
       Navigator.of(context, rootNavigator: true)
           .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
-      final service = ref.read(playerServiceProvider);
-      await service.loadBook(
+      await startBook(
+        service: ref.read(playerServiceProvider),
         bookRatingKey: book!.ratingKey,
         tracks: tracks,
-        startTrackIndex: idx,
-        startPositionMs: event.positionMs,
-        playWhenReady: true,
+        from: BookStartPoint.atTrack(event.trackRatingKey,
+            positionMs: event.positionMs),
       );
-      await service.play();
     } catch (_) {}
   }
 }
@@ -1120,7 +1114,7 @@ class _MonthTabState extends ConsumerState<_MonthTab> {
                 ),
                 if (monthMs > 0)
                   Text(
-                    '${_fmtMs(monthMs)} · $listenedDays day${listenedDays == 1 ? '' : 's'}',
+                    '${fmtListenedMs(monthMs)} · $listenedDays day${listenedDays == 1 ? '' : 's'}',
                     style: TextStyle(color: SagaColors.fgMuted, fontSize: 12),
                   ),
               ],
@@ -1282,12 +1276,12 @@ class _MonthTabState extends ConsumerState<_MonthTab> {
             Expanded(
                 child: _StatCard(
                     label: 'Best day',
-                    value: bestDayMs > 0 ? _fmtMs(bestDayMs) : '–')),
+                    value: bestDayMs > 0 ? fmtListenedMs(bestDayMs) : '–')),
             const SizedBox(width: 10),
             Expanded(
                 child: _StatCard(
                     label: 'Avg / day',
-                    value: avgDayMs > 0 ? _fmtMs(avgDayMs) : '–')),
+                    value: avgDayMs > 0 ? fmtListenedMs(avgDayMs) : '–')),
           ],
         ),
 
@@ -1327,7 +1321,7 @@ class _MonthTabState extends ConsumerState<_MonthTab> {
                   SizedBox(
                     width: 52,
                     child: Text(
-                      e.value > 0 ? _fmtMs(e.value) : '–',
+                      e.value > 0 ? fmtListenedMs(e.value) : '–',
                       textAlign: TextAlign.right,
                       style: TextStyle(
                         color: SagaColors.fgMuted,
@@ -1349,11 +1343,8 @@ class _MonthTabState extends ConsumerState<_MonthTab> {
               style: _monoLabel.copyWith(color: SagaColors.fgSubtle)),
           const SizedBox(height: 10),
           ...booksThisMonth.map((b) {
-            final saved = BookmarkStore.load(b.ratingKey);
-            final total = b.totalDurationMs ?? saved?.totalDurationMs;
-            final pct = (saved != null && total != null && total > 0)
-                ? (saved.absolutePositionMs / total).clamp(0.0, 1.0)
-                : 0.0;
+            final pct =
+                bookProgressFraction(b, BookmarkStore.load(b.ratingKey)) ?? 0.0;
             final isFinished = allCompleted.contains(b.ratingKey);
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -1467,7 +1458,7 @@ class _MonthTabState extends ConsumerState<_MonthTab> {
                   ),
                 ),
                 if (ms > 0)
-                  Text(_fmtMs(ms),
+                  Text(fmtListenedMs(ms),
                       style:
                           TextStyle(color: SagaColors.fgMuted, fontSize: 13)),
               ],
@@ -1658,7 +1649,7 @@ class _TotalTab extends ConsumerWidget {
             Expanded(
                 child: _StatCard(
                     label: 'Avg / day',
-                    value: avgDayMs > 0 ? _fmtMs(avgDayMs) : '–')),
+                    value: avgDayMs > 0 ? fmtListenedMs(avgDayMs) : '–')),
           ],
         ),
 
@@ -1749,7 +1740,7 @@ class _TotalTab extends ConsumerWidget {
               child: _RecordCard(
                 icon: Icons.bolt,
                 label: 'Best day',
-                value: bestMs > 0 ? _fmtMs(bestMs) : '–',
+                value: bestMs > 0 ? fmtListenedMs(bestMs) : '–',
               ),
             ),
           ],
