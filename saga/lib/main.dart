@@ -27,6 +27,7 @@ import 'core/storage/listen_days_store.dart';
 import 'core/storage/listening_history_store.dart';
 import 'core/storage/named_bookmark_store.dart';
 import 'core/storage/playback_log_store.dart';
+import 'core/storage/server_scope.dart';
 import 'core/storage/settings_store.dart';
 import 'core/storage/timeline_queue_store.dart';
 import 'core/storage/track_cache_store.dart';
@@ -88,6 +89,27 @@ Future<void> _run() async {
 
     final client = await PlexClient.init();
 
+    // Must run before anything reads a store: rating keys are only unique
+    // within one Plex server, and this decides which key each book is filed
+    // under. See server_scope.dart.
+    await ServerScope.configure(client.machineIdentifier);
+
+    // One-time, on upgrade: covers used to be fetched with the token in the
+    // URL, and the image cache keys by URL, so a valid credential is sitting in
+    // plaintext in that database for every existing install. Not awaited — a
+    // cache purge is not worth delaying the first frame, and the covers it
+    // drops re-download on demand.
+    if (!SettingsStore.artworkTokenPurgeDone) {
+      unawaited(PlexClient.purgeCachedArtwork().then((ok) {
+        // Only a *successful* purge is done — a failed one (locked DB, I/O
+        // error) retries on the next launch instead of marking the token-keyed
+        // rows cleared while they still sit on disk.
+        if (!ok) return null;
+        AppLog.log('storage', 'purged image cache (token-keyed entries)');
+        return SettingsStore.setArtworkTokenPurgeDone();
+      }));
+    }
+
     final service = await AudioService.init(
       builder: () => AudioPlayerService(PlexApi(client)),
       config: const AudioServiceConfig(
@@ -96,6 +118,17 @@ Future<void> _run() async {
         androidStopForegroundOnPause: false,
         androidResumeOnClick: true,
         androidNotificationIcon: 'drawable/ic_launcher_monochrome',
+        // How Android Auto lays the browse tree out. Lists, not grids, on both
+        // levels: an audiobook title is long and a grid tile truncates it to
+        // the point of being unreadable at a glance, which is the only kind of
+        // look a driver gets.
+        androidBrowsableRootExtras: {
+          AndroidContentStyle.supportedKey: true,
+          AndroidContentStyle.browsableHintKey:
+              AndroidContentStyle.listItemHintValue,
+          AndroidContentStyle.playableHintKey:
+              AndroidContentStyle.listItemHintValue,
+        },
       ),
     );
 

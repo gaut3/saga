@@ -98,7 +98,11 @@ class CastService {
   Future<void> selectDevice(CastDevice device) async {
     try {
       _setState(CastState.connecting);
-      AppLog.log('cast', 'connecting to "${device.name}"');
+      // Deliberately not the device's name: a Cast device is usually named
+      // after its owner or their living room, and this log is meant to be safe
+      // to paste into a public issue. Same rule the audio-routing entries
+      // follow, which record the kind of output and never what it is called.
+      AppLog.log('cast', 'connecting to a cast device');
       await _channel.invokeMethod('selectRoute', {'id': device.id});
     } on PlatformException catch (e) {
       AppLog.log('cast', 'selectRoute failed: ${e.code} ${e.message}');
@@ -108,7 +112,10 @@ class CastService {
   }
 
   /// Loads a track onto the active Cast session. [url] must be fetchable by
-  /// the Cast device itself (token in the query string, never a file:// path).
+  /// the Cast device itself — never a `file://` path — and comes from
+  /// `PlexClient.buildCastMedia`, which decides which credential it carries.
+  /// Note that a Cast receiver's status, this URL included, is readable over
+  /// the network by anything that asks, so nothing else belongs in it.
   Future<void> loadMedia({
     required String url,
     required String title,

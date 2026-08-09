@@ -15,15 +15,14 @@ import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/completed_books_store.dart';
 import '../../core/storage/custom_collection_store.dart';
 import '../../core/storage/want_to_read_store.dart';
+import '../collections/collection_picker_sheet.dart';
 import '../player/book_launch.dart';
+import '../player/open_player.dart';
 import '../player/player_provider.dart';
-import '../player/player_screen.dart';
 import '../player/track_position_math.dart';
 import '../../core/utils/format.dart';
 import '../../core/utils/text_measure.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
-import '../../shared/widgets/saga_sheet.dart';
-import '../../shared/widgets/saga_toast.dart';
 
 class BookDetailScreen extends ConsumerStatefulWidget {
   final PlexBook book;
@@ -34,13 +33,16 @@ class BookDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
-  late bool _isCompleted;
+  // Deliberately no completed-state field: the player also writes completions
+  // (the 95% auto-complete) while this screen can sit alive in the tab stack,
+  // and a mirror captured at open time went stale — tapping the still-stale
+  // "mark completed" appended a second completion for one listen. The build
+  // reads the store, watching completionRevisionProvider for changes.
   late bool _isWanted;
 
   @override
   void initState() {
     super.initState();
-    _isCompleted = CompletedBooksStore.isCompleted(widget.book.ratingKey);
     _isWanted = WantToReadStore.isWanted(widget.book.ratingKey);
   }
 
@@ -51,95 +53,50 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   }
 
   Future<void> _toggleCompleted() async {
-    if (_isCompleted) {
+    // Read the store at tap time, not a field cached at screen open — see the
+    // note on the state class.
+    if (CompletedBooksStore.isCompleted(widget.book.ratingKey)) {
       await CompletedBooksStore.markIncomplete(widget.book.ratingKey);
     } else {
       await CompletedBooksStore.markCompleted(widget.book.ratingKey);
     }
-    setState(() => _isCompleted = !_isCompleted);
     ref.read(completionRevisionProvider.notifier).state++;
   }
 
   void _showAddToCollectionSheet(BuildContext context) {
-    final collections = CustomCollectionStore.getAll();
-    // Captured from the tab-navigator context where padding.bottom already
-    // includes the full Saga nav bar + mini player height.
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-
-    showSagaSheet(context, (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) {
-          return Padding(
-            padding: EdgeInsets.only(bottom: bottomPad),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SagaSheetTitle('Add to collection',
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
-                if (collections.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                        'No collections yet — create one in the Collections tab.',
-                        style: TextStyle(color: SagaColors.fgMuted)),
-                  )
-                else
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(ctx).size.height * 0.55,
-                    ),
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: [
-                        ...collections.map((col) {
-                          final inCollection =
-                              col.bookRatingKeys.contains(widget.book.ratingKey);
-                          return ListTile(
-                            leading: Icon(
-                              inCollection
-                                  ? Icons.check_circle
-                                  : Icons.folder_outlined,
-                              color: inCollection
-                                  ? SagaColors.accent
-                                  : SagaColors.fgMuted,
-                            ),
-                            title: Text(col.name,
-                                style: TextStyle(color: SagaColors.fg)),
-                            subtitle: Text(
-                                '${col.bookRatingKeys.length} '
-                                '${col.bookRatingKeys.length == 1 ? 'book' : 'books'}',
-                                style: TextStyle(
-                                    color: SagaColors.fgSubtle, fontSize: 12)),
-                            onTap: () async {
-                              if (inCollection) {
-                                await CustomCollectionStore.removeBook(
-                                    col.id, widget.book.ratingKey);
-                              } else {
-                                await CustomCollectionStore.addBook(
-                                    col.id, widget.book.ratingKey,
-                                    coverThumbPath: widget.book.thumbPath);
-                              }
-                              ref
-                                  .read(customCollectionRevisionProvider.notifier)
-                                  .state++;
-                              if (ctx.mounted) Navigator.pop(ctx);
-                            },
-                          );
-                        }),
-                        const SizedBox(height: 8),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          );
-        },
-      ),
+    showCollectionPickerSheet(
+      context,
+      title: 'Add to collection',
+      isSelected: (col) =>
+          col.bookRatingKeys.contains(widget.book.ratingKey),
+      onPick: (col) async {
+        if (col.bookRatingKeys.contains(widget.book.ratingKey)) {
+          await CustomCollectionStore.removeBook(
+              col.id, widget.book.ratingKey);
+        } else {
+          await CustomCollectionStore.addBook(col.id, widget.book.ratingKey,
+              coverThumbPath: widget.book.thumbPath);
+        }
+        ref.read(customCollectionRevisionProvider.notifier).state++;
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // This screen lives pushed on a tab stack, which survives in the
+    // IndexedStack while other tabs are visited — nothing rebuilds it from
+    // above, so it watches theme changes itself (the project's standing rule
+    // for exactly this situation).
+    ref.watch(sagaThemeVariantProvider);
+    // And the position: without this, the progress bar, "resume at" figure and
+    // current-chapter highlight below froze at open-time values while the same
+    // book's card on Home ticked along off the mini player.
+    ref.watch(bookmarkRevisionProvider);
+    // Completed-state is read fresh each build (the player writes completions
+    // too); watching the revision is what makes that read re-run.
+    ref.watch(completionRevisionProvider);
+    final isCompleted = CompletedBooksStore.isCompleted(widget.book.ratingKey);
     // The library listing is abbreviated — narrator and genre only exist on the
     // per-book record, fetched lazily the first time a book is opened. Until it
     // lands (or if it fails) this is the listing record unchanged.
@@ -179,7 +136,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                       children: [
                         BookCoverImage(
                             thumbPath: book.thumbPath,
-                            cacheWidth: 400,
+                            cacheWidth: kCoverCacheWidthDetail,
                             letterboxed: true),
                         // Gradient scrim — stronger at the bottom where title sits
                         DecoratedBox(
@@ -350,12 +307,12 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                                 child: ElevatedButton.icon(
                                   onPressed: () =>
                                       _openPlayer(context, tracks),
-                                  icon: Icon(_isCompleted
+                                  icon: Icon(isCompleted
                                       ? Icons.replay
                                       : savedPosition != null
                                           ? Icons.restart_alt
                                           : Icons.play_arrow),
-                                  label: Text(_isCompleted
+                                  label: Text(isCompleted
                                       ? 'Listen again'
                                       : savedPosition != null
                                           ? 'From start'
@@ -386,11 +343,11 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                           minimumSize: const Size(48, 48),
                           padding:
                               const EdgeInsets.symmetric(horizontal: 14),
-                          foregroundColor: _isCompleted
+                          foregroundColor: isCompleted
                               ? SagaColors.fgMuted
                               : SagaColors.accent,
                           side: BorderSide(
-                            color: _isCompleted
+                            color: isCompleted
                                 ? SagaColors.fgSubtle
                                 : SagaColors.accent,
                           ),
@@ -398,7 +355,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                               borderRadius: BorderRadius.circular(10)),
                         ),
                         child: Icon(
-                          _isCompleted
+                          isCompleted
                               ? Icons.bookmark_remove_outlined
                               : Icons.bookmark_added_outlined,
                           size: 20,
@@ -494,23 +451,18 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     bool resume = false,
   }) async {
     if (!context.mounted) return;
-    Navigator.of(context, rootNavigator: true)
-        .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
-
-    final started = await startBook(
+    // Shared helper: pushes the player, and takes it back down on failure —
+    // the inline version left the *previous* book's player on screen behind
+    // a 4-second toast when the launch failed.
+    await openPlayerAndStart(
+      context: context,
       service: ref.read(playerServiceProvider),
       bookRatingKey: widget.book.ratingKey,
-      tracks: tracks,
+      loadTracks: () async => tracks,
       from: resume
           ? const BookStartPoint.resume()
           : const BookStartPoint.beginning(),
     );
-    if (!started) {
-      if (context.mounted) {
-        showSagaToast(context, 'Playback error — check your connection',
-            isError: true, duration: const Duration(seconds: 4));
-      }
-    }
   }
 }
 
@@ -902,20 +854,13 @@ class _ChapterListSliver extends ConsumerWidget {
       int positionMs,
       {int trackIndex = 0}) async {
     if (!context.mounted) return;
-    Navigator.of(context, rootNavigator: true)
-        .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
-    final started = await startBook(
+    await openPlayerAndStart(
+      context: context,
       service: ref.read(playerServiceProvider),
       bookRatingKey: book.ratingKey,
-      tracks: tracks,
+      loadTracks: () async => tracks,
       from: BookStartPoint.atTrackIndex(trackIndex, positionMs: positionMs),
     );
-    if (!started) {
-      if (context.mounted) {
-        showSagaToast(context, 'Playback error — check your connection',
-            isError: true, duration: const Duration(seconds: 4));
-      }
-    }
   }
 
 }

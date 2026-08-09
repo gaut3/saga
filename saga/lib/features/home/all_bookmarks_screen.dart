@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/providers.dart';
 import '../../core/storage/named_bookmark_store.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../core/utils/format.dart';
-import '../../shared/widgets/saga_sheet.dart';
+import '../../shared/widgets/saga_toast.dart';
 import '../player/book_launch.dart';
+import '../player/bookmark_edit_sheet.dart';
+import '../player/open_player.dart';
 import '../player/player_provider.dart';
-import '../player/player_screen.dart';
 
 class AllBookmarksScreen extends ConsumerStatefulWidget {
   const AllBookmarksScreen({super.key});
@@ -30,6 +32,9 @@ class _AllBookmarksScreenState extends ConsumerState<AllBookmarksScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Pushed on a tab stack — rebuilds come from nowhere else on a theme
+    // switch, so watch it here.
+    ref.watch(sagaThemeVariantProvider);
     ref.watch(bookmarkRevisionProvider);
     final all = NamedBookmarkStore.getAll();
     final bookmarks = _query.isEmpty
@@ -206,133 +211,70 @@ class _BookmarkTile extends ConsumerWidget {
   }
 
   void _delete(WidgetRef ref) {
-    NamedBookmarkStore.delete(bookmark.id);
+    // Through the notifier, never the store directly: the player's bookmark
+    // sheet renders from bookmarkNotifierProvider's cached list, which reads
+    // the store once and never re-reads it. A store-only delete left the
+    // record in that cache, so editing any bookmark in the player wrote the
+    // deleted one straight back to disk.
+    ref
+        .read(bookmarkNotifierProvider(bookmark.bookRatingKey).notifier)
+        .remove(bookmark.id);
     ref.read(bookmarkRevisionProvider.notifier).state++;
   }
 
   Future<void> _jumpTo(BuildContext context, WidgetRef ref) async {
+    // Both quiet exits used to be exactly that — quiet. A tap that does
+    // nothing is indistinguishable from a dead button (the finished screen's
+    // next-book button shipped that way once already), so each failure now
+    // says so.
     try {
       final tracks =
           await ref.read(tracksProvider(bookmark.bookRatingKey).future);
       if (!context.mounted) return;
-      if (!tracks.any((t) => t.ratingKey == bookmark.trackRatingKey)) return;
-      Navigator.of(context, rootNavigator: true)
-          .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
-      await startBook(
+      if (!tracks.any((t) => t.ratingKey == bookmark.trackRatingKey)) {
+        showSagaToast(
+            context, 'The file this bookmark points into is no longer '
+            'part of the book.',
+            isError: true);
+        return;
+      }
+      // Shared helper: pops the player again if the launch fails, instead of
+      // leaving the previous book's player on screen.
+      await openPlayerAndStart(
+        context: context,
         service: ref.read(playerServiceProvider),
         bookRatingKey: bookmark.bookRatingKey,
-        tracks: tracks,
+        loadTracks: () async => tracks,
         from: BookStartPoint.atTrack(bookmark.trackRatingKey,
             positionMs: bookmark.positionMs),
       );
-    } catch (_) {}
+    } catch (e) {
+      AppLog.log('playback', 'bookmark jump failed: $e');
+      if (context.mounted) {
+        showSagaToast(context,
+            'Couldn\'t load this book — is the server reachable?',
+            isError: true);
+      }
+    }
   }
 
   void _showBookmarkSheet(BuildContext context, WidgetRef ref) {
-    final labelCtrl = TextEditingController(text: bookmark.label);
-    final noteCtrl = TextEditingController(text: bookmark.note ?? '');
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-
-    showSagaSheet<void>(context, (_) => StatefulBuilder(
-      builder: (sheetCtx, _) {
-        final keyboardInset = MediaQuery.of(sheetCtx).viewInsets.bottom;
-        return Padding(
-          padding: EdgeInsets.only(bottom: bottomPad + keyboardInset),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SagaSheetTitle('Bookmark',
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0)),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                child: Text(
-                  fmtDuration(Duration(milliseconds: bookmark.positionMs)),
-                  style: TextStyle(color: SagaColors.fgSubtle, fontSize: 13),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: TextField(
-                  controller: labelCtrl,
-                  autofocus: false,
-                  style: TextStyle(color: SagaColors.fg),
-                  decoration: InputDecoration(
-                    labelText: 'Label',
-                    labelStyle: TextStyle(color: SagaColors.fgMuted),
-                    enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: SagaColors.border)),
-                    focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: SagaColors.accent)),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: TextField(
-                  controller: noteCtrl,
-                  minLines: 1,
-                  maxLines: 3,
-                  style: TextStyle(color: SagaColors.fg),
-                  decoration: InputDecoration(
-                    labelText: 'Note (optional)',
-                    labelStyle: TextStyle(color: SagaColors.fgMuted),
-                    enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: SagaColors.border)),
-                    focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: SagaColors.accent)),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  children: [
-                    OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(sheetCtx);
-                        _jumpTo(context, ref);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: SagaColors.accent,
-                        side: BorderSide(color: SagaColors.accent),
-                      ),
-                      child: const Text('Jump to'),
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () => Navigator.pop(sheetCtx),
-                      child: Text('Cancel',
-                          style: TextStyle(color: SagaColors.fgMuted)),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () {
-                        final label = labelCtrl.text.trim();
-                        if (label.isEmpty) return;
-                        final note = noteCtrl.text.trim();
-                        final updated = bookmark.copyWith(
-                          label: label,
-                          note: note.isEmpty ? null : note,
-                        );
-                        NamedBookmarkStore.update(updated);
-                        ref.read(bookmarkRevisionProvider.notifier).state++;
-                        Navigator.pop(sheetCtx);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: SagaColors.accent,
-                        foregroundColor: SagaColors.bg,
-                      ),
-                      child: const Text('Save'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
+    showBookmarkEditSheet(
+      context,
+      title: 'Bookmark',
+      positionMs: bookmark.positionMs,
+      initialLabel: bookmark.label,
+      initialNote: bookmark.note,
+      onSave: (label, note) {
+        // Same rule as _delete: mutate via the notifier so the player's
+        // cached list stays in step with the store.
+        ref
+            .read(bookmarkNotifierProvider(bookmark.bookRatingKey).notifier)
+            .update(bookmark.copyWith(label: label, note: note));
+        ref.read(bookmarkRevisionProvider.notifier).state++;
       },
-    ));
+      onJumpTo: () => _jumpTo(context, ref),
+    );
   }
 
 }

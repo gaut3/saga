@@ -185,6 +185,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   animationSyncDelay: _animationSyncDelay,
                   onMarkMotionChanged: (i) async {
                     await setMarkMotion(MarkMotion.values[i]);
+                    if (!mounted) return; // sign-out can tear this tab down
                     setState(() => _markMotion = i);
                   },
                   onSyncDelayChanged: (ms) async {
@@ -334,7 +335,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _SettingsTile(
                   icon: Icons.lock_outline,
                   title: 'Privacy',
-                  subtitle: 'Local-first · nothing leaves your devices',
+                  subtitle: 'Local-first · your server and plex.tv only',
                   onTap: () =>
                       _showInfoSheet(context, 'Privacy', _privacyText),
                 ),
@@ -367,14 +368,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 Builder(builder: (context) {
                   final update = ref.watch(updateCheckProvider).valueOrNull;
                   final hasUpdate = update?.isNewer == true;
+                  // Say which of the four things happened. "Up to date" and
+                  // "couldn't check" used to read identically, so a check that
+                  // had never worked looked exactly like one that had run and
+                  // found nothing — and anyone running a build newer than the
+                  // latest release only ever sees the quiet outcomes.
+                  final subtitle = switch (update?.status) {
+                    UpdateCheckStatus.available =>
+                      'Update available: ${update!.latestTag}',
+                    UpdateCheckStatus.current =>
+                      'Up to date (${update!.currentVersion})',
+                    UpdateCheckStatus.failed =>
+                      "Couldn't reach GitHub — tap to check yourself",
+                    _ => 'View releases on GitHub',
+                  };
                   return _SettingsTile(
                     icon: hasUpdate
                         ? Icons.new_releases_outlined
                         : Icons.system_update_outlined,
                     title: 'Check for updates',
-                    subtitle: hasUpdate
-                        ? 'Update available: ${update!.latestTag}'
-                        : 'View releases on GitHub',
+                    subtitle: subtitle,
                     onTap: () => launchUrl(
                       Uri.parse('https://github.com/gaut3/saga/releases'),
                       mode: LaunchMode.externalApplication,
@@ -436,7 +449,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await ProgressBackup.export();
     } catch (e) {
       AppLog.log('backup', 'export failed: $e');
-      if (mounted) showSagaToast(context, 'Export failed: $e', isError: true);
+      // Friendly text only — the raw error can carry a file path.
+      if (mounted) {
+        showSagaToast(context,
+            'Export failed. Details are in the diagnostics log.',
+            isError: true);
+      }
     }
   }
 
@@ -523,8 +541,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (skipKeys == null || !mounted) return;
 
       await ProgressBackup.restore(data, skipPositionKeys: skipKeys);
+      // Restore writes five stores; every surface gated on a revision has to
+      // hear about it, or the imported data stays invisible until a restart
+      // (collections and history did exactly that).
       ref.read(completionRevisionProvider.notifier).state++;
       ref.read(bookmarkRevisionProvider.notifier).state++;
+      ref.read(customCollectionRevisionProvider.notifier).state++;
+      ref.read(historyRevisionProvider.notifier).state++;
+      // Named bookmarks bypass the notifier on restore — drop its per-book
+      // caches so the player's bookmark sheet re-reads the store.
+      ref.invalidate(bookmarkNotifierProvider);
 
       AppLog.log('backup',
           'restored ${data.positions.length} positions '
@@ -535,7 +561,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) showSagaToast(context, 'Could not read the selected file.', isError: true);
     } catch (e) {
       AppLog.log('backup', 'import failed: $e');
-      if (mounted) showSagaToast(context, 'Import failed: $e', isError: true);
+      // Friendly text only — the raw error can carry a file path.
+      if (mounted) {
+        showSagaToast(context,
+            'Import failed. Details are in the diagnostics log.',
+            isError: true);
+      }
     }
   }
 
@@ -608,6 +639,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
     if (confirmed == true) {
+      // Stop cleanly first: position saves file under the *current* server's
+      // storage scope, and clearAuth re-points the scope at the primary
+      // server's keys — a book left playing across sign-out would file the
+      // rest of its session under the wrong server's book.
+      await ref.read(playerServiceProvider).stopAndClear();
       await ref.read(plexClientProvider).clearAuth();
       ref.read(isAuthenticatedProvider.notifier).state = false;
     }
@@ -676,6 +712,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ('cached_network_image', 'cover-art caching'),
       ('connectivity_plus', 'network status'),
       ('flutter_secure_storage', 'key storage'),
+      // Not open source, and the only Google component in the app. Named
+      // because a privacy screen that lists only the flattering dependencies
+      // isn't worth reading.
+      ('Google Cast SDK', 'Chromecast support (Google, not open source)'),
     ];
     final bottomPad = MediaQuery.of(context).padding.bottom;
     showSagaSheet(context, (ctx) => Padding(
@@ -739,16 +779,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ));
   }
 
+  // Kept deliberately honest rather than flattering: every line here is
+  // checkable, and the last one describes something Saga cannot prevent. A
+  // privacy screen that only lists the good parts is the kind of claim this
+  // app exists not to make.
   static const _privacyText =
       'Saga is local-first and built to keep your data yours.\n\n'
-      '• Your positions, bookmarks, listening history, downloads and settings live '
-      'only on this device, encrypted at rest.\n\n'
+      '• Your positions, bookmarks, listening history and settings live only on '
+      'this device, encrypted at rest. Downloaded audio files live in Saga\'s '
+      'private storage, unreadable to other apps, though the audio itself is '
+      'not encrypted — a player has to be able to read it.\n\n'
       '• The only servers Saga talks to are your own Plex server (to browse and '
-      'stream your library) and plex.tv (to sign in).\n\n'
-      '• No analytics, no tracking, no advertising, no telemetry — nothing is sent '
-      'to us or any third party.\n\n'
+      'stream your library) and plex.tv (to sign in). If you switch on the update '
+      'check in About, that adds one request to GitHub per launch, and nothing '
+      'else — it is off unless you turn it on.\n\n'
+      '• No analytics, no tracking, no advertising, no telemetry. Nothing about '
+      'you or your library is sent to the author or to anyone else, ever.\n\n'
       '• Saga requests no microphone, camera, contacts, or location access. Even the '
-      'now-playing visualizer reads the audio in-process — never the microphone.';
+      'now-playing visualizer reads the audio in-process — never the microphone.\n\n'
+      '• Casting is the one place a key to your server travels in a web address '
+      'rather than a protected header, because a Chromecast fetches the audio '
+      'itself and cannot send headers — and what a Chromecast is playing is '
+      'readable by other devices on your Wi-Fi. Saga asks your server for a '
+      'temporary, single-server pass for this, and only falls back to your '
+      'account key if the server cannot issue one. The privacy policy has the '
+      'full picture.\n\n'
+      '• To work in a car and on the lock screen, Saga has to tell Android what '
+      'you are listening to, and Android lets other installed apps read that: the '
+      'books you are part-way through, your downloads and collections, and what is '
+      'playing now. No password or server address is ever exposed this way, but the '
+      'titles are visible. Every audiobook and music app that offers these features '
+      'is in the same position.';
 
   static const _termsText =
       'Saga is an independent, unofficial client for Plex Media Server. It is not '
@@ -1612,7 +1673,13 @@ class _StorageTileState extends ConsumerState<_StorageTile> {
         if (path == null) continue;
         anyPath = path;
         final file = File(path);
-        if (file.existsSync()) size += file.statSync().size;
+        // Async stat, not the Sync variants: this loop touches every file of
+        // every downloaded book on the UI isolate, and re-runs on each
+        // completed download — hundreds of blocking syscalls per pass on a
+        // well-stocked library, each one a chance to skip a frame. A missing
+        // file stats as notFound (size -1) rather than throwing.
+        final stat = await file.stat();
+        if (stat.type != FileSystemEntityType.notFound) size += stat.size;
       }
       // Title from the track cache; for pre-cache downloads fall back to the
       // download folder's name (which was derived from the book title).

@@ -13,6 +13,28 @@ void main() {
     });
   });
 
+  group('calendarDaysBetween', () {
+    test('same day is 0, adjacent days are 1', () {
+      expect(
+          calendarDaysBetween(
+              DateTime(2026, 6, 12, 8), DateTime(2026, 6, 12, 23)),
+          0);
+      expect(calendarDaysBetween(DateTime(2026, 6, 12), DateTime(2026, 6, 13)),
+          1);
+      expect(calendarDaysBetween(DateTime(2026, 6, 13), DateTime(2026, 6, 12)),
+          -1);
+    });
+
+    test('spring-forward day still counts as a whole day', () {
+      // 30 → 31 March 2026 in Europe/Oslo is 23h of wall clock;
+      // Duration.inDays on local dates truncates that to 0.
+      expect(calendarDaysBetween(DateTime(2026, 3, 30), DateTime(2026, 3, 31)),
+          1);
+      expect(calendarDaysBetween(DateTime(2026, 3, 28), DateTime(2026, 3, 30)),
+          2);
+    });
+  });
+
   group('addDays', () {
     test('basic forward and backward', () {
       expect(addDays(DateTime(2026, 6, 12), 1), DateTime(2026, 6, 13));

@@ -2,6 +2,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../plex/models/plex_book.dart';
 
+import 'server_scope.dart';
+
 const _boxName = 'book_metadata';
 
 /// Full per-book metadata from `/library/metadata/{ratingKey}`.
@@ -43,7 +45,7 @@ class BookMetadataStore {
 
   static PlexBook? load(String bookRatingKey) {
     if (_decoded.containsKey(bookRatingKey)) return _decoded[bookRatingKey];
-    final raw = _box.get(bookRatingKey);
+    final raw = _box.get(ServerScope.key(bookRatingKey));
     PlexBook? result;
     if (raw != null) {
       try {
@@ -59,7 +61,7 @@ class BookMetadataStore {
 
   static Future<void> save(
       String bookRatingKey, Map<String, dynamic> raw) async {
-    await _box.put(bookRatingKey, raw);
+    await _box.put(ServerScope.key(bookRatingKey), raw);
     try {
       _remember(bookRatingKey, PlexBook.fromJson(raw));
     } catch (_) {
@@ -67,5 +69,11 @@ class BookMetadataStore {
     }
   }
 
-  static bool has(String bookRatingKey) => _box.containsKey(bookRatingKey);
+  static bool has(String bookRatingKey) =>
+      _box.containsKey(ServerScope.key(bookRatingKey));
+
+  /// Drops decoded entries. Called by [ServerScope.configure] on a server
+  /// switch: the map is keyed by bare rating key, so a stale entry would serve
+  /// the previous server's book for the new server's same-numbered one.
+  static void clearDecodedCache() => _decoded.clear();
 }

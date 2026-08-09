@@ -1,6 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../utils/date_math.dart';
+import 'user_box.dart';
 
 class CompletedBook {
   final String ratingKey;
@@ -16,13 +17,7 @@ class ListeningHistoryStore {
   static late Box _box;
 
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
+    _box = await openUserBox(_boxName, encKey);
   }
 
   static String _dk(DateTime d) =>
@@ -76,6 +71,26 @@ class ListeningHistoryStore {
       d = addDays(d, 1);
     }
     return result;
+  }
+
+  /// The earliest calendar day with any recorded activity, or null when the
+  /// store is empty. Bounds the Month tab's back-stepper: paging into months
+  /// before anything was recorded shows only empty grids.
+  static DateTime? earliestDay() {
+    DateTime? min;
+    for (final key in _box.keys) {
+      if (key is! String) continue;
+      if (!key.startsWith('t_') && !key.startsWith('d_')) continue;
+      final parts = key.substring(2).split('-');
+      if (parts.length != 3) continue;
+      final y = int.tryParse(parts[0]);
+      final m = int.tryParse(parts[1]);
+      final d = int.tryParse(parts[2]);
+      if (y == null || m == null || d == null) continue;
+      final day = DateTime(y, m, d);
+      if (min == null || day.isBefore(min)) min = day;
+    }
+    return min;
   }
 
   /// Returns all raw key→value pairs for backup (keys starting with 't_' or 'd_').

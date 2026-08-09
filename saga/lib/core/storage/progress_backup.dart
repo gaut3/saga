@@ -13,6 +13,7 @@ import 'listen_days_store.dart';
 import 'listening_history_store.dart';
 import 'named_bookmark_store.dart';
 import 'playback_log_store.dart';
+import 'settings_store.dart';
 
 class ProgressBackupData {
   final Map<String, BookPosition> positions;
@@ -88,8 +89,12 @@ class ProgressBackup {
   }
 
   static Future<void> export() async {
+    // Signed out, the client has dropped its machine id — stamp the last-known
+    // one instead, so the "different server" warning on restore can still fire
+    // for a backup made while signed out.
     final data = buildBackupMap(
-        serverMachineIdentifier: PlexClient.instance.machineIdentifier);
+        serverMachineIdentifier: PlexClient.instance.machineIdentifier ??
+            SettingsStore.lastServerId);
 
     final json = jsonEncode(data);
     final dir = await getTemporaryDirectory();

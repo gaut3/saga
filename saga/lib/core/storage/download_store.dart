@@ -1,5 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
+import 'server_scope.dart';
+
 const _boxName = 'downloads';
 
 class DownloadStore {
@@ -16,24 +18,26 @@ class DownloadStore {
   }
 
   static Future<void> save(String trackRatingKey, String localPath) async {
-    await _box.put(trackRatingKey, localPath);
+    await _box.put(ServerScope.key(trackRatingKey), localPath);
   }
 
   static String? getPath(String trackRatingKey) {
-    return _box.get(trackRatingKey) as String?;
+    return _box.get(ServerScope.key(trackRatingKey)) as String?;
   }
 
   static bool isDownloaded(String trackRatingKey) {
-    return _box.containsKey(trackRatingKey);
+    return _box.containsKey(ServerScope.key(trackRatingKey));
   }
 
   static Future<void> remove(String trackRatingKey) async {
-    await _box.delete(trackRatingKey);
+    await _box.delete(ServerScope.key(trackRatingKey));
   }
 
   static Map<String, String> allDownloads() {
     return {
-      for (final key in _box.keys) key.toString(): _box.get(key) as String,
+      for (final key in _box.keys)
+        if (ServerScope.ratingKeyOf(key.toString()) case final rk?)
+          rk: _box.get(key) as String,
     };
   }
 }

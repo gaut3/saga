@@ -1,5 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
+import 'server_scope.dart';
+
 const _boxName = 'narrator_index';
 
 /// Book → narrators for a whole library section.
@@ -21,8 +23,13 @@ class NarratorIndexStore {
     }
   }
 
-  static String _key(String sectionKey) => 'idx_$sectionKey';
-  static String _stampKey(String sectionKey) => 'built_$sectionKey';
+  // Section keys are per-server integers like rating keys, so they go through
+  // ServerScope too: both servers having a section "1" must not share (or
+  // destroy) each other's index.
+  static String _key(String sectionKey) =>
+      'idx_${ServerScope.key(sectionKey)}';
+  static String _stampKey(String sectionKey) =>
+      'built_${ServerScope.key(sectionKey)}';
 
   /// The section's index, or null if it has never been built.
   static Map<String, List<String>>? load(String sectionKey) {

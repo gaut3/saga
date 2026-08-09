@@ -102,8 +102,11 @@ class NarratorIndexNotifier extends StateNotifier<NarratorIndexState> {
               bookKeys: books.map((b) => b.ratingKey).toList()
             );
           } catch (e) {
-            // One bad tag shouldn't sink the whole index.
-            AppLog.log('plex', 'narrator index: "${tag.title}" failed: $e');
+            // One bad tag shouldn't sink the whole index. The narrator's name
+            // is library content and the log is meant to be safe to paste into
+            // a public issue — the tag id says which one failed without saying
+            // what the listener has on their shelf.
+            AppLog.log('plex', 'narrator index: tag ${tag.id} failed: $e');
             return (narrator: tag.title, bookKeys: <String>[]);
           }
         }));

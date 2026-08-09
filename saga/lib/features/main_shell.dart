@@ -62,6 +62,10 @@ class _MainShellState extends ConsumerState<MainShell>
     } else if (state == AppLifecycleState.resumed) {
       // Back in the foreground — push any positions queued while offline.
       ref.read(playerServiceProvider).flushTimelineQueue();
+      // The media session may have been rebuilt while we were away, which
+      // leaves it with no title or artwork. Reopening the app is a free moment
+      // to heal it, so the lock screen is right without waiting for a play.
+      ref.read(playerServiceProvider).republishNowPlaying();
     }
   }
 

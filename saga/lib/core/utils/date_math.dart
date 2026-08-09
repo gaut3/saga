@@ -15,6 +15,16 @@ DateTime dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 DateTime addDays(DateTime day, int n) =>
     DateTime(day.year, day.month, day.day + n);
 
+/// Whole calendar days from [a]'s day to [b]'s day (0 for the same day,
+/// negative when [b] is earlier). DST-safe: the difference is taken between
+/// *UTC* midnights, which are always exactly N×24h apart — local midnights
+/// are not (23h across a spring-forward), and `Duration.inDays` truncates
+/// that to 0.
+int calendarDaysBetween(DateTime a, DateTime b) =>
+    DateTime.utc(b.year, b.month, b.day)
+        .difference(DateTime.utc(a.year, a.month, a.day))
+        .inDays;
+
 /// Local midnight of the Monday of [day]'s week.
 DateTime mondayOf(DateTime day) => addDays(day, -(day.weekday - 1));
 

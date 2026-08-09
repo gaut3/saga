@@ -21,12 +21,28 @@ import '../../core/storage/playback_log_store.dart';
 import '../../core/storage/timeline_queue_store.dart';
 import '../../core/storage/track_cache_store.dart';
 import 'book_launch.dart';
+import 'media_browse.dart';
 import 'resume_rewind.dart';
 import 'session_restore.dart';
 import 'track_position_math.dart';
 
 class AudioPlayerService extends BaseAudioHandler with SeekHandler {
-  final AudioPlayer _player = AudioPlayer();
+  /// `useProxyForRequestHeaders: false` — headers go straight to ExoPlayer.
+  ///
+  /// just_audio's default is to start a **cleartext HTTP server on localhost**
+  /// and route every stream through it, purely so the auth header can be
+  /// attached. Android has never needed that: the platform side applies the
+  /// headers itself (`setDefaultRequestProperties` in `AudioPlayer.java`), so
+  /// the proxy bought nothing and cost three things — a loopback port serving
+  /// this listener's audiobooks to any app on the device that finds it, a bare
+  /// `_handlerMap[path]!` that throws on an unmatched request, and an upstream
+  /// fetch that catches only `HttpException`, so a DNS failure on the server's
+  /// `plex.direct` name escaped as an uncaught async error.
+  ///
+  /// Turning it off deletes all three. It also means nothing in the app speaks
+  /// cleartext to localhost any more, which is what allows the network security
+  /// config to be tightened.
+  final AudioPlayer _player = AudioPlayer(useProxyForRequestHeaders: false);
   final PlexApi _api;
   late ConcatenatingAudioSource _playlist;
 
@@ -444,7 +460,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     if (_restoringSession) return false; // absorb double-taps mid-restore
     _restoringSession = true;
     try {
-      final bookKey = mostRecentBookRatingKey(BookmarkStore.allPositions());
+      final bookKey = mostRecentBookRatingKey(BookmarkStore.allPositions(),
+          completed: CompletedBooksStore.allCompleted());
       if (bookKey == null) return false;
       // Cache first: instant, and works offline for downloaded books. The
       // network fetch covers streamed books (needs the server reachable).
@@ -469,6 +486,26 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     }
   }
 
+  /// Re-sends the current [mediaItem] to the platform media session.
+  ///
+  /// audio_service pushes metadata to Android's MediaSession only when
+  /// `mediaItem` *emits*. But the Java service — and the MediaSessionCompat it
+  /// owns — can be destroyed and recreated inside a Dart process that survives
+  /// it: the Flutter engine is cached, so this handler and its BehaviorSubject
+  /// live on with the book still in them. The rebuilt session starts with null
+  /// metadata and nothing re-sends it, so the lock screen shows Android's
+  /// "Saga is running" placeholder over a book that is audibly playing, with a
+  /// real position and working transport controls. `playbackState` never shows
+  /// this because playbackEventStream re-emits continuously; metadata is the
+  /// one thing that only travels on change.
+  ///
+  /// Idempotent and cheap — artwork is already cached by the time this matters
+  /// — so call it from any path that can follow a service restart.
+  void republishNowPlaying() {
+    final current = mediaItem.value;
+    if (current != null) mediaItem.add(current);
+  }
+
   @override
   Future<void> play() async {
     // Pressing play on the finished panel means "replay this", not "carry on".
@@ -483,6 +520,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     if (_bookRatingKey == null || _tracks.isEmpty) {
       if (!await _restoreLastSession()) return;
     }
+    // The media session may have been rebuilt since the last mediaItem
+    // emission. A play arriving from the notification, a media button or the
+    // lock screen is exactly the moment that card needs its title back.
+    republishNowPlaying();
 
     // Any play (user or auto-resume itself) settles a pending interruption —
     // a later interruption-end must not trigger a second resume.
@@ -658,6 +699,96 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> skipToQueueItem(int index) async {
     await _player.seek(Duration.zero, index: index);
+  }
+
+  // ── Browsing: Android Auto, the assistant, the resumption card ──────────
+  //
+  // Saga advertises a MediaBrowserService, so Android walks this tree. Auto
+  // builds its library from it, "play <book> in Saga" arrives at
+  // [playFromSearch] ([search] only serves Auto's typed search list), and the
+  // lock screen's media-resumption card is the `recent` node. Everything is
+  // answered from local stores — see [browseChildren] for why.
+
+  @override
+  Future<List<MediaItem>> getChildren(String parentMediaId,
+          [Map<String, dynamic>? options]) async =>
+      browseChildren(parentMediaId);
+
+  @override
+  Future<MediaItem?> getMediaItem(String mediaId) async {
+    final bookKey = BrowseId.bookKeyOf(mediaId);
+    return bookKey == null ? null : bookItem(bookKey);
+  }
+
+  @override
+  Future<List<MediaItem>> search(String query,
+          [Map<String, dynamic>? extras]) async =>
+      searchBooks(query);
+
+  /// Voice — `play <book> in Saga`, from the assistant or a car.
+  ///
+  /// This is the override that makes voice *play* anything: the base class's
+  /// [playFromSearch] is an empty no-op, and [search] above only produces the
+  /// tappable result list. Voice is the one safe way to pick a book while
+  /// driving, so a silent no-op here is a dead feature that looks shipped.
+  ///
+  /// The query is the listener's spoken words — it names a book, so it is not
+  /// logged (record by kind, never by name).
+  @override
+  Future<void> playFromSearch(String query,
+      [Map<String, dynamic>? extras]) async {
+    if (query.trim().isEmpty) {
+      // "Play something in Saga" — resume the latest book, exactly what the
+      // resumption card's play button does.
+      await play();
+      return;
+    }
+    final match = searchBooks(query).firstOrNull;
+    if (match == null) {
+      AppLog.log('playback', 'playFromSearch: no local match for the query');
+      return;
+    }
+    await playFromMediaId(match.id);
+  }
+
+  @override
+  Future<void> playMediaItem(MediaItem mediaItem) =>
+      playFromMediaId(mediaItem.id);
+
+  /// Starts a book chosen from the browse tree.
+  ///
+  /// Resumes rather than restarts: picking a book you're halfway through out
+  /// of a car list means the same thing it means on the home screen.
+  @override
+  Future<void> playFromMediaId(String mediaId,
+      [Map<String, dynamic>? extras]) async {
+    final bookKey = BrowseId.bookKeyOf(mediaId);
+    if (bookKey == null) {
+      AppLog.log('playback', 'playFromMediaId: not a book id ($mediaId)');
+      return;
+    }
+    try {
+      // Cache first: in a car that is the difference between a book starting
+      // and nothing happening. The fetch covers a book browsed but never
+      // played on this device.
+      final tracks =
+          TrackCacheStore.load(bookKey) ?? await _api.fetchTracks(bookKey);
+      if (tracks.isEmpty) {
+        AppLog.log('playback', 'playFromMediaId: no tracks for book $bookKey');
+        return;
+      }
+      await startBook(
+        service: this,
+        bookRatingKey: bookKey,
+        tracks: tracks,
+        from: const BookStartPoint.resume(),
+      );
+    } catch (e) {
+      // Browsing works with the server unreachable; playing a book whose
+      // tracks were never cached does not. Leave a trace rather than a tap
+      // that silently did nothing.
+      AppLog.log('playback', 'playFromMediaId failed for book $bookKey: $e');
+    }
   }
 
   @override
@@ -992,9 +1123,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   MediaItem _trackToMediaItem(PlexTrack track) {
     final thumbPath = track.thumbPath;
-    // Prefer a local cached file (no token in URI) over the authenticated network URL.
-    final artUri = ArtworkCache.getLocalUri(thumbPath)
-        ?? PlexClient.instance.buildArtUri(thumbPath);
+    // Cached file or nothing — never a URL carrying a credential. This item
+    // becomes the platform MediaSession's metadata, which any app holding
+    // notification access can read, and the Plex token is account-wide.
+    // Leaving it null costs nothing: [_prefetchArtwork] downloads the cover
+    // with header auth and re-emits this item with the local `file://` URI a
+    // moment later.
+    final artUri = ArtworkCache.getLocalUri(thumbPath);
 
     return MediaItem(
       id: track.ratingKey,

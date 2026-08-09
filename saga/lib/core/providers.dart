@@ -74,9 +74,21 @@ final activeLibraryKeyProvider = FutureProvider<String?>((ref) async {
   Future<bool> discover() async {
     final discovery = ref.read(plexServerDiscoveryProvider);
     final servers = await discovery.fetchServers();
-    if (servers.isNotEmpty) {
-      await discovery.selectServer(servers.first);
+    final saved = client.machineIdentifier;
+    final server = saved == null
+        ? servers.firstOrNull
+        : servers.where((s) => s.machineIdentifier == saved).firstOrNull;
+    if (server != null) {
+      await discovery.selectServer(server);
       ref.read(activeServerUriProvider.notifier).state = client.serverUri;
+    } else if (servers.isNotEmpty) {
+      // The saved server is missing from the account's list. Plex lists other
+      // people's shared servers here too, so adopting whichever one comes
+      // first would silently re-point the app — and every per-server store
+      // behind ServerScope — at somebody else's library, possibly with a book
+      // still playing. Re-selecting a server is the user's call.
+      AppLog.log('server',
+          'saved server not in account list — not adopting another');
     }
     return client.serverUri != null;
   }
@@ -94,8 +106,12 @@ final activeLibraryKeyProvider = FutureProvider<String?>((ref) async {
   } on DioException catch (e) {
     if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.connectionError) {
-      // Saved URI unreachable — clear it and re-discover (tries local and
-      // relay in parallel, picks whichever answers first).
+      // Saved URI unreachable — clear it and re-discover. Probes every
+      // connection in parallel and takes the best one that answers, by
+      // priority (HTTPS on the LAN ahead of plaintext, plaintext ahead of
+      // relay), not the first to reply. This is the path that runs when you
+      // leave the house on a LAN-saved URI, so it is also the one that decides
+      // whether the token travels encrypted for the rest of the trip.
       AppLog.log('server',
           'saved URI unreachable (${e.type.name}) — re-discovering');
       await client.clearServerUri();
@@ -111,6 +127,9 @@ final activeLibraryKeyProvider = FutureProvider<String?>((ref) async {
 
 final booksProvider =
     FutureProvider.family<List<PlexBook>, String>((ref, sectionKey) async {
+  // Server-sensitive: section keys are per-server integers, so without this a
+  // server switch keeps serving the previous server's list for the same key.
+  ref.watch(activeServerUriProvider);
   return ref.watch(plexApiProvider).fetchBooks(sectionKey);
 });
 
@@ -127,6 +146,8 @@ final booksProvider =
 /// less.
 final bookMetadataProvider =
     FutureProvider.family<PlexBook?, String>((ref, bookRatingKey) async {
+  // Server-sensitive: rating keys are per-server, and the family cache is not.
+  ref.watch(activeServerUriProvider);
   final cached = BookMetadataStore.load(bookRatingKey);
   if (cached != null) return cached;
   try {
@@ -150,6 +171,7 @@ PlexBook enrichedBook(WidgetRef ref, PlexBook book) =>
 
 final recentlyAddedProvider =
     FutureProvider.family<List<PlexBook>, String>((ref, sectionKey) async {
+  ref.watch(activeServerUriProvider);
   ref.watch(completionRevisionProvider);
   final books = await ref.watch(plexApiProvider).fetchRecentlyAdded(sectionKey);
   final completed = CompletedBooksStore.allCompleted();
@@ -206,21 +228,25 @@ final continueListeningProvider =
 
 final authorsProvider =
     FutureProvider.family<List<PlexAuthor>, String>((ref, sectionKey) async {
+  ref.watch(activeServerUriProvider);
   return ref.watch(plexApiProvider).fetchAuthors(sectionKey);
 });
 
 final booksByAuthorProvider =
     FutureProvider.family<List<PlexBook>, String>((ref, authorRatingKey) async {
+  ref.watch(activeServerUriProvider);
   return ref.watch(plexApiProvider).fetchBooksByAuthor(authorRatingKey);
 });
 
 final collectionsProvider =
     FutureProvider.family<List<PlexBook>, String>((ref, sectionKey) async {
+  ref.watch(activeServerUriProvider);
   return ref.watch(plexApiProvider).fetchCollections(sectionKey);
 });
 
 final collectionBooksProvider =
     FutureProvider.family<List<PlexBook>, String>((ref, param) async {
+  ref.watch(activeServerUriProvider);
   // param format: "sectionKey|collectionRatingKey|encodedTitle"
   final parts = param.split('|');
   if (parts.length < 2) return [];
@@ -338,6 +364,39 @@ final customCollectionBooksProvider =
     ..sort((a, b) => keyIndex[a.ratingKey]!.compareTo(keyIndex[b.ratingKey]!));
 });
 
+/// The next up-to-[limit] unstarted, library-resolvable books after the last
+/// book the user has touched in [keys] — THE "up next" rule, shared by both
+/// providers below so their idea of "next in the series" can't drift (they
+/// were two hand-written copies of this scan). Empty when the collection was
+/// never started. A key the library can't resolve (re-imported book, other
+/// server) is skipped rather than counted.
+List<PlexBook> _upcomingInCollection(
+    List<String> keys, Map<String, PlexBook> bookByKey,
+    {required int limit}) {
+  var lastTouched = -1;
+  for (var i = 0; i < keys.length; i++) {
+    if (BookmarkStore.load(keys[i]) != null ||
+        CompletedBooksStore.isCompleted(keys[i])) {
+      lastTouched = i;
+    }
+  }
+  if (lastTouched < 0) return const [];
+
+  final upcoming = <PlexBook>[];
+  for (var i = lastTouched + 1;
+      i < keys.length && upcoming.length < limit;
+      i++) {
+    final key = keys[i];
+    if (BookmarkStore.load(key) != null ||
+        CompletedBooksStore.isCompleted(key)) {
+      continue;
+    }
+    final book = bookByKey[key];
+    if (book != null) upcoming.add(book);
+  }
+  return upcoming;
+}
+
 /// Next unstarted book in each custom collection where the user has already
 /// started or completed at least one book. Returns one (collection, book) pair
 /// per qualifying collection, in collection-name order.
@@ -353,36 +412,12 @@ final upNextInSeriesProvider =
 
   final allBooks = await ref.watch(booksProvider(sectionKey).future);
   final bookByKey = {for (final b in allBooks) b.ratingKey: b};
-  final result = <(CustomCollection, PlexBook)>[];
-
-  for (final col in collections) {
-    final keys = col.bookRatingKeys;
-    if (keys.isEmpty) continue;
-
-    // Find the last book in the collection the user has touched
-    int lastTouchedIndex = -1;
-    for (int i = 0; i < keys.length; i++) {
-      if (BookmarkStore.load(keys[i]) != null ||
-          CompletedBooksStore.isCompleted(keys[i])) {
-        lastTouchedIndex = i;
-      }
-    }
-    if (lastTouchedIndex < 0) continue; // Never started this collection
-
-    // First unstarted book after the last touched one
-    for (int i = lastTouchedIndex + 1; i < keys.length; i++) {
-      final key = keys[i];
-      if (BookmarkStore.load(key) == null &&
-          !CompletedBooksStore.isCompleted(key)) {
-        final book = bookByKey[key];
-        if (book != null) {
-          result.add((col, book));
-          break;
-        }
-      }
-    }
-  }
-  return result;
+  return [
+    for (final col in collections)
+      if (_upcomingInCollection(col.bookRatingKeys, bookByKey, limit: 1)
+          case [final next, ...])
+        (col, next),
+  ];
 });
 
 /// Like [upNextInSeriesProvider] but returns the next up-to-3 unstarted books
@@ -400,35 +435,12 @@ final upNextSeriesQueuesProvider =
 
   final allBooks = await ref.watch(booksProvider(sectionKey).future);
   final bookByKey = {for (final b in allBooks) b.ratingKey: b};
-  final result = <(CustomCollection, List<PlexBook>)>[];
-
-  for (final col in collections) {
-    final keys = col.bookRatingKeys;
-    if (keys.isEmpty) continue;
-
-    int lastTouchedIndex = -1;
-    for (int i = 0; i < keys.length; i++) {
-      if (BookmarkStore.load(keys[i]) != null ||
-          CompletedBooksStore.isCompleted(keys[i])) {
-        lastTouchedIndex = i;
-      }
-    }
-    if (lastTouchedIndex < 0) continue; // Never started this collection
-
-    final upcoming = <PlexBook>[];
-    for (int i = lastTouchedIndex + 1;
-        i < keys.length && upcoming.length < 3;
-        i++) {
-      final key = keys[i];
-      if (BookmarkStore.load(key) == null &&
-          !CompletedBooksStore.isCompleted(key)) {
-        final book = bookByKey[key];
-        if (book != null) upcoming.add(book);
-      }
-    }
-    if (upcoming.isNotEmpty) result.add((col, upcoming));
-  }
-  return result;
+  return [
+    for (final col in collections)
+      if (_upcomingInCollection(col.bookRatingKeys, bookByKey, limit: 3)
+          case final upcoming when upcoming.isNotEmpty)
+        (col, upcoming),
+  ];
 });
 
 /// The next book after [bookRatingKey] in the first custom collection that
@@ -456,6 +468,7 @@ final nextInSeriesProvider =
 
 final searchBooksProvider =
     FutureProvider.family<List<PlexBook>, String>((ref, param) async {
+  ref.watch(activeServerUriProvider);
   // param format: "sectionKey|query"
   final sep = param.indexOf('|');
   if (sep < 0) return [];

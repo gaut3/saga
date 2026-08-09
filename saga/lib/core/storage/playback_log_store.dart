@@ -1,6 +1,12 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../utils/date_math.dart';
+import 'server_scope.dart';
+import 'user_box.dart';
+
+/// Per-book session logs share a box with nothing else today, but the prefix
+/// has always been part of the key, so it stays part of the key.
+const _logPrefix = 'log_';
 
 class AudioLogEvent {
   final String type;
@@ -38,20 +44,14 @@ class PlaybackLogStore {
   static const _retentionDays = 365;
 
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
+    _box = await openUserBox(_boxName, encKey);
   }
 
   static void log({
     required String bookRatingKey,
     required AudioLogEvent event,
   }) {
-    final key = 'log_$bookRatingKey';
+    final key = ServerScope.prefixed(_logPrefix, bookRatingKey);
     final list =
         (_box.get(key) as List?)?.cast<Map>().toList() ?? <Map>[];
     list.add(event.toMap());
@@ -60,18 +60,20 @@ class PlaybackLogStore {
   }
 
   static List<AudioLogEvent> getLog(String bookRatingKey) {
-    final key = 'log_$bookRatingKey';
+    final key = ServerScope.prefixed(_logPrefix, bookRatingKey);
     final list = (_box.get(key) as List?)?.cast<Map>() ?? [];
     return list.map(AudioLogEvent.fromMap).toList();
   }
 
+  // Scoped by server — see server_scope.dart. `unprefixed` returns null for
+  // another server's log, which is what keeps a shared server's sessions out
+  // of this one's history.
   static Iterable<String> bookRatingKeys() => _box.keys
-      .cast<String>()
-      .where((k) => k.startsWith('log_'))
-      .map((k) => k.substring(4));
+      .map((k) => ServerScope.unprefixed(_logPrefix, k.toString()))
+      .whereType<String>();
 
   static void clearLog(String bookRatingKey) =>
-      _box.delete('log_$bookRatingKey');
+      _box.delete(ServerScope.prefixed(_logPrefix, bookRatingKey));
 
   static Future<void> clearAll() => _box.clear();
 
@@ -80,8 +82,11 @@ class PlaybackLogStore {
   static Map<String, dynamic> exportAll() {
     final out = <String, dynamic>{};
     for (final key in _box.keys) {
-      final k = key.toString();
-      if (k.startsWith('log_')) out[k] = _box.get(key);
+      // Backups stay in the unscoped `log_<key>` shape so they restore onto
+      // any install; only this server's logs are exported, which is what the
+      // backup's serverMachineIdentifier already claims about it.
+      final ratingKey = ServerScope.unprefixed(_logPrefix, key.toString());
+      if (ratingKey != null) out['$_logPrefix$ratingKey'] = _box.get(key);
     }
     return out;
   }
@@ -98,7 +103,9 @@ class PlaybackLogStore {
         .millisecondsSinceEpoch;
     var removed = 0;
     for (final key in _box.keys.toList()) {
-      if (!key.toString().startsWith('log_')) continue;
+      // Retention applies to every server's logs, not just the current one —
+      // dead weight is dead weight regardless of which library wrote it.
+      if (!key.toString().contains(_logPrefix)) continue;
       final list = (_box.get(key) as List?)?.cast<Map>() ?? const <Map>[];
       final kept = [
         for (final m in list)
@@ -119,10 +126,13 @@ class PlaybackLogStore {
   /// track), sorted oldest → newest, and capped to the newest [_maxPerBook].
   static Future<void> importAll(Map<String, dynamic> raw) async {
     for (final entry in raw.entries) {
-      if (!entry.key.startsWith('log_')) continue;
+      if (!entry.key.startsWith(_logPrefix)) continue;
+      // Backups carry the unscoped shape; restore lands on the current server.
+      final key = ServerScope.prefixed(
+          _logPrefix, entry.key.substring(_logPrefix.length));
       final incoming = (entry.value as List?)?.cast<Map>() ?? const <Map>[];
       final existing =
-          (_box.get(entry.key) as List?)?.cast<Map>() ?? const <Map>[];
+          (_box.get(key) as List?)?.cast<Map>() ?? const <Map>[];
       final seen = <String>{};
       final all = <Map>[];
       for (final m in [...existing, ...incoming]) {
@@ -131,7 +141,7 @@ class PlaybackLogStore {
       all.sort((a, b) => (a['ts'] as int).compareTo(b['ts'] as int));
       final capped =
           all.length > _maxPerBook ? all.sublist(all.length - _maxPerBook) : all;
-      await _box.put(entry.key, capped);
+      await _box.put(key, capped);
     }
   }
 }

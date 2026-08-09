@@ -8,6 +8,7 @@ saga.code-workspace
 # Internal development notes and codebase guide
 CLAUDE.md
 SAGA_NOTES.md
+SAGA_SECURITY_STANDARDS.md
 
 # Archived Gen-1 (3-spine) design material
 Old design/
@@ -23,6 +24,12 @@ build/debug-info/
 # project. The repo tracks no video assets.
 *.mp4
 *.mov
+
+# Bug-report material pulled off a device: the exported diagnostics log and
+# working screenshots. Kept locally (diagnostics.md is the evidence for the
+# uncaught-SocketException issue), never committed.
+/diagnostics.md
+/Screenshot_*.png
 SAGA_NOTES_ADDENDUM.md
 SAGA_NOTES_STILL_MISSING.md
 SAGA_CI_RELEASE_SETUP.md

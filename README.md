@@ -27,6 +27,7 @@
 - Always-visible mini player; swipe it away to dismiss, long-press to stop playback
 - Chromecast support via native Cast SDK
 - Headphone unplug auto-pause; auto-resume after calls and brief interruptions (on by default, and never over another app's media)
+- Android Auto — Continue listening, Downloaded, and your collections in the order you dragged them; built from what's already on the phone, so a downloaded book plays in the car with no server involved. Asking for a book by name works too. The same browse tree backs the lock screen's media-resumption card
 
 **Library**
 - Browse your Plex audiobook library: search across titles, authors and narrators; sort by title, author, length or narrator (each reversible); grid or list toggle
@@ -122,7 +123,7 @@ adb install -r build/app/outputs/flutter-apk/app-release.apk
 
 ## Privacy & security
 
-Saga is local-first with no analytics, no crash reporting SDK, and nothing transmitted anywhere except your own Plex server and `plex.tv` for sign-in.
+Saga is local-first with no analytics, no crash reporting SDK, and nothing transmitted anywhere except your own Plex server and `plex.tv` for sign-in — plus GitHub, only if you switch on the optional update check, which is off by default.
 
 - Plex token stored in the Android Keystore via `flutter_secure_storage`
 - All local data (bookmarks, history, settings) encrypted with AES-256 via Hive
@@ -130,6 +131,7 @@ Saga is local-first with no analytics, no crash reporting SDK, and nothing trans
 - Progress export is credentials-free (no token, no server URL)
 - Diagnostics are written to a small local log for bug reports — never transmitted, and never sent anywhere by Saga at all. "Copy diagnostics" puts it on your clipboard; it goes somewhere only if you paste it there. Your token, your server's address and its machine identifier are masked before anything is written, and again when it's copied
 - No Google Fonts, no Firebase, no third-party analytics of any kind
+- **What isn't private, stated plainly:** to work on the lock screen and in a car, Saga has to tell Android what you're listening to, and Android lets any installed app read that — the books you're part-way through, your downloads and collections, and what's playing now. No password or server address is ever exposed this way, and that's asserted by a test rather than a promise, but the titles are visible. Every media app offering these features is in the same position. The progress export is likewise unencrypted: credentials-free, but it contains your bookmark notes and listening history, so treat the file accordingly
 
 ### Network audit — every endpoint Saga contacts
 
@@ -142,7 +144,7 @@ Saga is local-first with no analytics, no crash reporting SDK, and nothing trans
 | **Your own Plex server** | Always | Everything else: library browsing, streaming, cover art, playback progress |
 | `api.github.com/repos/gaut3/saga/releases/latest` | **Opt-in only, default off** | "Check for updates on launch" (Settings → About) — one anonymous GET per launch when enabled |
 
-**That's the complete list.** Two documented exceptions put the Plex token in a URL query instead of a header — notification artwork (Android `MediaSession` fetches art without custom headers) and Chromecast (the Cast device fetches the stream itself) — both go only to your own server. Details in the [privacy policy](PRIVACY_POLICY.md).
+**That's the complete list.** Everything authenticates with the token in an HTTP header, with **one** exception: Chromecast, because a Cast device fetches the stream itself and cannot send headers, so the credential has to travel in the URL. Since 1.1.0 that URL carries a **delegated token** requested from your server — scoped to that one server and self-expiring — rather than your account token, because a Cast device reports what it is playing to anything else on the network that asks. Notification and lock-screen artwork was the second exception until 1.1.0; it no longer involves the token at all. Details in the [privacy policy](PRIVACY_POLICY.md).
 
 **Verify it yourself:** point [PCAPdroid](https://github.com/emanuele-f/PCAPdroid) (on-device, no root) at Saga — you'll see traffic only to your own server and `plex.tv` (plus `api.github.com` if you enabled update checks).
 
@@ -173,8 +175,6 @@ The built manifest also carries `com.gaut3.saga.DYNAMIC_RECEIVER_NOT_EXPORTED_PE
 **Playback stops on its own after the screen has been off for a while** (common on Samsung, Xiaomi, OnePlus, and other heavily customized Android builds): the manufacturer's battery manager is killing Saga despite its playback service. Exclude Saga from battery optimization — **Android Settings → Apps → Saga → Battery → Unrestricted** (wording varies by brand). [dontkillmyapp.com](https://dontkillmyapp.com) has step-by-step instructions per manufacturer. Saga already does everything an app can do from its side (foreground playback service, wake and Wi-Fi locks); this last step is unfortunately in the system's hands.
 
 If playback was stopped this way, your position is safe — Saga saves it continuously — and the notification's play button or the app will resume where you left off.
-
----
 
 ---
 

@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'book_cover_image.dart' show kCoverCacheWidthThumb;
 import 'saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 
 import '../../core/audio/m4b_chapter_reader.dart';
@@ -163,13 +164,16 @@ class MiniPlayerPill extends ConsumerWidget {
       return Image.file(
         File(uri.toFilePath()),
         fit: BoxFit.cover,
+        // Without this the pill decodes the cover at its native resolution
+        // for a thumbnail — wasted memory that can evict other covers.
+        cacheWidth: kCoverCacheWidthThumb,
         errorBuilder: (_, _, _) => _artPlaceholder(),
       );
     }
     return Image.network(
       uri.toString(),
       fit: BoxFit.cover,
-      cacheWidth: 160,
+      cacheWidth: kCoverCacheWidthThumb,
       frameBuilder: (_, child, frame, syncLoad) {
         if (syncLoad || frame != null) return child;
         return _artPlaceholder();

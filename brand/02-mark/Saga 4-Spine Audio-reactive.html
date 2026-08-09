@@ -205,9 +205,11 @@ void tick(Duration _) {
   setState(() {});
 }
 
-<span class="c">// Want REAL reactivity? Tap the platform visualizer:</span>
-<span class="c">//  · Android: Visualizer API (getWaveForm / RMS)</span>
-<span class="c">//  · iOS: AVAudioEngine installTap + vDSP RMS</span>
+<span class="c">// REAL reactivity — what Saga ships. NOT the Android</span>
+<span class="c">// Visualizer API: it needs RECORD_AUDIO, and a logo is</span>
+<span class="c">// not worth a microphone permission. Instead a Media3</span>
+<span class="c">// TeeAudioProcessor in the vendored just_audio fork reads</span>
+<span class="c">// ~50 Hz RMS off the decoded PCM already in the chain.</span>
 <span class="c">// Map RMS → a single level, ripple it across the 4 bars</span>
 <span class="c">// with small phase offsets. (FFT is overkill for voice.)</span></pre>
     </div>

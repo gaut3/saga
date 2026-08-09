@@ -5,11 +5,9 @@ import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/plex/models/plex_author.dart';
-import '../../core/plex/models/plex_book.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/providers.dart';
-import '../library/book_detail_screen.dart';
-import '../../shared/widgets/book_cover_image.dart';
+import '../../shared/widgets/book_card.dart';
 
 class AuthorsScreen extends ConsumerWidget {
   const AuthorsScreen({super.key});
@@ -109,10 +107,10 @@ class _AuthorTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // buildArtUri embeds the token in the URL so Image.network needs no headers.
+    // Token in a header, not the URL — same rule as BookCoverImage.
     // Image.network checks Flutter's ImageCache synchronously — cache hits never
     // show the placeholder at all (frameBuilder.wasSynchronouslyLoaded = true).
-    final thumbUri = PlexClient.instance.buildArtUri(author.thumbPath);
+    final thumbUri = PlexClient.instance.buildThumbUrl(author.thumbPath);
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -123,7 +121,8 @@ class _AuthorTile extends StatelessWidget {
           height: 48,
           child: thumbUri != null
               ? Image.network(
-                  thumbUri.toString(),
+                  thumbUri,
+                  headers: PlexClient.instance.authHeaders,
                   fit: BoxFit.cover,
                   cacheWidth: 96,
                   cacheHeight: 96,
@@ -159,6 +158,9 @@ class _AuthorBooksScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Pushed on a tab stack — rebuilds come from nowhere else on a theme
+    // switch, so watch it here.
+    ref.watch(sagaThemeVariantProvider);
     final booksAsync = ref.watch(booksByAuthorProvider(author.ratingKey));
 
     return Scaffold(
@@ -178,49 +180,18 @@ class _AuthorBooksScreen extends ConsumerWidget {
           onRetry: () => ref.invalidate(booksByAuthorProvider(author.ratingKey)),
         ),
         data: (books) => GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            childAspectRatio: 0.62,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-          ),
+          // Pushed onto the tab navigator, so the nav pill and mini player
+          // paint over the bottom of this list — pad past them.
+          padding: EdgeInsets.fromLTRB(
+              16, 8, 16, MediaQuery.of(context).padding.bottom + 16),
+          // No author line: every book here has the same author and the app
+          // bar already says who.
+          gridDelegate: bookGridDelegate(showAuthor: false),
           itemCount: books.length,
-          itemBuilder: (context, i) => _BookTile(book: books[i]),
+          itemBuilder: (context, i) =>
+              BookCard(book: books[i], showAuthor: false),
         ),
       ),
     );
   }
-}
-
-class _BookTile extends StatelessWidget {
-  final PlexBook book;
-  const _BookTile({required this.book});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => BookDetailScreen(book: book)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: BookCoverImage(thumbPath: book.thumbPath),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(book.title,
-              style: TextStyle(color: SagaColors.fg, fontSize: 12),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis),
-        ],
-      ),
-    );
-  }
-
 }

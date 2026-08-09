@@ -7,11 +7,27 @@ import 'package:flutter/material.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/theme/saga_theme.dart';
 
-/// Book cover image backed by Flutter's in-memory ImageCache.
+/// Shared decode widths for covers.
 ///
-/// Uses Image.network with cacheWidth so that cache hits are synchronous —
-/// navigating back to a list never shows the placeholder for images already
-/// loaded this session.
+/// Flutter's in-memory ImageCache keys a decoded image by URL *and* decode
+/// size, so every distinct [BookCoverImage.cacheWidth] is a separate decode: a
+/// cover already on screen in a strip warmed nothing for the Home hero card,
+/// which decoded the same file again — visibly, as a placeholder flash when
+/// returning from the player. Eleven ad-hoc widths collapsed into these three
+/// buckets, so any surface that has shown a cover warms every other surface in
+/// its bucket.
+const kCoverCacheWidthThumb = 160; // pills, list rows, small tiles
+const kCoverCacheWidthCard = 320; // book cards (strips/grids), Home hero
+const kCoverCacheWidthDetail = 400; // book-detail header, collection tiles
+
+/// Book cover image: `CachedNetworkImage` with the token in a header (never
+/// the URL — the on-disk cache keys by URL, which is how every cover once
+/// wrote a live token to an unencrypted database).
+///
+/// A memory-cache hit renders synchronously. A miss (first decode this
+/// session at this size) re-decodes from the disk cache in well under
+/// [_placeholderDelay], so the placeholder fades in late enough that only a
+/// genuine network fetch ever shows it.
 ///
 /// On network error the widget auto-retries up to [_maxRetries] times with a
 /// short back-off delay. Only after all retries fail does it show a refresh
@@ -36,7 +52,7 @@ class BookCoverImage extends StatefulWidget {
   const BookCoverImage({
     super.key,
     required this.thumbPath,
-    this.cacheWidth = 200,
+    this.cacheWidth = kCoverCacheWidthCard,
     this.fit = BoxFit.cover,
     this.semanticLabel,
     this.letterboxed = false,
@@ -49,6 +65,12 @@ class BookCoverImage extends StatefulWidget {
 class _BookCoverImageState extends State<BookCoverImage> {
   static const _maxRetries = 3;
   static const _retryDelay = Duration(seconds: 2);
+
+  /// How long a load has before the placeholder becomes visible. A re-decode
+  /// from the disk cache finishes inside this, so covers the phone already has
+  /// never flash grey; a real network fetch fades the placeholder in instead
+  /// of popping it.
+  static const _placeholderDelay = Duration(milliseconds: 250);
 
   int _attempt = 0;
   Timer? _retryTimer;
@@ -69,8 +91,10 @@ class _BookCoverImageState extends State<BookCoverImage> {
 
   @override
   Widget build(BuildContext context) {
-    final url =
-        PlexClient.instance.buildArtUri(widget.thumbPath)?.toString();
+    // Token in a header, never in the URL: CachedNetworkImage keys its on-disk
+    // cache by URL, so a token in the query string ends up written to an
+    // unencrypted database and left there after sign-out.
+    final url = PlexClient.instance.buildThumbUrl(widget.thumbPath);
     if (url == null) return _placeholder();
 
     return Semantics(
@@ -79,10 +103,12 @@ class _BookCoverImageState extends State<BookCoverImage> {
       child: CachedNetworkImage(
         key: ValueKey('$url-$_attempt'),
         imageUrl: url,
+        httpHeaders: PlexClient.instance.authHeaders,
         fit: widget.fit,
         memCacheWidth: widget.cacheWidth,
         fadeInDuration: Duration.zero,
         fadeOutDuration: Duration.zero,
+        placeholderFadeInDuration: _placeholderDelay,
         // One download, one cache entry — the letterbox draws it twice.
         imageBuilder: widget.letterboxed ? _buildLetterbox : null,
         placeholder: (_, _) => _placeholder(),

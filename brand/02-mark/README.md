@@ -1,12 +1,14 @@
-# Handoff: Saga Animated Mark (4-spine play/pause)
+# Saga Animated Mark (4-spine play/pause)
 
 ## Overview
-Saga's brand mark — four book "spines" — doubles as the player's **play/pause control** and as a single animated indicator for every playback moment (playing, paused, buffering, downloading, idle, finished). This package specifies the mark's geometry, colours, the play-triangle ⇄ spines morph, each animated state, and how to build it in Flutter.
+Saga's brand mark — four book "spines" — doubles as the player's **play/pause control** and as a single animated indicator for every playback moment (playing, paused, buffering, downloading, idle, finished). This document specifies the mark's geometry, colours, the play-triangle ⇄ spines morph, and each animated state.
 
 The headline idea: **paused = a solid play triangle; playing = the four spines, alive.** They are the *same four shapes* — the triangle is just the spines folded into four contiguous wedges — so any state morphs cleanly into any other, and everything collapses back to the triangle when stopped.
 
-## About the Design Files
-The files in this bundle are **design references created in HTML/CSS/JS** — prototypes showing the intended look and motion, **not production code to copy**. The target app is **Flutter**; recreate the mark there as a `CustomPainter` widget (sketch included below), wired into the existing player/theme system. Use the HTML only to confirm shapes, colours, timings, and feel.
+## Where the mark actually lives
+The mark is **shipped**. `saga/lib/shared/widgets/saga_mark.dart` (`AnimatedSagaMark` + `_SpineMorphPainter`) is the implementation, and the golden tests in `saga/test/saga_mark_golden_test.dart` pin its every state. Treat the Dart as the source of truth for behaviour and this document as the source of truth for the *geometry and intent* behind it — if they ever disagree, one of them is a bug worth naming.
+
+The HTML files alongside this README are **design references** — prototypes of the intended look and motion, not code to copy. Use them to confirm shapes, colours, timings, and feel.
 
 ## Fidelity
 **High-fidelity.** Colours, geometry, and motion timings are final. Reproduce the silhouette and the morph precisely; match the per-state timings within reason.
@@ -149,7 +151,11 @@ class SpinePainter extends CustomPainter {
   bool shouldRepaint(SpinePainter o) => o.t != t || o.levels != levels;
 }
 ```
-Host it in a `StatefulWidget` with one `AnimationController` for `t` (the morph) and a `Ticker`/stream that updates `levels` for the active state. For the **playing** RMS source: Android `Visualizer` API or iOS `AVAudioEngine` tap → vDSP RMS; or, for zero platform code, a synthetic envelope (phase-shifted sines gated on `isPlaying`) — for narration it reads just as well.
+Host it in a `StatefulWidget` with one `AnimationController` for `t` (the morph) and a `Ticker`/stream that updates `levels` for the active state.
+
+**The playing RMS source — what Saga actually does.** Not the Android `Visualizer` API: it requires the `RECORD_AUDIO` permission, and asking an audiobook player for microphone access to animate its own logo is not a trade worth making. Saga instead vendors `just_audio` at `saga/third_party/just_audio` and prepends a Media3 `TeeAudioProcessor` to the sink's processor chain, computing ~50 Hz RMS from the decoded PCM already passing through. No permission, no microphone. Audio offload must stay off or the decoded audio bypasses the software chain and there is nothing to tap. See `saga/lib/core/audio/audio_level.dart` and the maintenance notes in `saga/third_party/reapply-rms-patch.ps1`.
+
+The synthetic fallback (phase-shifted sines gated on `isPlaying`) still exists and ships as the **Gentle** motion mode — it is also what Reactive degrades to, silently, whenever the tap goes stale or emits a non-finite value.
 
 ---
 
@@ -169,7 +175,7 @@ Flat single-colour silhouette of the resting 4-spine pose — **no accent bar, n
 - `saga-mono-black.png` — 1024², black on transparent (light surfaces, docs)
 - `notification/saga-notification-{mdpi-24,hdpi-36,xhdpi-48,xxhdpi-72,xxxhdpi-96}.png` — white density set for the Android small icon (drawn at ~66% safe-zone)
 
-**Android rule:** the notification small icon MUST be white-on-transparent — the OS tints the silhouette and discards any colour. Ship the density set as the `ic_stat_saga` drawable. **iOS:** use `saga-mono-white.png` as a template image for Control Center / lock-screen player glyphs.
+**Android rule:** the notification small icon MUST be white-on-transparent — the OS tints the silhouette and discards any colour. Saga does **not** ship this density set as a hand-copied drawable; it points the notification at `drawable/ic_launcher_monochrome`, which `flutter_launcher_icons` generates from `saga/assets/icons/ic_launcher_mono.png` and Gradle therefore tracks. A drawable hand-added to `res/` between builds can be silently missed by the incremental resource merger and resolve to ID 0 at runtime, so prefer the generated path. The PNGs above stay here as the reference silhouette. **iOS:** use `saga-mono-white.png` as a template image for Control Center / lock-screen player glyphs.
 
 ## Files (HTML design references)
 - `Saga Animated Mark v3.html` — **canonical**: morph + all six states + per-state Flutter notes + the stripes rule

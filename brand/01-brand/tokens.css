@@ -7,6 +7,10 @@
      <html data-theme="ink">     dark
      <html data-theme="terra">   reverse / loud accent
 
+   The app has a fourth, Onyx (true-black OLED) — see
+   saga/lib/core/theme/saga_theme.dart. It is deliberately absent
+   here: no web surface has needed it. Add it if one does.
+
    You can also use the raw palette tokens directly
    (--saga-cream, --saga-ink, --saga-terracotta, …) — they are
    stable across themes.

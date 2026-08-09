@@ -2,6 +2,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../plex/models/plex_track.dart';
 
+import 'server_scope.dart';
+
 const _boxName = 'track_cache';
 
 /// Persisted track metadata per book, written when a book is downloaded (and
@@ -24,7 +26,7 @@ class TrackCacheStore {
   }
 
   static List<PlexTrack>? load(String bookRatingKey) {
-    final raw = _box.get(bookRatingKey);
+    final raw = _box.get(ServerScope.key(bookRatingKey));
     if (raw == null) return null;
     try {
       final tracks = (raw as List<dynamic>)
@@ -40,19 +42,21 @@ class TrackCacheStore {
   static Future<void> save(
       String bookRatingKey, List<PlexTrack> tracks) async {
     if (tracks.isEmpty) return;
-    await _box.put(bookRatingKey, tracks.map((t) => t.toMap()).toList());
+    await _box.put(
+        ServerScope.key(bookRatingKey), tracks.map((t) => t.toMap()).toList());
   }
 
   static Future<void> delete(String bookRatingKey) async {
-    await _box.delete(bookRatingKey);
+    await _box.delete(ServerScope.key(bookRatingKey));
   }
 
-  static bool has(String bookRatingKey) => _box.containsKey(bookRatingKey);
+  static bool has(String bookRatingKey) =>
+      _box.containsKey(ServerScope.key(bookRatingKey));
 
   /// Expected number of tracks for a downloaded book, or null when unknown
   /// (book downloaded before the cache existed and not yet backfilled).
   static int? trackCount(String bookRatingKey) {
-    final raw = _box.get(bookRatingKey);
+    final raw = _box.get(ServerScope.key(bookRatingKey));
     return raw == null ? null : (raw as List<dynamic>).length;
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -40,6 +42,9 @@ class _CollectionDetailScreenState
     final booksAsync = ref.read(customCollectionBooksProvider(
         '${widget.libraryKey}|${widget.collection.id}'));
     final books = booksAsync.valueOrNull ?? [];
+    // A fetch still in flight is not an empty collection — telling the owner
+    // of ten books to "add books first" because the server was slow is a lie.
+    final stillLoading = books.isEmpty && booksAsync.isLoading;
 
     final bottomPad = MediaQuery.of(context).padding.bottom;
     showSagaSheet(context, (ctx) => Padding(
@@ -53,7 +58,11 @@ class _CollectionDetailScreenState
             if (books.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text('Add books to this collection first.',
+                child: Text(
+                    stillLoading
+                        ? 'Still loading this collection — try again in a '
+                            'moment.'
+                        : 'Add books to this collection first.',
                     style: TextStyle(color: SagaColors.fgMuted)),
               )
             else
@@ -118,7 +127,8 @@ class _CollectionDetailScreenState
                           width: 90,
                           height: 90,
                           child: BookCoverImage(
-                              thumbPath: book.thumbPath, cacheWidth: 180),
+                              thumbPath: book.thumbPath,
+                              cacheWidth: kCoverCacheWidthThumb),
                         ),
                       ),
                     );
@@ -134,6 +144,9 @@ class _CollectionDetailScreenState
 
   @override
   Widget build(BuildContext context) {
+    // Pushed on a tab stack — rebuilds come from nowhere else on a theme
+    // switch, so watch it here.
+    ref.watch(sagaThemeVariantProvider);
     final booksAsync = ref.watch(customCollectionBooksProvider(
         '${widget.libraryKey}|${widget.collection.id}'));
 
@@ -225,8 +238,10 @@ class _CollectionDetailScreenState
                                 bottom: MediaQuery.of(context).padding.bottom +
                                     160),
                             itemCount: books.length,
-                            itemBuilder: (context, i) =>
-                                _BookTile(book: books[i], collectionId: widget.collection.id, ref: ref, total: rawBooks.length),
+                            itemBuilder: (context, i) => _BookTile(
+                                book: books[i],
+                                collectionId: widget.collection.id,
+                                total: rawBooks.length),
                           )
                         : ReorderableListView.builder(
                             buildDefaultDragHandles: false,
@@ -240,7 +255,6 @@ class _CollectionDetailScreenState
                                 key: ValueKey(book.ratingKey),
                                 book: book,
                                 collectionId: widget.collection.id,
-                                ref: ref,
                                 index: i,
                                 total: rawBooks.length,
                                 trailing: ReorderableDragStartListener(
@@ -276,35 +290,52 @@ class _CollectionDetailScreenState
   }
 }
 
-class _BookTile extends StatelessWidget {
+class _BookTile extends ConsumerWidget {
   final PlexBook book;
   final String collectionId;
-  final WidgetRef ref;
   final Widget? trailing;
   final int? index;
   final int? total;
 
+  // A ConsumerWidget with its own ref, not a WidgetRef passed down from the
+  // parent state: the old field outlived the parent across the await in
+  // remove, so a quick back-swipe after a removal threw "cannot use ref
+  // after the widget was disposed" as an unhandled async error.
   const _BookTile({
     super.key,
     required this.book,
     required this.collectionId,
-    required this.ref,
     this.trailing,
     this.index,
     this.total,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cover = ClipRRect(
       borderRadius: BorderRadius.circular(4),
       child: SizedBox(
         width: 40,
         height: 40,
-        child: BookCoverImage(thumbPath: book.thumbPath, cacheWidth: 80),
+        child: BookCoverImage(
+            thumbPath: book.thumbPath, cacheWidth: kCoverCacheWidthThumb),
       ),
     );
-    return ListTile(
+    // Swipe-to-remove in both branches (reorder and search) — the drag handle
+    // owns the trailing slot in reorder mode, so without the swipe, removing
+    // a book was only reachable by first typing something into the search
+    // box. Same gesture, same look as deleting a bookmark in All Bookmarks.
+    return Dismissible(
+      key: Key('remove_${book.ratingKey}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        color: Colors.redAccent,
+        child: const Icon(Icons.delete_outline, color: Colors.white),
+      ),
+      onDismissed: (_) => _removeBook(ref),
+      child: ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: index != null
           ? Row(
@@ -345,18 +376,22 @@ class _BookTile extends StatelessWidget {
       trailing: trailing ??
           IconButton(
             icon: Icon(Icons.remove_circle_outline, color: SagaColors.fgSubtle),
-            onPressed: () => _removeBook(context),
+            onPressed: () => _removeBook(ref),
           ),
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => BookDetailScreen(book: book)),
       ),
+      ),
     );
   }
 
-  Future<void> _removeBook(BuildContext context) async {
-    await CustomCollectionStore.removeBook(collectionId, book.ratingKey);
+  void _removeBook(WidgetRef ref) {
+    // No await before the ref use: the Hive put lands in the in-memory box
+    // synchronously (the future only confirms the disk flush), and this runs
+    // from a dismiss callback on a widget already leaving the tree — an
+    // awaited version used ref after dispose.
+    unawaited(CustomCollectionStore.removeBook(collectionId, book.ratingKey));
     ref.read(customCollectionRevisionProvider.notifier).state++;
   }
-
 }

@@ -2,16 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/book_progress.dart';
+import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/providers.dart';
 import '../../core/stats/streak.dart';
 import '../../core/storage/settings_store.dart';
+import '../../shared/widgets/book_card.dart';
 import '../../shared/widgets/book_cover_image.dart';
 import '../../shared/widgets/saga_error_view.dart';
+import '../../shared/widgets/saga_toast.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/chapter_store.dart';
-import '../../core/storage/completed_books_store.dart';
 import '../../core/storage/custom_collection_store.dart';
 import '../../core/storage/listening_history_store.dart';
 import '../../core/storage/want_to_read_store.dart';
@@ -22,64 +24,14 @@ import '../../shared/widgets/saga_mark.dart'
     show SagaWordmark, AnimatedSagaMark, SagaMarkState;
 import '../auth/server_selection_screen.dart';
 import '../collections/collection_detail_screen.dart';
-import '../library/book_detail_screen.dart';
+import '../../shared/widgets/week_bars.dart';
 import '../player/book_launch.dart';
+import '../player/open_player.dart';
 import '../player/player_provider.dart';
 import '../player/player_screen.dart';
 import '../player/track_position_math.dart';
 import 'all_bookmarks_screen.dart';
 import 'history_screen.dart';
-
-class BookProgressOverlay extends ConsumerWidget {
-  final PlexBook book;
-  const BookProgressOverlay({super.key, required this.book});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(bookmarkRevisionProvider);
-    ref.watch(completionRevisionProvider);
-
-    if (CompletedBooksStore.isCompleted(book.ratingKey)) {
-      return Positioned(
-        top: 6,
-        right: 6,
-        child: Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            color: SagaColors.accent,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(Icons.check, color: SagaColors.accentFg, size: 13),
-        ),
-      );
-    }
-
-    final pos = BookmarkStore.load(book.ratingKey);
-    if (pos == null || pos.absolutePositionMs <= 0) return const SizedBox.shrink();
-
-    // A started book always shows something: a floor of 4% when the fraction is
-    // known so the sliver is visible, and 8% when the length isn't known at all
-    // — "started, can't say how far" rather than an empty bar.
-    final fraction = bookProgressFraction(book, pos);
-    final progress = fraction?.clamp(0.04, 1.0) ?? 0.08;
-
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
-        child: LinearProgressIndicator(
-          value: progress,
-          backgroundColor: Colors.black45,
-          valueColor: AlwaysStoppedAnimation<Color>(SagaColors.accent),
-          minHeight: 5,
-        ),
-      ),
-    );
-  }
-}
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -252,14 +204,14 @@ class _Section extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 170,
+          height: kBookStripHeight,
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             scrollDirection: Axis.horizontal,
             itemCount: books.length,
             itemBuilder: (context, index) => Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: _BookTile(book: books[index], width: 120),
+              child: BookCard(book: books[index], width: kBookStripCoverWidth),
             ),
           ),
         ),
@@ -290,7 +242,7 @@ class _SkeletonSection extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 170,
+          height: kBookStripHeight,
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             scrollDirection: Axis.horizontal,
@@ -313,7 +265,7 @@ class _SkeletonTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 120,
+      width: kBookStripCoverWidth,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -349,91 +301,6 @@ class _SkeletonTile extends StatelessWidget {
     );
   }
 }
-
-class _BookTile extends ConsumerWidget {
-  final PlexBook book;
-  final double? width;
-
-  const _BookTile({required this.book, this.width});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Watched for reactivity; the badge itself is store-derived so it can be
-    // honest about completeness (all tracks, not just the first).
-    ref.watch(downloadNotifierProvider);
-    final hasDownload = isBookFullyDownloaded(book.ratingKey);
-
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => BookDetailScreen(book: book)),
-      ),
-      child: SizedBox(
-        width: width,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AspectRatio(
-              aspectRatio: 1.0,
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: BookCoverImage(thumbPath: book.thumbPath),
-                  ),
-                  BookProgressOverlay(book: book),
-                  if (hasDownload)
-                    Positioned(
-                      bottom: 6,
-                      right: 6,
-                      child: Container(
-                        width: 18,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          color: SagaColors.bg.withValues(alpha: 0.85),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(Icons.download_done_rounded,
-                            color: SagaColors.accent, size: 12),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 5),
-            Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    book.title,
-                    style: TextStyle(
-                      color: SagaColors.fg,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (book.authorName != null)
-                    Text(
-                      book.authorName!,
-                      style: TextStyle(color: SagaColors.fgSubtle, fontSize: 10),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-}
-
 
 class _NoServerView extends StatelessWidget {
   final VoidCallback onSelectServer;
@@ -556,36 +423,17 @@ class _Sparkline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxMs = weekMs.fold(0, (a, b) => b > a ? b : a);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: List.generate(7, (i) {
-        final isToday = weekDays[i] == todayClean;
-        final isFuture = weekDays[i].isAfter(todayClean);
-        final fraction = maxMs > 0 ? weekMs[i] / maxMs : 0.0;
-        final h = weekMs[i] > 0 ? (28.0 * fraction).clamp(3.0, 28.0) : 3.0;
-        return Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 1),
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: Container(
-                height: h,
-                decoration: BoxDecoration(
-                  color: isFuture
-                      ? SagaColors.heatEmpty
-                      : isToday
-                          ? SagaColors.accent
-                          : weekMs[i] > 0
-                              ? SagaColors.accent.withValues(alpha: 0.42)
-                              : SagaColors.heatEmpty,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-          ),
-        );
-      }),
+    // Shared chart, small palette: at 28 px the full accent reads fine.
+    return WeekBars(
+      weekMs: weekMs,
+      weekDays: weekDays,
+      todayClean: todayClean,
+      maxBarHeight: 28,
+      minBarHeight: 3,
+      barPadding: 1,
+      cornerRadius: 2,
+      todayColor: SagaColors.accent,
+      activeColor: SagaColors.accent.withValues(alpha: 0.42),
     );
   }
 }
@@ -611,14 +459,14 @@ class _ContinueListeningSection extends StatelessWidget {
           const SizedBox(height: 18),
           const _SectionTitle('Also in progress'),
           SizedBox(
-            height: 170,
+            height: kBookStripHeight,
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               scrollDirection: Axis.horizontal,
               itemCount: rest.length,
               itemBuilder: (context, index) => Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: _BookTile(book: rest[index], width: 120),
+                child: BookCard(book: rest[index], width: kBookStripCoverWidth),
               ),
             ),
           ),
@@ -705,11 +553,7 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
             // ── Tap the body to open the player ──
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () {
-                Navigator.of(context, rootNavigator: true)
-                    .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
-                if (!isNowPlaying) _loadOnly();
-              },
+              onTap: _openPlayerView,
               child: SizedBox(
                 height: 152,
                 child: Row(
@@ -720,7 +564,8 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
                       width: 152,
                       height: 152,
                       child: BookCoverImage(
-                          thumbPath: widget.book.thumbPath, cacheWidth: 320),
+                          thumbPath: widget.book.thumbPath,
+                          cacheWidth: kCoverCacheWidthCard),
                     ),
                     Expanded(
                       child: Padding(
@@ -862,21 +707,27 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
     return 'Ch. ${idx + 1} · ${tracks[idx].title}';
   }
 
-  Future<void> _loadOnly() async {
+  /// Tapping the card body opens the player. When the card's book is already
+  /// the loaded one (playing or paused) that's a plain push; otherwise the
+  /// book is loaded without starting audio, through the shared helper — the
+  /// silent inline version left a blank "Now Playing" with no title and no
+  /// error when the load failed, while the footer button right below
+  /// explained itself.
+  Future<void> _openPlayerView() async {
     final service = ref.read(playerServiceProvider);
-    if (service.currentBookRatingKey == widget.book.ratingKey) return;
-    try {
-      final tracks =
-          await ref.read(tracksProvider(widget.book.ratingKey).future);
-      if (!mounted) return;
-      await startBook(
-        service: service,
-        bookRatingKey: widget.book.ratingKey,
-        tracks: tracks,
-        from: const BookStartPoint.resume(),
-        playback: LaunchPlayback.none,
-      );
-    } catch (_) {}
+    if (service.currentBookRatingKey == widget.book.ratingKey) {
+      Navigator.of(context, rootNavigator: true)
+          .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
+      return;
+    }
+    await openPlayerAndStart(
+      context: context,
+      service: service,
+      bookRatingKey: widget.book.ratingKey,
+      loadTracks: () => ref.read(tracksProvider(widget.book.ratingKey).future),
+      from: const BookStartPoint.resume(),
+      playback: LaunchPlayback.none,
+    );
   }
 
   Future<void> _resume() async {
@@ -898,7 +749,15 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
         tracks: tracks,
         from: const BookStartPoint.resume(),
       );
-    } catch (_) {
+    } catch (e) {
+      // "Loading…" quietly reverting to "Resume listening" reads as a dead
+      // button — say what happened instead.
+      AppLog.log('playback', 'home resume failed: $e');
+      if (mounted) {
+        showSagaToast(context,
+            'Couldn\'t load this book — is the server reachable?',
+            isError: true);
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1022,14 +881,14 @@ class _SeriesQueueRow extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 170,
+          height: kBookStripHeight,
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             scrollDirection: Axis.horizontal,
             itemCount: books.length,
             itemBuilder: (context, i) => Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: _BookTile(book: books[i], width: 120),
+              child: BookCard(book: books[i], width: kBookStripCoverWidth),
             ),
           ),
         ),

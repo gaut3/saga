@@ -7,8 +7,23 @@
         <domain includeSubdomains="true">app.plex.tv</domain>
     </domain-config>
 
-    <!-- Local Plex servers connected by IP address may use HTTP.
-         To require HTTPS everywhere (including local servers), change the line below to false. -->
+    <!-- Update check (Settings > About, off by default). HTTPS only. -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">api.github.com</domain>
+    </domain-config>
+
+    <!-- Local Plex servers connected by IP address may use HTTP: a self-hosted
+         server on a LAN commonly has no certificate, and refusing cleartext
+         outright would lock those listeners out of their own library.
+
+         The token still travels on those connections, so the defence is in
+         PlexServerDiscovery.findReachableUri, which prefers an HTTPS connection
+         over a plaintext one whenever both answer.
+
+         Nothing in the app speaks cleartext to localhost any more: just_audio's
+         header proxy (a cleartext HTTP server on 127.0.0.1) is disabled in
+         AudioPlayerService, because Android applies the auth header natively.
+         If that flag is ever turned back on, playback will fail here first. -->
     <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system"/>

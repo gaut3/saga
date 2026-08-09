@@ -2,6 +2,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../audio/m4b_chapter_reader.dart';
 
+import 'server_scope.dart';
+
 const _boxName = 'chapters';
 
 class ChapterStore {
@@ -50,7 +52,7 @@ class ChapterStore {
   static List<M4bChapter>? load(String trackRatingKey) {
     if (_decoded.containsKey(trackRatingKey)) return _decoded[trackRatingKey];
 
-    final raw = _box.get(trackRatingKey);
+    final raw = _box.get(ServerScope.key(trackRatingKey));
     List<M4bChapter>? result;
     if (raw != null) {
       try {
@@ -72,7 +74,7 @@ class ChapterStore {
   static Future<void> save(
       String trackRatingKey, List<M4bChapter> chapters) async {
     await _box.put(
-      trackRatingKey,
+      ServerScope.key(trackRatingKey),
       chapters
           .map((c) => {'title': c.title, 'startMs': c.start.inMilliseconds})
           .toList(),
@@ -83,5 +85,11 @@ class ChapterStore {
     _remember(trackRatingKey, List<M4bChapter>.unmodifiable(chapters));
   }
 
-  static bool has(String trackRatingKey) => _box.containsKey(trackRatingKey);
+  static bool has(String trackRatingKey) =>
+      _box.containsKey(ServerScope.key(trackRatingKey));
+
+  /// Drops decoded entries. Called by [ServerScope.configure] on a server
+  /// switch: the map is keyed by bare track key, so a stale entry would serve
+  /// the previous server's chapters for the new server's same-numbered track.
+  static void clearDecodedCache() => _decoded.clear();
 }

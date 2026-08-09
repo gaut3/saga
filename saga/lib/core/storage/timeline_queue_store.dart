@@ -1,5 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
+import 'server_scope.dart';
+
 /// A position update that failed to reach the Plex server and is waiting to be
 /// retried. One pending entry per book (last-write-wins) — there's no point
 /// replaying intermediate positions, only the latest matters.
@@ -59,22 +61,30 @@ class TimelineQueueStore {
 
   /// Stores [pending] for [bookRatingKey], overwriting any earlier pending
   /// update for the same book (last-write-wins).
+  ///
+  /// Keys go through [ServerScope]: the queue fills precisely when a server is
+  /// unreachable, which is precisely when a listener switches to their other
+  /// server — and a flush must never replay server A's positions against
+  /// server B's identically-numbered tracks.
   static Future<void> enqueue(
           String bookRatingKey, PendingTimeline pending) =>
-      _box.put(bookRatingKey, pending.toMap());
+      _box.put(ServerScope.key(bookRatingKey), pending.toMap());
 
   static Future<void> remove(String bookRatingKey) =>
-      _box.delete(bookRatingKey);
+      _box.delete(ServerScope.key(bookRatingKey));
 
   static bool get isEmpty => _box.isEmpty;
 
-  /// All pending updates, keyed by bookRatingKey.
+  /// The current server's pending updates, keyed by bookRatingKey. Another
+  /// server's entries stay queued until that server is selected again.
   static Map<String, PendingTimeline> all() {
     final result = <String, PendingTimeline>{};
     for (final k in _box.keys) {
       if (k is! String) continue;
+      final bookKey = ServerScope.ratingKeyOf(k);
+      if (bookKey == null) continue;
       final v = _box.get(k);
-      if (v is Map) result[k] = PendingTimeline.fromMap(v);
+      if (v is Map) result[bookKey] = PendingTimeline.fromMap(v);
     }
     return result;
   }

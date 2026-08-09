@@ -1,31 +1,18 @@
-# Handoff: Saga brand identity
+# Saga brand foundations
 
-Audiobook player for Plex — visual identity foundations for implementation in the app.
-
----
-
-## What's in this package
+Colour, type, spacing and theming for the Saga audiobook player. The system is
+**shipped** — `saga/lib/core/theme/saga_theme.dart` (`SagaColors`, `SagaThemeData`)
+is where these values live in the app, and it is the authority when the two
+disagree. This document explains the intent behind them.
 
 ```
 01-brand/
-├── README.md                    ← you are here
-├── brand-reference.html         ← open in a browser; visual source of truth
-├── tokens.css                   ← drop-in CSS custom properties
-└── saga-mark-animations.css     ← animated playing/breathing/loading states (CSS only)
+├── README.md      ← you are here
+└── tokens.css     ← the same palettes as CSS custom properties, for web surfaces
 ```
 
-For the **animated 4-spine mark** geometry, states, and Flutter painter — see `../02-mark/`.
-
----
-
-## About these files
-
-**These files are design references**, not production code to ship as-is. The HTML is a static mock of the intended look — your job is to recreate the same visual system in the target codebase's existing environment using its established conventions.
-
-The implementation primitives you'll actually want:
-
-- **`tokens.css`** — the implementation source of truth. All colors, type, spacing, radii, and theme switches. Use the variables; don't hardcode hex values in components.
-- **`assets/**/*.svg`** — static SVGs for places where you can't render a component (favicons, OG images, README badges, marketing pages, app icons). Located in `../assets/`.
+For the **animated 4-spine mark** geometry, states, and painter spec — see `../02-mark/`.
+For static SVG exports (favicons, OG images, README badges, app icons) — see `../assets/`.
 
 ---
 
@@ -35,12 +22,15 @@ The implementation primitives you'll actually want:
 1. **The mark** — four book-spine rectangles that double as the play/pause control. See `../02-mark/` for the full animated spec.
 2. **The wordmark** — the word "saga" in Manrope 600, all lowercase, with tight negative tracking (`-0.025em`), followed by a small play-triangle in the accent color.
 
-**Three palettes** — all three are supported and should be selectable:
+**Four palettes**, all selectable in Settings:
 - **Ink** — dark mode (default). Page = `#1E1410`, ink = `#F4EAD8` cream, accent = `#E0A050` amber.
 - **Cream** — light. Page = `#F4EAD8`, ink = `#1E1410`, accent = `#C25A3A` terracotta.
 - **Terra** — reverse / loud. Page = `#C25A3A`, ink = `#F4EAD8` cream, accent = `#1E1410`.
+- **Onyx** — true-black OLED. Page = `#000000` (those pixels are physically off), surfaces warm near-black `#0C0908` / `#16100D`, ink = `#E4D9C6` softened so nothing blooms in the dark, accent = `#E0A050` amber.
 
-Theme switching should be driven by the `data-theme` attribute on the `<html>` element (web) or the equivalent root-level toggle on native.
+In the app the variant is a `SagaThemeVariant` enum persisted **by index**, so `onyx`
+must stay last-appended — adding a theme in the middle silently repaints everyone's
+app. On web, theme switching is driven by the `data-theme` attribute on `<html>`.
 
 ---
 
@@ -66,20 +56,22 @@ Semantic tokens (flip per theme — always prefer these in components):
 
 ### Typography
 
-- **Display & UI:** Manrope, weights 400 / 500 / 600 / 700.
-- **Mono labels:** JetBrains Mono, weights 400 / 500.
+**Manrope, weights 400 / 500 / 600 / 700** — one family, everywhere.
 
-```html
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-```
+| Use                       | Family  | Weight  | Tracking |
+|---------------------------|---------|---------|----------|
+| Wordmark                  | Manrope | 600     | -0.025em |
+| Display / large headings  | Manrope | 700     | -0.025em |
+| H1 / H2                   | Manrope | 700     | -0.015em |
+| Body                      | Manrope | 400/500 | -0.01em  |
 
-| Use                       | Family            | Weight | Tracking     |
-|---------------------------|-------------------|--------|--------------|
-| Wordmark                  | Manrope           | 600    | -0.025em     |
-| Display / large headings  | Manrope           | 700    | -0.025em     |
-| H1 / H2                   | Manrope           | 700    | -0.015em     |
-| Body                      | Manrope           | 400/500| -0.01em      |
-| Mono caption / metadata   | JetBrains Mono    | 400    | 0.12em UPPER |
+**The app bundles the font; it does not fetch it.** `saga/assets/fonts/Manrope-VariableFont_wght.ttf`
+is declared in `pubspec.yaml` and loaded locally — Saga makes no request to Google Fonts
+or any other third party, and the privacy claims in the README depend on that staying true.
+Web surfaces may link the Google Fonts CDN (the landing page does); the app may not.
+
+An earlier draft of this system specified JetBrains Mono for caption and metadata labels.
+Nothing uses it — not the app, not the landing page — so it isn't part of the system.
 
 ### Radii & spacing
 
@@ -118,7 +110,7 @@ The triangle is **always** present in the wordmark. Drop it only when space requ
 
 **Don't:**
 - Don't rotate the mark.
-- Don't recolor individual spines outside the three sanctioned palettes.
+- Don't recolor individual spines outside the sanctioned palettes.
 - Don't change the triangle to any other shape.
 - Don't capitalize "saga".
 - Don't apply drop shadows to the wordmark or mark.
@@ -135,9 +127,16 @@ The on-background SVG variants (`../assets/svg/mark/saga-mark-{theme}-bg.svg`) a
 
 ---
 
-## Theming pattern (recommended)
+## Theming pattern
 
-### Web (CSS)
+### In the app (Flutter)
+
+`SagaColors` exposes the active `SagaThemeData`; widgets read `SagaColors.bg`, `.fg`,
+`.accent` and so on. Anything that must repaint on a theme change has to
+`ref.watch(sagaThemeVariantProvider)` **inside its own `build`** — a `const` widget
+won't get there on a parent rebuild.
+
+### On web (CSS)
 
 ```html
 <html data-theme="ink"> <!-- "ink" | "cream" | "terra" -->
@@ -151,17 +150,18 @@ The on-background SVG variants (`../assets/svg/mark/saga-mark-{theme}-bg.svg`) a
 document.documentElement.dataset.theme = "cream";
 ```
 
-### React Native / SwiftUI / etc.
-
-Mirror the same three semantic palettes as a `ThemeProvider` context with the same token names. The mark component should accept a `theme` prop ("ink" | "cream" | "terra") for places where it needs to differ from the surrounding surface.
+`tokens.css` carries the three original palettes. Onyx is app-only — no web surface
+has needed a true-black variant yet.
 
 ---
 
 ## Accessibility
 
-- All three palette pairings meet WCAG AA for normal text (≥ 4.5:1) when using `--saga-fg` on `--saga-bg`:
+- Contrast for `--saga-fg` on `--saga-bg`:
   - Cream `#F4EAD8` ↔ Ink `#1E1410` — **17.5 : 1**
   - Terracotta `#C25A3A` ↔ Cream `#F4EAD8` — **4.7 : 1** (AA normal)
+  - Onyx `#000000` ↔ `#E4D9C6` — comfortably AA; the foreground is deliberately
+    *below* pure cream so it doesn't bloom against true black during night listening.
 - Accent colors should **not** be used as primary text on their default backgrounds.
 - Terra theme: secondary text must sit on `--saga-surface` (`#9E4128`), not `--saga-bg`, to clear AA.
 - The mark has an `aria-label="Saga"` when rendered as a meaningful element, and `role="presentation"` when decorative.

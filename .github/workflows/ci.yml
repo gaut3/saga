@@ -7,6 +7,11 @@ on:
   pull_request:
     paths: ['saga/**', '.github/workflows/ci.yml']
 
+# CI only reads the tree. Stated explicitly so a fork PR can never inherit a
+# writable default token — release.yml is the only workflow that needs write.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

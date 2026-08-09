@@ -32,7 +32,11 @@ class PlexAuth {
       queryParameters: {
         'strong': true,
         'X-Plex-Client-Identifier': _client.clientId,
-        'X-Plex-Product': 'AudiobookPlex',
+        // The name this install signs in under — it is what the device list in
+        // a Plex account shows, and the privacy policy says that entry reads
+        // "Saga". ("AudiobookPlex" was the project's working title; existing
+        // installs re-using the same client id keep their existing entry.)
+        'X-Plex-Product': 'Saga',
       },
       options: Options(headers: {'Accept': 'application/json'}),
     );
@@ -49,7 +53,7 @@ class PlexAuth {
       'https://app.plex.tv/auth/#!'
       '?clientID=${_client.clientId}'
       '&code=${pin.code}'
-      '&context%5Bdevice%5D%5Bproduct%5D=AudiobookPlex',
+      '&context%5Bdevice%5D%5Bproduct%5D=Saga',
     );
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
@@ -63,13 +67,18 @@ class PlexAuth {
     void Function()? onTick,
   }) async {
     final deadline = DateTime.now().add(timeout);
+    // One client for the whole poll rather than one per tick: at a 2 s
+    // interval across a 5 minute window that was up to 150 of them, each with
+    // its own connection pool left to fall idle in its own time — during
+    // sign-in, the one moment the listener is sat watching a spinner.
+    final dio = Dio(_dioOptions);
 
     while (DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(interval);
       onTick?.call();
 
       try {
-        final response = await Dio(_dioOptions).get<Map<String, dynamic>>(
+        final response = await dio.get<Map<String, dynamic>>(
           '$_plexTvBase/api/v2/pins/${pin.id}',
           queryParameters: {
             'X-Plex-Client-Identifier': _client.clientId,
@@ -80,6 +89,7 @@ class PlexAuth {
         final authToken = response.data?['authToken'] as String?;
         if (authToken != null && authToken.isNotEmpty) {
           await _client.saveToken(authToken);
+          dio.close();
           return authToken;
         }
       } on DioException {
@@ -87,6 +97,7 @@ class PlexAuth {
       }
     }
 
+    dio.close();
     return null;
   }
 }

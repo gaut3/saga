@@ -110,16 +110,65 @@ class AppLog {
   static String _redact(String input) {
     var out = input.replaceAll(
         RegExp(r'X-Plex-Token=[^&\s"]+'), 'X-Plex-Token=••••');
+    // The token as plex.tv itself spells it. A malformed auth response ends up
+    // quoted inside a FormatException (which includes the source text near the
+    // error), and that carries `"authToken":"…"` — a shape the query-parameter
+    // rule above doesn't know.
+    out = out.replaceAllMapped(
+        RegExp(r'''(authToken["']?\s*[=:]\s*["']?)([^"'\s,}]+)''',
+            caseSensitive: false),
+        (m) => '${m[1]}••••');
     // Whole plex.direct name: <ip-with-dashes>.<machine id>.plex.direct
     out = out.replaceAll(
       RegExp(r'[\w-]+\.[\w-]+\.plex\.direct', caseSensitive: false),
       '••••••••.plex.direct',
     );
+
+    // Hosts the socket layer names on its own, in the three shapes Dart
+    // writes:
+    //   SocketException: Failed host lookup: 'plex.example.com' (OS Error: …)
+    //   SocketException: Connection refused (…), address = plex.example.com, …
+    //   SocketException: HTTP connection timed out after 0:00:10.000000,
+    //     host: plex.example.com, port: 32400
+    // The IPv4 rule below only ever caught the first kind of address. Someone
+    // running their server on a custom domain or reachable over IPv6 was still
+    // pasting their own hostname into a public issue — the same gap as the bare
+    // plex.direct name, one shape further out. The third shape comes from the
+    // SDK's connection-timeout path (dio sets `HttpClient.connectionTimeout`
+    // from `connectTimeout`), which quotes the host after `host:` — the word
+    // `address` never appears in it.
+    //
+    // Both rules leave alone anything a narrower rule above has already
+    // bulleted, so `••••••••.plex.direct` keeps saying *what kind* of host
+    // failed rather than collapsing to an anonymous blob.
+    String maskUnlessHandled(Match m) {
+      if (m[2]!.contains('•')) return m[0]!;
+      // The quoted form captures its closing quote; the bare form has no
+      // third group. Asking for one that isn't there throws, and log() catches
+      // everything — which turns a broken rule into a silently missing entry.
+      final tail = m.groupCount >= 3 ? m[3]! : '';
+      return '${m[1]}••••••••$tail';
+    }
+
     out = out.replaceAllMapped(
-      RegExp(r'(https?://)([^/\s:"]+)'),
+        RegExp("(host lookup:\\s*')([^']*)(')", caseSensitive: false),
+        maskUnlessHandled);
+    out = out.replaceAllMapped(
+        RegExp(r'(\b(?:address|host)\s*[=:]\s*)([^\s,)]+)',
+            caseSensitive: false),
+        maskUnlessHandled);
+
+    // Scheme-prefixed host, including the bracketed IPv6 form — `[::1]:32400`
+    // stopped the old pattern at the first colon and left the address showing.
+    out = out.replaceAllMapped(
+      RegExp(r'(https?://)(\[[^\]\s]+\]|[^/\s:"]+)'),
       (m) => '${m[1]}••••••••',
     );
-    // Bare addresses: dotted IPv4, and the dash-encoded form Plex uses.
+    // Bare addresses: bracketed IPv6, dotted IPv4, and the dash-encoded form
+    // Plex uses. The IPv6 rule requires a colon inside the brackets, so it
+    // can't swallow the `[tag]` every log line starts with.
+    out = out.replaceAll(
+        RegExp(r'\[[0-9a-fA-F:]*:[0-9a-fA-F:]*\]'), '••••••••');
     out = out.replaceAll(
         RegExp(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'), '••••••••');
     out = out.replaceAll(

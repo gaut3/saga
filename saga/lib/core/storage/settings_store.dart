@@ -2,20 +2,60 @@ import 'dart:convert';
 
 import 'package:hive_flutter/hive_flutter.dart';
 
+import 'server_scope.dart';
+import 'user_box.dart';
+
 const _boxName = 'settings';
 
 class SettingsStore {
   static late Box _box;
 
+  // A user-data box: it holds `primaryServerId`, which every scoped store's
+  // keys are resolved against — wiping it on a transient open failure would
+  // re-map a second-server user's entire library.
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
+    _box = await openUserBox(_boxName, encKey);
   }
+
+  /// The first Plex server this install ever selected, by machine identifier.
+  ///
+  /// [ServerScope] files that server's books under bare rating keys and every
+  /// other server's under prefixed ones, which is what lets scoping arrive
+  /// without rewriting a single existing record. Written once and then left
+  /// alone — changing it would strand the data it identifies.
+  static String? get primaryServerId =>
+      _box.get('primaryServerId') as String?;
+
+  static Future<void> setPrimaryServerId(String id) =>
+      _box.put('primaryServerId', id);
+
+  /// The most recently active server, by machine identifier.
+  ///
+  /// Where [primaryServerId] is written once and never changes (the keys filed
+  /// under it depend on that), this one follows every switch. It is what a
+  /// signed-out session scopes to, so the downloads still on the device keep
+  /// resolving to the records they were made under — falling back to the
+  /// *primary* instead made a secondary-server user's library invisible the
+  /// moment they signed out.
+  static String? get lastServerId => _box.get('lastServerId') as String?;
+
+  static Future<void> setLastServerId(String id) =>
+      _box.put('lastServerId', id);
+
+  /// Whether the one-time purge of token-bearing image cache entries has run.
+  ///
+  /// Covers used to be fetched with the Plex token in the query string, and
+  /// `CachedNetworkImage` keys its on-disk database by URL — so every cover a
+  /// listener had ever viewed left a copy of a still-valid, account-wide token
+  /// in plaintext, which signing out did not touch. Redacting new writes is not
+  /// enough when the old ones are still sitting there; they have to be cleared
+  /// on the way past, the same as the diagnostics log is redacted on the way
+  /// out. One flag, one purge, one re-download of covers.
+  static bool get artworkTokenPurgeDone =>
+      _box.get('artworkTokenPurgeDone', defaultValue: false) as bool;
+
+  static Future<void> setArtworkTokenPurgeDone() =>
+      _box.put('artworkTokenPurgeDone', true);
 
   // Legacy single skip interval, superseded by the independent forward/back
   // values below. Read-only on purpose: it exists to seed those two for users
@@ -112,12 +152,16 @@ class SettingsStore {
   static Future<void> setThemeIndex(int index) =>
       _box.put('themeIndex', index);
 
+  // Per-book, so the key goes through ServerScope like every per-book store —
+  // otherwise a second server's book 12345 plays at (and overwrites) the first
+  // server's saved speed.
   static double getBookSpeed(String bookRatingKey) =>
-      (_box.get('speed_$bookRatingKey', defaultValue: defaultSpeed) as num)
+      (_box.get('speed_${ServerScope.key(bookRatingKey)}',
+              defaultValue: defaultSpeed) as num)
           .toDouble();
 
   static Future<void> setBookSpeed(String bookRatingKey, double speed) =>
-      _box.put('speed_$bookRatingKey', speed);
+      _box.put('speed_${ServerScope.key(bookRatingKey)}', speed);
 
   static String? get selectedLibraryKey =>
       _box.get('selectedLibraryKey') as String?;

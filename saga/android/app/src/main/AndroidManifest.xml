@@ -60,6 +60,14 @@
             android:name="flutterEmbedding"
             android:value="2"/>
 
+        <!-- Android Auto: declares Saga as a media app. The service's
+             MediaBrowserService intent-filter above is how a head unit finds
+             the browse tree; this is what makes it offer the app in the first
+             place. -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc"/>
+
         <!-- Google Cast SDK options provider -->
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"

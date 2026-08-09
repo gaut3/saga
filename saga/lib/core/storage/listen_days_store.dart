@@ -1,5 +1,8 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
+import 'server_scope.dart';
+import 'user_box.dart';
+
 /// Durable, per-read-through record of which calendar days a book was listened
 /// to. Unlike the 200-event [PlaybackLogStore] it's never purged, and it's
 /// **cycle-aware**: a relisten starts a fresh cycle, so its day-count / start
@@ -11,13 +14,7 @@ class ListenDaysStore {
   static const _boxName = 'listen_days';
 
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
+    _box = await openUserBox(_boxName, encKey);
   }
 
   static String _dk(DateTime d) =>
@@ -41,7 +38,7 @@ class ListenDaysStore {
   static void markListenedToday(String bookRatingKey,
       {DateTime? lastCompletedAt}) {
     final today = _dk(DateTime.now());
-    final raw = _box.get(bookRatingKey) as Map?;
+    final raw = _box.get(ServerScope.key(bookRatingKey)) as Map?;
     final start = raw?['s'] as String?;
     final days = (raw?['d'] as List?)?.cast<String>().toList();
 
@@ -56,24 +53,24 @@ class ListenDaysStore {
     }
 
     if (startNew) {
-      _box.put(bookRatingKey, {'s': today, 'd': [today]});
+      _box.put(ServerScope.key(bookRatingKey), {'s': today, 'd': [today]});
       return;
     }
     if (!days!.contains(today)) {
       days.add(today);
-      _box.put(bookRatingKey, {'s': start, 'd': days});
+      _box.put(ServerScope.key(bookRatingKey), {'s': start, 'd': days});
     }
   }
 
   /// Distinct days listened in the current read-through.
   static int daysListened(String bookRatingKey) {
-    final raw = _box.get(bookRatingKey) as Map?;
+    final raw = _box.get(ServerScope.key(bookRatingKey)) as Map?;
     return (raw?['d'] as List?)?.length ?? 0;
   }
 
   /// First day of the current read-through.
   static DateTime? startDate(String bookRatingKey) {
-    final raw = _box.get(bookRatingKey) as Map?;
+    final raw = _box.get(ServerScope.key(bookRatingKey)) as Map?;
     final s = raw?['s'] as String?;
     return s == null ? null : _parse(s);
   }
@@ -84,12 +81,15 @@ class ListenDaysStore {
   static Map<String, dynamic> exportAll() {
     final out = <String, dynamic>{};
     for (final key in _box.keys) {
+      // Only this server's books — see server_scope.dart.
+      final ratingKey = ServerScope.ratingKeyOf(key.toString());
+      if (ratingKey == null) continue;
       final raw = _box.get(key) as Map?;
       if (raw == null) continue;
       final s = raw['s'] as String?;
       final d = (raw['d'] as List?)?.cast<String>();
       if (s == null || d == null) continue;
-      out[key.toString()] = {'s': s, 'd': d};
+      out[ratingKey] = {'s': s, 'd': d};
     }
     return out;
   }
@@ -105,12 +105,13 @@ class ListenDaysStore {
       final inDays = (incoming?['d'] as List?)?.cast<String>();
       if (inStart == null || inDays == null) continue;
 
-      final existing = _box.get(entry.key) as Map?;
+      final scoped = ServerScope.key(entry.key);
+      final existing = _box.get(scoped) as Map?;
       final exStart = existing?['s'] as String?;
       final exDays = (existing?['d'] as List?)?.cast<String>();
 
       if (exStart == null || exDays == null) {
-        await _box.put(entry.key, {'s': inStart, 'd': inDays});
+        await _box.put(scoped, {'s': inStart, 'd': inDays});
         continue;
       }
       final inDate = _parse(inStart);
@@ -120,9 +121,9 @@ class ListenDaysStore {
       }
       if (inStart == exStart) {
         final union = <String>{...exDays, ...inDays}.toList()..sort();
-        await _box.put(entry.key, {'s': exStart, 'd': union});
+        await _box.put(scoped, {'s': exStart, 'd': union});
       } else {
-        await _box.put(entry.key, {'s': inStart, 'd': inDays});
+        await _box.put(scoped, {'s': inStart, 'd': inDays});
       }
     }
   }

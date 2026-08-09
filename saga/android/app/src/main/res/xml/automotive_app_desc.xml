@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Declares Saga as a media app to Android Auto. Without this file (and the
+  com.google.android.gms.car.application meta-data pointing at it) a head unit
+  never offers the app at all, however complete the browse tree is.
+
+  "media" only: Saga is not a messaging app and asks for no other car surface.
+-->
+<automotiveApp>
+    <uses name="media"/>
+</automotiveApp>

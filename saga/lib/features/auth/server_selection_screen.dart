@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../shared/widgets/saga_toast.dart';
 
 import '../../core/providers.dart';
+import '../player/player_provider.dart';
 
 class ServerSelectionScreen extends ConsumerStatefulWidget {
   final bool isSetup;
@@ -119,6 +120,19 @@ class _ServerSelectionScreenState extends ConsumerState<ServerSelectionScreen> {
     setState(() => _selecting = true);
 
     final discovery = ref.read(plexServerDiscoveryProvider);
+
+    // Position saves file under the *current* server's storage scope every ten
+    // seconds, and selectServer re-points that scope. A book left playing
+    // across the switch would file the rest of its session under the new
+    // server's same-numbered book — stop cleanly (place saved) first.
+    if (server.machineIdentifier !=
+        ref.read(plexClientProvider).machineIdentifier) {
+      await ref.read(playerServiceProvider).stopAndClear();
+    }
+    if (!context.mounted) {
+      if (mounted) setState(() => _selecting = false);
+      return;
+    }
 
     showDialog(
       context: context,

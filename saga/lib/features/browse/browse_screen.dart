@@ -5,14 +5,16 @@ import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/book_progress.dart';
+import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/plex/narrator_index.dart';
 import '../../core/providers.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/custom_collection_store.dart';
 import '../../core/storage/want_to_read_store.dart';
+import '../../shared/widgets/book_card.dart';
 import '../../shared/widgets/book_cover_image.dart';
-import '../home/home_screen.dart' show BookProgressOverlay;
+import '../collections/collection_picker_sheet.dart';
 import '../library/book_detail_screen.dart';
 import '../player/player_provider.dart';
 import '../../core/utils/format.dart';
@@ -345,90 +347,61 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
 
   void _addSelectedToCollection(BuildContext context) {
     final keys = Set<String>.from(_selectedKeys);
-    final collections = CustomCollectionStore.getAll();
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-    showSagaSheet(context, (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: bottomPad),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SagaSheetTitle(
-                'Add ${keys.length} book${keys.length == 1 ? '' : 's'} to…',
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
-            if (collections.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                    'No collections yet — create one in the Collections tab.',
-                    style: TextStyle(color: SagaColors.fgMuted)),
-              )
-            else
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(ctx).size.height * 0.55 - bottomPad,
-                ),
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    ...collections.map((col) => ListTile(
-                          leading: Icon(Icons.folder_outlined,
-                              color: SagaColors.fgMuted),
-                          title: Text(col.name,
-                              style: TextStyle(color: SagaColors.fg)),
-                          subtitle: Text(
-                              '${col.bookRatingKeys.length} ${col.bookRatingKeys.length == 1 ? 'book' : 'books'}',
-                              style: TextStyle(
-                                  color: SagaColors.fgSubtle, fontSize: 12)),
-                          onTap: () async {
-                            final navigator = Navigator.of(ctx);
-                            // Thumbs so an empty collection can adopt a cover
-                            // from the first book added.
-                            final loaded = ref
-                                    .read(booksProvider(widget.libraryKey))
-                                    .valueOrNull ??
-                                const <PlexBook>[];
-                            final thumbs = {
-                              for (final b in loaded) b.ratingKey: b.thumbPath
-                            };
-                            for (final key in keys) {
-                              await CustomCollectionStore.addBook(col.id, key,
-                                  coverThumbPath: thumbs[key]);
-                            }
-                            if (!mounted) return;
-                            ref
-                                .read(customCollectionRevisionProvider.notifier)
-                                .state++;
-                            navigator.pop();
-                            _cancelSelect();
-                            showSagaToast(this.context,
-                                'Added ${keys.length} book${keys.length == 1 ? '' : 's'} to "${col.name}"');
-                          },
-                        )),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
+    showCollectionPickerSheet(
+      context,
+      title: 'Add ${keys.length} book${keys.length == 1 ? '' : 's'} to…',
+      onPick: (col) async {
+        // Thumbs so an empty collection can adopt a cover from the first
+        // book added.
+        final loaded =
+            ref.read(booksProvider(widget.libraryKey)).valueOrNull ??
+                const <PlexBook>[];
+        final thumbs = {for (final b in loaded) b.ratingKey: b.thumbPath};
+        for (final key in keys) {
+          await CustomCollectionStore.addBook(col.id, key,
+              coverThumbPath: thumbs[key]);
+        }
+        if (!mounted) return;
+        ref.read(customCollectionRevisionProvider.notifier).state++;
+        _cancelSelect();
+        showSagaToast(this.context,
+            'Added ${keys.length} book${keys.length == 1 ? '' : 's'} to "${col.name}"');
+      },
     );
   }
 
   Future<void> _downloadSelected() async {
     final keys = Set<String>.from(_selectedKeys);
     _cancelSelect();
+    // Count failures instead of swallowing them: this used to catch
+    // everything and claim "Queued N books" even fully offline, when
+    // nothing had been queued at all.
+    var failed = 0;
     for (final key in keys) {
       try {
         final tracks = await ref.read(tracksProvider(key).future);
         await ref
             .read(downloadNotifierProvider.notifier)
             .downloadBook(key, tracks);
-      } catch (_) {}
+      } catch (e) {
+        failed++;
+        AppLog.log('download', 'bulk queue failed for book $key: $e');
+      }
     }
-    if (mounted) {
+    if (!mounted) return;
+    final queued = keys.length - failed;
+    if (failed == 0) {
       showSagaToast(context,
-          'Queued ${keys.length} book${keys.length == 1 ? '' : 's'} for download');
+          'Queued $queued book${queued == 1 ? '' : 's'} for download');
+    } else if (queued == 0) {
+      showSagaToast(context,
+          'Couldn\'t queue the download — is the server reachable?',
+          isError: true);
+    } else {
+      showSagaToast(context,
+          'Queued $queued of ${keys.length} books — '
+          '$failed couldn\'t be loaded',
+          isError: true);
     }
   }
 
@@ -462,71 +435,57 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
 
     switch (_sort) {
       case _SortOption.titleAsc:
-        list = [...list]
-          ..sort((a, b) => (a.sortTitle ?? a.title)
-              .toLowerCase()
-              .compareTo((b.sortTitle ?? b.title).toLowerCase()));
+        list = _sortedByKey(
+            list, (b) => (b.sortTitle ?? b.title).toLowerCase());
       case _SortOption.titleDesc:
-        list = [...list]
-          ..sort((a, b) => (b.sortTitle ?? b.title)
-              .toLowerCase()
-              .compareTo((a.sortTitle ?? a.title).toLowerCase()));
+        list = _sortedByKey(
+            list, (b) => (b.sortTitle ?? b.title).toLowerCase(),
+            descending: true);
       case _SortOption.byAuthorAsc:
-        list = [...list]
-          ..sort((a, b) => (a.authorName ?? '')
-              .toLowerCase()
-              .compareTo((b.authorName ?? '').toLowerCase()));
+        list = _sortedByKey(list, (b) => (b.authorName ?? '').toLowerCase());
       case _SortOption.byAuthorDesc:
-        list = [...list]
-          ..sort((a, b) => (b.authorName ?? '')
-              .toLowerCase()
-              .compareTo((a.authorName ?? '').toLowerCase()));
+        list = _sortedByKey(list, (b) => (b.authorName ?? '').toLowerCase(),
+            descending: true);
       case _SortOption.byDurationAsc:
-        list = [...list]
-          ..sort((a, b) {
-            final aMs = _durationMs(a);
-            final bMs = _durationMs(b);
-            if (aMs == null && bMs == null) return 0;
-            if (aMs == null) return 1;
-            if (bMs == null) return -1;
-            return aMs.compareTo(bMs); // shortest first
-          });
+        list = _sortedByKey(list, _durationMs);
       case _SortOption.byDurationDesc:
-        list = [...list]
-          ..sort((a, b) {
-            final aMs = _durationMs(a);
-            final bMs = _durationMs(b);
-            if (aMs == null && bMs == null) return 0;
-            if (aMs == null) return 1;
-            if (bMs == null) return -1;
-            return bMs.compareTo(aMs); // longest first
-          });
-      // Books with no narrator sink to the bottom in both directions — an
-      // unknown isn't "before A" or "after Z", it's just unknown.
+        list = _sortedByKey(list, _durationMs, descending: true);
       case _SortOption.byNarratorAsc:
-        list = [...list]
-          ..sort((a, b) {
-            final an = _narratorKey(a);
-            final bn = _narratorKey(b);
-            if (an.isEmpty || bn.isEmpty) {
-              return an.isEmpty && bn.isEmpty ? 0 : (an.isEmpty ? 1 : -1);
-            }
-            return an.compareTo(bn);
-          });
+        list = _sortedByKey(list, _narratorKeyOrNull);
       case _SortOption.byNarratorDesc:
-        list = [...list]
-          ..sort((a, b) {
-            final an = _narratorKey(a);
-            final bn = _narratorKey(b);
-            if (an.isEmpty || bn.isEmpty) {
-              return an.isEmpty && bn.isEmpty ? 0 : (an.isEmpty ? 1 : -1);
-            }
-            return bn.compareTo(an);
-          });
+        list = _sortedByKey(list, _narratorKeyOrNull, descending: true);
       case _SortOption.defaultOrder:
         break;
     }
     return list;
+  }
+
+  /// Decorate-sort-undecorate: [keyOf] runs once per book, not once per
+  /// comparison. The duration key is a Hive read and the narrator key a
+  /// provider lookup, so comparator-time keys cost ~n·log n of them — on a
+  /// 2000-book library roughly 44,000 deserialisations per sort, re-run on
+  /// every keystroke and every download-progress tick.
+  ///
+  /// Null keys sink to the bottom in *both* directions — an unknown isn't
+  /// "before A" or "after Z", it's just unknown.
+  List<PlexBook> _sortedByKey<K extends Comparable<dynamic>>(
+      List<PlexBook> books, K? Function(PlexBook) keyOf,
+      {bool descending = false}) {
+    final keys = <String, K?>{for (final b in books) b.ratingKey: keyOf(b)};
+    return [...books]..sort((a, b) {
+        final ak = keys[a.ratingKey];
+        final bk = keys[b.ratingKey];
+        if (ak == null || bk == null) {
+          return ak == null && bk == null ? 0 : (ak == null ? 1 : -1);
+        }
+        final cmp = ak.compareTo(bk);
+        return descending ? -cmp : cmp;
+      });
+  }
+
+  String? _narratorKeyOrNull(PlexBook book) {
+    final key = _narratorKey(book);
+    return key.isEmpty ? null : key;
   }
 
   static int? _durationMs(PlexBook book) =>
@@ -811,15 +770,24 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                     padding: EdgeInsets.fromLTRB(0, 4, 0, listBottom),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
-                        (context, i) => _BookListTile(
-                          book: filtered[i],
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) =>
-                                    BookDetailScreen(book: filtered[i])),
-                          ),
-                        ),
+                        (context, i) {
+                          final book = filtered[i];
+                          return _BookListTile(
+                            book: book,
+                            selectMode: _selectMode,
+                            selected: _selectedKeys.contains(book.ratingKey),
+                            onTap: _selectMode
+                                ? () => _toggleSelect(book.ratingKey)
+                                : () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) =>
+                                              BookDetailScreen(book: book)),
+                                    ),
+                            onLongPress: () =>
+                                _enterSelectMode(book.ratingKey),
+                          );
+                        },
                         childCount: filtered.length,
                       ),
                     ),
@@ -830,27 +798,16 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                 final gridBottom = (_selectMode && _selectedKeys.isNotEmpty)
                     ? bottomPad + 72
                     : bottomPad + 16;
-                // Cell height = square cover + the exact text-block height the
-                // card lays out (4 gap + 30 two-line title + 2 gap + 15 author).
-                // The old childAspectRatio left ~34 dp for ~51 dp of text, so a
-                // wrapped title crowded/clipped the author line (issue #3).
-                final cellW =
-                    (MediaQuery.of(context).size.width - 32 - 20) / 3;
                 return SliverPadding(
                   padding: EdgeInsets.fromLTRB(16, 8, 16, gridBottom),
                   sliver: SliverGrid(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      mainAxisExtent: cellW + 53,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 10,
-                    ),
+                    gridDelegate: bookGridDelegate(),
                     delegate: SliverChildBuilderDelegate(
                       (context, i) {
                         final book = filtered[i];
                         final selected =
                             _selectedKeys.contains(book.ratingKey);
-                        return _BookTile(
+                        return BookCard(
                           book: book,
                           selectMode: _selectMode,
                           selected: selected,
@@ -991,112 +948,24 @@ class _SortChip extends StatelessWidget {
   }
 }
 
-class _BookTile extends ConsumerWidget {
-  final PlexBook book;
-  final bool selectMode;
-  final bool selected;
-  final VoidCallback? onTap;
-  final VoidCallback onLongPress;
-
-  const _BookTile({
-    required this.book,
-    required this.onLongPress,
-    this.selectMode = false,
-    this.selected = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Watched for reactivity; the badge itself is store-derived so it can be
-    // honest about completeness (all tracks, not just the first).
-    ref.watch(downloadNotifierProvider);
-    final hasDownload = isBookFullyDownloaded(book.ratingKey);
-
-    return GestureDetector(
-      onTap: onTap ??
-          () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => BookDetailScreen(book: book)),
-              ),
-      onLongPress: onLongPress,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AspectRatio(
-            aspectRatio: 1.0,
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: BookCoverImage(thumbPath: book.thumbPath),
-                ),
-                BookProgressOverlay(book: book),
-                if (!selectMode && hasDownload)
-                  Positioned(
-                    bottom: 6,
-                    right: 6,
-                    child: Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: SagaColors.bg.withValues(alpha: 0.85),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.download_done_rounded,
-                          color: SagaColors.accent, size: 12),
-                    ),
-                  ),
-                if (selectMode)
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        color: selected
-                            ? SagaColors.accent.withValues(alpha: 0.3)
-                            : SagaColors.accentFg.withValues(alpha: 0.3),
-                      ),
-                      child: selected
-                          ? Icon(Icons.check_circle_rounded,
-                              color: SagaColors.accent, size: 28)
-                          : Icon(Icons.radio_button_unchecked,
-                              color: SagaColors.fgMuted, size: 28),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 4),
-          // Fixed two-line block whether the title wraps or not, so the author
-          // line sits at the same height on every card in a row (issue #3).
-          SizedBox(
-            height: 30,
-            child: Text(book.title,
-                style:
-                    TextStyle(color: SagaColors.fg, fontSize: 12, height: 1.25),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis),
-          ),
-          const SizedBox(height: 2),
-          if (book.authorName != null)
-            Text(book.authorName!,
-                style: TextStyle(
-                    color: SagaColors.fgSubtle, fontSize: 11, height: 1.3),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-        ],
-      ),
-    );
-  }
-
-}
-
 class _BookListTile extends StatelessWidget {
   final PlexBook book;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
-  const _BookListTile({required this.book, required this.onTap});
+  // Same selection contract as [BookCard] — the list view used to ignore
+  // selection mode entirely, so with books already selected in the grid a
+  // switch to list view showed no checkmarks and every tap navigated away.
+  final bool selectMode;
+  final bool selected;
+
+  const _BookListTile({
+    required this.book,
+    required this.onTap,
+    this.onLongPress,
+    this.selectMode = false,
+    this.selected = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1105,10 +974,14 @@ class _BookListTile extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
+          Container(
+            color: selectMode && selected
+                ? SagaColors.accent.withValues(alpha: 0.12)
+                : Colors.transparent,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
@@ -1121,7 +994,9 @@ class _BookListTile extends StatelessWidget {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        BookCoverImage(thumbPath: book.thumbPath, cacheWidth: 112),
+                        BookCoverImage(
+                            thumbPath: book.thumbPath,
+                            cacheWidth: kCoverCacheWidthThumb),
                         BookProgressOverlay(book: book),
                       ],
                     ),
@@ -1168,6 +1043,16 @@ class _BookListTile extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (selectMode) ...[
+                  const SizedBox(width: 8),
+                  Icon(
+                    selected
+                        ? Icons.check_circle_rounded
+                        : Icons.radio_button_unchecked,
+                    color: selected ? SagaColors.accent : SagaColors.fgSubtle,
+                    size: 22,
+                  ),
+                ],
               ],
             ),
           ),

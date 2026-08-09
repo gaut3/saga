@@ -36,5 +36,28 @@ void main() {
       };
       expect(mostRecentBookRatingKey(positions), 'newest');
     });
+
+    test('a completed book is skipped, not resumed at its own ending', () {
+      // Finishing a book saves a position at the very end, so the freshest
+      // bookmark is usually the book just finished. The resumption card and
+      // the car's Continue shelf must offer what the user is *in the middle
+      // of* — the same rule Continue Listening applies.
+      final positions = {
+        'finished': _pos(DateTime(2026, 7, 18, 22)),
+        'inProgress': _pos(DateTime(2026, 7, 18, 20)),
+      };
+      expect(
+        mostRecentBookRatingKey(positions, completed: {'finished'}),
+        'inProgress',
+      );
+    });
+
+    test('everything completed returns null rather than replaying the end', () {
+      final positions = {'finished': _pos(DateTime(2026, 7, 18))};
+      expect(
+        mostRecentBookRatingKey(positions, completed: {'finished'}),
+        isNull,
+      );
+    });
   });
 }

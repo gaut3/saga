@@ -1,17 +1,14 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
+import 'server_scope.dart';
+import 'user_box.dart';
+
 class CompletedBooksStore {
   static late Box _box;
   static const _boxName = 'completed_books';
 
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
+    _box = await openUserBox(_boxName, encKey);
     await _migrate();
   }
 
@@ -31,8 +28,14 @@ class CompletedBooksStore {
     }
   }
 
-  static List<int> _timestamps(String ratingKey) {
-    final v = _box.get(ratingKey);
+  // Rating keys are scoped by server — see server_scope.dart. [_timestamps]
+  // takes a rating key and scopes it; [_timestampsAt] takes an already-scoped
+  // storage key, for the loops below that walk the box directly.
+  static List<int> _timestamps(String ratingKey) =>
+      _timestampsAt(ServerScope.key(ratingKey));
+
+  static List<int> _timestampsAt(String storageKey) {
+    final v = _box.get(storageKey);
     if (v == null) return [];
     if (v is List) return v.cast<int>();
     return [];
@@ -48,15 +51,16 @@ class CompletedBooksStore {
   static Future<void> markCompleted(String ratingKey) async {
     final existing = _timestamps(ratingKey);
     existing.add(DateTime.now().millisecondsSinceEpoch);
-    await _box.put(ratingKey, existing);
+    await _box.put(ServerScope.key(ratingKey), existing);
   }
 
   static Future<void> markIncomplete(String ratingKey) =>
-      _box.delete(ratingKey);
+      _box.delete(ServerScope.key(ratingKey));
 
   static Set<String> allCompleted() => {
         for (final key in _box.keys)
-          if (_timestamps(key.toString()).isNotEmpty) key.toString(),
+          if (ServerScope.ratingKeyOf(key.toString()) case final rk?)
+            if (_timestampsAt(key.toString()).isNotEmpty) rk,
       };
 
   /// All completion timestamps for a book, sorted oldest → newest.
@@ -72,7 +76,9 @@ class CompletedBooksStore {
   /// Full ratingKey → [timestampMs...] map for backup. Preserves per-completion
   /// dates and the times-finished count (the plain [allCompleted] set loses both).
   static Map<String, dynamic> exportAll() => {
-        for (final key in _box.keys) key.toString(): _timestamps(key.toString()),
+        for (final key in _box.keys)
+          if (ServerScope.ratingKeyOf(key.toString()) case final rk?)
+            rk: _timestampsAt(key.toString()),
       };
 
   /// Merges a backed-up ratingKey → [timestampMs...] map. Completion timestamps
@@ -89,7 +95,7 @@ class CompletedBooksStore {
       if (incoming.isEmpty) continue;
       final merged = <int>{..._timestamps(entry.key), ...incoming}.toList()
         ..sort();
-      await _box.put(entry.key, merged);
+      await _box.put(ServerScope.key(entry.key), merged);
     }
   }
 
@@ -99,12 +105,13 @@ class CompletedBooksStore {
     final d = DateTime(day.year, day.month, day.day);
     final result = <String>[];
     for (final key in _box.keys) {
-      final k = key.toString();
-      for (final ms in _timestamps(k)) {
+      final ratingKey = ServerScope.ratingKeyOf(key.toString());
+      if (ratingKey == null) continue;
+      for (final ms in _timestampsAt(key.toString())) {
         if (ms == 0) continue;
         final dt = DateTime.fromMillisecondsSinceEpoch(ms);
         if (DateTime(dt.year, dt.month, dt.day) == d) {
-          result.add(k);
+          result.add(ratingKey);
           break;
         }
       }

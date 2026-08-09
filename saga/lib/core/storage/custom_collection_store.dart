@@ -1,6 +1,8 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import 'user_box.dart';
+
 const _boxName = 'custom_collections';
 
 class CustomCollection {
@@ -52,13 +54,7 @@ class CustomCollectionStore {
   static late Box _box;
 
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
+    _box = await openUserBox(_boxName, encKey);
   }
 
   static List<CustomCollection> getAll() {
@@ -134,11 +130,29 @@ class CustomCollectionStore {
             .toMap());
   }
 
+  /// Applies [visibleOrder] — the keys the reorder UI could actually show, in
+  /// their new order — without touching stored keys that weren't visible.
+  ///
+  /// The detail screen's list is filtered to books resolvable in the current
+  /// library, so a collection can hold keys the screen can't see: a book
+  /// re-imported in Plex under a new rating key, or one that lives on another
+  /// server. Writing the visible list back verbatim silently deleted those on
+  /// the first drag. Instead, invisible keys keep their original slots and the
+  /// visible slots are refilled in the new order.
   static Future<void> reorder(
-      String collectionId, List<String> orderedKeys) async {
+      String collectionId, List<String> visibleOrder) async {
     final col = get(collectionId);
     if (col == null) return;
-    await _box.put(collectionId, col.copyWith(bookRatingKeys: orderedKeys).toMap());
+    final visible = visibleOrder.toSet();
+    final queue = List<String>.from(visibleOrder);
+    final merged = <String>[
+      for (final k in col.bookRatingKeys)
+        if (visible.contains(k) && queue.isNotEmpty) queue.removeAt(0) else k,
+    ];
+    // Keys in the new order the store didn't know (shouldn't happen) — keep
+    // them rather than drop a book the user just arranged.
+    merged.addAll(queue);
+    await _box.put(collectionId, col.copyWith(bookRatingKeys: merged).toMap());
   }
 
   static Future<void> restoreCollection(CustomCollection col) async {

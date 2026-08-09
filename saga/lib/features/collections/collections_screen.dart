@@ -125,14 +125,21 @@ class _CollectionsContent extends ConsumerWidget {
     );
   }
 
-  Future<void> _showCreateDialog(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController();
+  /// One dialog for naming a collection, whichever way it's reached — create
+  /// and rename were ~35 identical lines differing only in title, button and
+  /// initial text, and had nowhere to drift but apart.
+  Future<String?> _promptCollectionName(
+    BuildContext context, {
+    required String title,
+    required String confirmLabel,
+    String? initial,
+  }) async {
+    final controller = TextEditingController(text: initial);
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: SagaColors.surface,
-        title: Text('New collection',
-            style: TextStyle(color: SagaColors.fg)),
+        title: Text(title, style: TextStyle(color: SagaColors.fg)),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -150,12 +157,24 @@ class _CollectionsContent extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: Text('Create', style: TextStyle(color: SagaColors.accent)),
+            child:
+                Text(confirmLabel, style: TextStyle(color: SagaColors.accent)),
           ),
         ],
       ),
     );
-    if (name != null && name.isNotEmpty) {
+    // The dialog is gone by the time this future completes, so the controller
+    // has no listeners left and nothing further needs it. Dispose is the
+    // contract for anything that can be listened to; every dialog-scoped
+    // controller in the app is released on this same line.
+    controller.dispose();
+    return (name == null || name.isEmpty) ? null : name;
+  }
+
+  Future<void> _showCreateDialog(BuildContext context, WidgetRef ref) async {
+    final name = await _promptCollectionName(context,
+        title: 'New collection', confirmLabel: 'Create');
+    if (name != null) {
       await CustomCollectionStore.create(name);
       ref.read(customCollectionRevisionProvider.notifier).state++;
     }
@@ -163,35 +182,9 @@ class _CollectionsContent extends ConsumerWidget {
 
   Future<void> _showRenameDialog(
       BuildContext context, WidgetRef ref, CustomCollection col) async {
-    final controller = TextEditingController(text: col.name);
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: SagaColors.surface,
-        title: Text('Rename', style: TextStyle(color: SagaColors.fg)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: TextStyle(color: SagaColors.fg),
-          decoration: InputDecoration(
-            hintText: 'Collection name',
-            hintStyle: TextStyle(color: SagaColors.fgSubtle),
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: TextStyle(color: SagaColors.fgMuted)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: Text('Save', style: TextStyle(color: SagaColors.accent)),
-          ),
-        ],
-      ),
-    );
-    if (name != null && name.isNotEmpty) {
+    final name = await _promptCollectionName(context,
+        title: 'Rename', confirmLabel: 'Save', initial: col.name);
+    if (name != null) {
       await CustomCollectionStore.rename(col.id, name);
       ref.read(customCollectionRevisionProvider.notifier).state++;
     }
@@ -264,7 +257,7 @@ class _CollectionTile extends StatelessWidget {
               // bottom. cacheWidth matches the ~half-screen tile.
               BookCoverImage(
                   thumbPath: collection.thumbPath,
-                  cacheWidth: 400,
+                  cacheWidth: kCoverCacheWidthDetail,
                   letterboxed: true)
             else
               _coverPlaceholder(),

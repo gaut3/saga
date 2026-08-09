@@ -13,25 +13,25 @@ import '../../core/plex/models/plex_book.dart';
 import '../library/book_detail_screen.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/storage/bookmark_store.dart';
-import '../../core/storage/completed_books_store.dart';
-import '../../core/storage/listen_days_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/providers.dart';
 import '../../core/storage/named_bookmark_store.dart';
 import '../../core/storage/playback_log_store.dart';
-import '../../core/cast/cast_service.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/utils/format.dart';
 import '../../core/utils/text_measure.dart';
 import '../library/effective_chapter_count.dart';
 import '../../shared/widgets/meta_chip.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
-import '../../shared/widgets/saga_sheet.dart';
 import '../../shared/widgets/saga_toast.dart';
-import 'play_next.dart';
+import 'bookmark_edit_sheet.dart';
+import 'cast_sheet.dart';
+import 'chapters_sheet.dart';
+import 'finished_panel.dart';
 import 'player_provider.dart';
 import 'player_service.dart';
-import 'track_position_math.dart';
+import 'sessions_sheet.dart';
+import 'sleep_speed_sheets.dart';
 
 class PlayerScreen extends ConsumerWidget {
   const PlayerScreen({super.key});
@@ -78,7 +78,7 @@ class PlayerScreen extends ConsumerWidget {
                   valueListenable: service.justFinishedBook,
                   builder: (context, finishedKey, _) {
                     if (finishedKey != null && finishedKey == bookKey) {
-                      return _FinishedPanel(
+                      return FinishedPanel(
                           service: service, bookKey: bookKey!);
                     }
                     return Padding(
@@ -178,7 +178,8 @@ class _TopPills extends ConsumerWidget {
             _PillButton(
               icon: Icons.list_rounded,
               label: 'Chapters ($chapterCount)',
-              onTap: () => _showChapters(context, param),
+              onTap: () =>
+                  showChaptersSheet(context, service: service, m4bKey: param),
             ),
             const SizedBox(width: 8),
           ],
@@ -188,7 +189,10 @@ class _TopPills extends ConsumerWidget {
                 ? 'Bookmarks ($bookmarkCount)'
                 : 'Bookmarks',
             onTap: () {
-              if (bookKey != null) _showBookmarks(context, ref, bookKey!);
+              if (bookKey != null) {
+                showBookmarksListSheet(context, ref, bookKey!,
+                    service: service);
+              }
             },
           ),
           if (sessionCount > 0) ...[
@@ -197,322 +201,12 @@ class _TopPills extends ConsumerWidget {
               icon: Icons.history_rounded,
               label: 'Sessions ($sessionCount)',
               onTap: () {
-                if (bookKey != null) _showSessions(context, bookKey!);
+                if (bookKey != null) showSessionsSheet(context, bookKey!);
               },
             ),
           ],
         ],
       ),
-    );
-  }
-
-
-
-  void _showChapters(BuildContext context, String? m4bKey) {
-    final tracks = service.currentTracks;
-    final currentIdx = service.player.currentIndex ?? 0;
-
-    showSagaSheet<void>(context, (_) => Consumer(
-        builder: (ctx, ref, _) {
-          final m4bAsync = m4bKey != null
-              ? ref.watch(m4bChaptersProvider(m4bKey))
-              : const AsyncData<List<M4bChapter>>([]);
-
-          final m4bChapters = m4bAsync.valueOrNull ?? [];
-
-          return DraggableScrollableSheet(
-            initialChildSize: 0.6,
-            minChildSize: 0.3,
-            maxChildSize: 0.9,
-            expand: false,
-            builder: (ctx2, scrollController) => Column(
-              children: [
-                const SagaSheetHandle(),
-                SagaSheetTitle('Chapters'),
-                if (m4bAsync.isLoading)
-                  const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: AnimatedSagaMark(size: 36, state: SagaMarkState.buffering),
-                  ),
-                Expanded(
-                  child: m4bChapters.isNotEmpty
-                      ? _M4bChapterList(
-                          chapters: m4bChapters,
-                          service: service,
-                          scrollController: scrollController,
-                        )
-                      : _PlexTrackList(
-                          tracks: tracks,
-                          currentIdx: currentIdx,
-                          service: service,
-                          scrollController: scrollController,
-                        ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-      // DraggableScrollableSheet manages its own column; the handle is
-      // rendered inside it instead of by showSagaSheet's wrapper.
-      showHandle: false,
-    );
-  }
-
-  void _showBookmarks(BuildContext context, WidgetRef ref, String bookKey) {
-    showSagaSheet<void>(context, (_) => Consumer(
-      builder: (ctx, innerRef, _) {
-          final bookmarks = innerRef.watch(bookmarkNotifierProvider(bookKey));
-          return DraggableScrollableSheet(
-            initialChildSize: 0.5,
-            minChildSize: 0.3,
-            maxChildSize: 0.9,
-            expand: false,
-            builder: (ctx2, scrollController) => Column(
-              children: [
-                const SagaSheetHandle(),
-                SagaSheetTitle('Bookmarks'),
-                Expanded(
-                  child: bookmarks.isEmpty
-                      ? Center(
-                          child: Text('No bookmarks yet',
-                              style: TextStyle(color: SagaColors.fgSubtle)))
-                      : ListView.builder(
-                          controller: scrollController,
-                          itemCount: bookmarks.length,
-                          itemBuilder: (context, i) {
-                            final bm = bookmarks[i];
-                            return ListTile(
-                              leading: Icon(Icons.bookmark,
-                                  color: SagaColors.accent),
-                              title: Text(bm.label,
-                                  style: TextStyle(
-                                      color: SagaColors.fg, fontSize: 14)),
-                              subtitle: bm.note != null && bm.note!.isNotEmpty
-                                  ? Text(bm.note!,
-                                      style: TextStyle(
-                                          color: SagaColors.fgSubtle,
-                                          fontSize: 11,
-                                          fontStyle: FontStyle.italic),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis)
-                                  : null,
-                              trailing: IconButton(
-                                icon: Icon(Icons.delete_outline,
-                                    color: SagaColors.fgSubtle),
-                                onPressed: () {
-                                  innerRef
-                                      .read(bookmarkNotifierProvider(bookKey)
-                                          .notifier)
-                                      .remove(bm.id);
-                                },
-                              ),
-                              onTap: () => _showBookmarkSheet(
-                                  ctx, innerRef, bookKey, bm),
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-      showHandle: false,
-    );
-  }
-
-  void _showBookmarkSheet(BuildContext context, WidgetRef ref,
-      String bookKey, NamedBookmark bm) {
-    final labelCtrl = TextEditingController(text: bm.label);
-    final noteCtrl = TextEditingController(text: bm.note ?? '');
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-
-    showSagaSheet<void>(context, (_) => StatefulBuilder(
-      builder: (sheetCtx, _) {
-        final keyboardInset = MediaQuery.of(sheetCtx).viewInsets.bottom;
-        return Padding(
-          padding: EdgeInsets.only(bottom: bottomPad + keyboardInset),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SagaSheetTitle('Bookmark',
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0)),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Text(
-                  fmtDuration(Duration(milliseconds: bm.positionMs)),
-                  style:
-                      TextStyle(color: SagaColors.fgSubtle, fontSize: 13),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: TextField(
-                  controller: labelCtrl,
-                  style: TextStyle(color: SagaColors.fg),
-                  decoration: InputDecoration(
-                    labelText: 'Title',
-                    labelStyle: TextStyle(color: SagaColors.fgMuted),
-                    enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: SagaColors.border)),
-                    focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: SagaColors.accent)),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: TextField(
-                  controller: noteCtrl,
-                  style: TextStyle(color: SagaColors.fg),
-                  minLines: 1,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    labelText: 'Note (optional)',
-                    labelStyle: TextStyle(color: SagaColors.fgMuted),
-                    enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: SagaColors.border)),
-                    focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: SagaColors.accent)),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                child: Row(
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        service.seek(Duration(milliseconds: bm.positionMs));
-                        Navigator.of(sheetCtx)
-                          ..pop()
-                          ..pop();
-                      },
-                      icon: const Icon(Icons.play_arrow, size: 16),
-                      label: const Text('Jump to'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: SagaColors.accent,
-                        side: BorderSide(
-                            color: SagaColors.accent.withValues(alpha: 0.5)),
-                      ),
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () => Navigator.pop(sheetCtx),
-                      child: Text('Cancel',
-                          style: TextStyle(color: SagaColors.fgMuted)),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton(
-                      onPressed: () {
-                        final label = labelCtrl.text.trim();
-                        if (label.isEmpty) return;
-                        final note = noteCtrl.text.trim();
-                        ref
-                            .read(bookmarkNotifierProvider(bookKey).notifier)
-                            .update(bm.copyWith(
-                                label: label,
-                                note: note.isEmpty ? null : note));
-                        Navigator.pop(sheetCtx);
-                      },
-                      child: Text('Save',
-                          style: TextStyle(color: SagaColors.accent)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    ));
-  }
-
-  void _showSessions(BuildContext context, String bookKey) {
-    final events = PlaybackLogStore.getLog(bookKey);
-    // Pair play→pause into sessions (newest first)
-    final sessions = <({DateTime start, Duration? duration})>[];
-    for (int i = 0; i < events.length; i++) {
-      if (events[i].type != 'play') continue;
-      Duration? dur;
-      if (i + 1 < events.length && events[i + 1].type == 'pause') {
-        dur = events[i + 1].timestamp.difference(events[i].timestamp);
-      }
-      sessions.add((start: events[i].timestamp, duration: dur));
-    }
-    sessions.sort((a, b) => b.start.compareTo(a.start));
-
-    showSagaSheet<void>(context, (_) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.5,
-        minChildSize: 0.3,
-        maxChildSize: 0.85,
-        builder: (_, ctrl) => Column(
-          children: [
-            const SagaSheetHandle(),
-            SagaSheetTitle('Sessions',
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8)),
-            Expanded(
-              child: ListView.builder(
-                controller: ctrl,
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                itemCount: sessions.length,
-                itemBuilder: (_, i) {
-                  final s = sessions[i];
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: SagaColors.accent.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(Icons.play_arrow,
-                              color: SagaColors.accent, size: 18),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Shared formatters: the local pair these
-                              // replace printed a 12-hour clock where the rest
-                              // of the app prints 24-hour, and dated
-                              // "Yesterday" with a `Duration`, which stops
-                              // matching when the clocks change.
-                              Text(
-                                relativeDayLabel(s.start),
-                                style: TextStyle(
-                                    color: SagaColors.fg,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                              Text(
-                                fmtTime(s.start) +
-                                    (s.duration != null
-                                        ? '  ·  ${fmtDurationMs(s.duration!.inMilliseconds)}'
-                                        : ''),
-                                style: TextStyle(
-                                    color: SagaColors.fgSubtle, fontSize: 12.5),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-      showHandle: false,
     );
   }
 }
@@ -645,8 +339,12 @@ class _RevealCoverState extends ConsumerState<_RevealCover>
   ImageProvider? get _provider {
     final uri = widget.artUri;
     if (uri == null) return null;
+    // Cap the decode: 900 px covers a full-width hero on a 3× screen, where an
+    // uncapped FileImage decodes whatever the file holds — a 3000×3000 cover
+    // is ~36 MB decoded, enough to evict every list thumbnail behind this
+    // screen and greet the pop with a row of placeholders.
     return uri.scheme == 'file'
-        ? FileImage(File(uri.toFilePath()))
+        ? ResizeImage(FileImage(File(uri.toFilePath())), width: 900)
         : ResizeImage(NetworkImage(uri.toString()), width: 600);
   }
 
@@ -1129,6 +827,11 @@ class _ProgressBar extends ConsumerStatefulWidget {
 
 class _ProgressBarState extends ConsumerState<_ProgressBar> {
   double? _dragValue;
+  // The scrub range frozen at drag start. In chapter mode the live range
+  // re-anchors itself when playback crosses a chapter boundary — which it
+  // can do mid-drag, since audio keeps playing under the held thumb — and
+  // releasing at "90%" then seeked to 90% of the *next* chapter.
+  ({int startMs, int endMs})? _dragRange;
   // Right-hand label mode: remaining-at-current-speed (default) or book total.
   bool _showTotal = false;
 
@@ -1160,11 +863,13 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
         // Playback) the slider spans only the current chapter, so very long
         // books can be scrubbed precisely (1 px of a 30 h book ≈ minutes).
         // The range is derived from the live position, so crossing a chapter
-        // boundary re-anchors the bar automatically.
+        // boundary re-anchors the bar automatically — except mid-drag, where
+        // the range frozen at drag start wins (see [_dragRange]).
         final chapterMode = SettingsStore.chapterScrub;
-        final range = chapterMode
-            ? widget.service.currentChapterRangeMs()
-            : (startMs: 0, endMs: totalMs);
+        final range = _dragRange ??
+            (chapterMode
+                ? widget.service.currentChapterRangeMs()
+                : (startMs: 0, endMs: totalMs));
         final rawSpan = range.endMs - range.startMs;
         final spanMs = rawSpan > 0 ? rawSpan : 1;
 
@@ -1213,12 +918,21 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
                         ),
                         child: Slider(
                           value: displayValue,
+                          onChangeStart: (v) => setState(() {
+                            _dragRange = range;
+                            _dragValue = v;
+                          }),
                           onChanged: (v) => setState(() => _dragValue = v),
                           onChangeEnd: (v) {
-                            setState(() => _dragValue = null);
+                            // [range] here is the frozen one — this build ran
+                            // with _dragRange set.
                             widget.service.seekAbsolute(Duration(
                                 milliseconds:
                                     range.startMs + (v * spanMs).round()));
+                            setState(() {
+                              _dragValue = null;
+                              _dragRange = null;
+                            });
                           },
                           // Announced chapter-relative in chapter mode,
                           // matching the visible labels (startMs is 0 and
@@ -1331,13 +1045,12 @@ class _Controls extends StatelessWidget {
               color: SagaColors.fgMuted,
               tooltip:
                   'Rewind ${SettingsStore.skipBackwardSeconds} seconds',
-              onPressed: () async {
-                final pos = await service.positionStream.first;
-                final skip = SettingsStore.skipBackwardSeconds * 1000;
-                service.seek(Duration(
-                    milliseconds:
-                        (pos.inMilliseconds - skip).clamp(0, 999999999)));
-              },
+              // The service's own handler — the same one the notification and
+              // headset buttons hit. This used to be a hand-rolled
+              // track-relative seek, so on a multi-file book the on-screen
+              // rewind stopped dead at the start of the current file while
+              // the notification's crossed into the previous one.
+              onPressed: service.rewind,
             ),
             const SizedBox(width: 8),
             Semantics(
@@ -1368,13 +1081,9 @@ class _Controls extends StatelessWidget {
               color: SagaColors.fgMuted,
               tooltip:
                   'Skip forward ${SettingsStore.skipForwardSeconds} seconds',
-              onPressed: () async {
-                final totalMs = service.totalBookDurationMs;
-                final skip = SettingsStore.skipForwardSeconds * 1000;
-                service.seekAbsolute(Duration(
-                    milliseconds: (service.absolutePositionMs + skip)
-                        .clamp(0, totalMs > 0 ? totalMs : 999999999)));
-              },
+              // Same rule as the rewind button: one handler, shared with the
+              // notification (seekAbsolute clamps to the book bounds itself).
+              onPressed: service.fastForward,
             ),
             IconButton(
               iconSize: 36,
@@ -1396,8 +1105,6 @@ class _BottomActions extends ConsumerWidget {
   final AudioPlayerService service;
   final String? bookKey;
 
-  static const _speeds = [0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
-
   const _BottomActions({required this.service, required this.bookKey});
 
   @override
@@ -1418,7 +1125,8 @@ class _BottomActions extends ConsumerWidget {
               icon: Icons.speed,
               active: speed != 1.0,
               semanticLabel: 'Playback speed: $speed×',
-              onTap: () => _showSpeedSheet(context),
+              onTap: () =>
+                  showSpeedSheet(context, service: service, bookKey: bookKey),
             ),
             _ActionButton(
               label: 'Bookmark',
@@ -1430,7 +1138,7 @@ class _BottomActions extends ConsumerWidget {
               label: 'Cast',
               icon: Icons.cast,
               semanticLabel: 'Cast to device',
-              onTap: () => _showCastSheet(context),
+              onTap: () => showCastSheet(context, service: service),
             ),
             _SleepTimerButton(
               service: service,
@@ -1441,7 +1149,8 @@ class _BottomActions extends ConsumerWidget {
                 if (!isActive && defaultMinutes != 0) {
                   _startDefaultSleepTimer(context, ref, defaultMinutes);
                 } else {
-                  _showSleepTimer(context, ref, isActive);
+                  showSleepTimerSheet(context, ref, isActive,
+                      service: service);
                 }
               },
             ),
@@ -1480,245 +1189,35 @@ class _BottomActions extends ConsumerWidget {
     if (key == null) return;
     final track = service.currentTrackInfo;
     if (track == null) return;
-
     final positionMs = service.player.position.inMilliseconds;
-    final defaultLabel =
-        NamedBookmark.defaultLabel(track.title, positionMs);
 
-    final labelCtrl = TextEditingController(text: defaultLabel);
-    final noteCtrl = TextEditingController();
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-
-    // Same sheet shape as the bookmark *edit* sheet — creating and editing the
-    // same object should not go through two different surface types.
-    final saved = await showSagaSheet<bool>(context, (_) => StatefulBuilder(
-      builder: (sheetCtx, _) {
-        final keyboardInset = MediaQuery.of(sheetCtx).viewInsets.bottom;
-        return Padding(
-          padding: EdgeInsets.only(bottom: bottomPad + keyboardInset),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SagaSheetTitle('Add bookmark',
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0)),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                child: Text(
-                  fmtDuration(Duration(milliseconds: positionMs)),
-                  style: TextStyle(color: SagaColors.fgSubtle, fontSize: 13),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: TextField(
-                  controller: labelCtrl,
-                  autofocus: true,
-                  style: TextStyle(color: SagaColors.fg),
-                  decoration: InputDecoration(
-                    labelText: 'Title',
-                    labelStyle: TextStyle(color: SagaColors.fgMuted),
-                    enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: SagaColors.border)),
-                    focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: SagaColors.accent)),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: TextField(
-                  controller: noteCtrl,
-                  minLines: 1,
-                  maxLines: 3,
-                  style: TextStyle(color: SagaColors.fg),
-                  decoration: InputDecoration(
-                    labelText: 'Note (optional)',
-                    labelStyle: TextStyle(color: SagaColors.fgMuted),
-                    enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: SagaColors.border)),
-                    focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: SagaColors.accent)),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(sheetCtx, false),
-                      child: Text('Cancel',
-                          style: TextStyle(color: SagaColors.fgMuted)),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton(
-                      onPressed: () => Navigator.pop(sheetCtx, true),
-                      child: Text('Save',
-                          style: TextStyle(color: SagaColors.accent)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    ));
-
-    if (saved != true) return;
-
-    final label =
-        labelCtrl.text.trim().isEmpty ? defaultLabel : labelCtrl.text.trim();
-    final note = noteCtrl.text.trim();
-    final bm = NamedBookmark(
-      id: _uuid(),
+    // One creation path — NamedBookmark.create owns the id scheme and the
+    // default label. This flow used to mint hex-microsecond ids of its own,
+    // a second scheme alongside the store's UUIDs.
+    final bm = NamedBookmark.create(
       bookRatingKey: key,
       trackRatingKey: track.ratingKey,
       positionMs: positionMs,
-      label: label,
-      note: note.isEmpty ? null : note,
-      createdAt: DateTime.now(),
+      trackTitle: track.title,
     );
-    ref.read(bookmarkNotifierProvider(key).notifier).add(bm);
-
-    if (context.mounted) {
-      showSagaToast(context, 'Bookmark added: $label');
-    }
-  }
-
-  void _showCastSheet(BuildContext context) {
-    showSagaSheet<void>(context, (_) => _CastSheet(service: service),
-        scrollable: false);
-  }
-
-  /// Speed picker sheet — same pattern as the sleep-timer picker, replacing
-  /// the old tap-to-cycle button so every action-row control opens a sheet.
-  void _showSpeedSheet(BuildContext context) {
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-    showSagaSheet<void>(context, (_) => Consumer(
-      builder: (ctx, ref, _) {
-        final current = ref.watch(playbackSpeedProvider).valueOrNull ??
-            service.player.speed;
-        return Padding(
-          padding: EdgeInsets.only(bottom: bottomPad + 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SagaSheetTitle('Playback speed',
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
-              ..._speeds.map((s) => ListTile(
-                    title:
-                        Text('$s×', style: TextStyle(color: SagaColors.fg)),
-                    trailing: current == s
-                        ? Icon(Icons.check_rounded, color: SagaColors.accent)
-                        : null,
-                    onTap: () {
-                      // playbackSpeedProvider follows the service's own state,
-                      // so setting the speed is all the UI update there is.
-                      service.setSpeed(s);
-                      if (bookKey != null) {
-                        SettingsStore.setBookSpeed(bookKey!, s);
-                      }
-                      Navigator.pop(ctx);
-                    },
-                  )),
-            ],
-          ),
-        );
+    await showBookmarkEditSheet(
+      context,
+      title: 'Add bookmark',
+      positionMs: positionMs,
+      initialLabel: bm.label,
+      onSave: (label, note) {
+        ref
+            .read(bookmarkNotifierProvider(key).notifier)
+            .add(bm.copyWith(label: label, note: note));
+        ref.read(bookmarkRevisionProvider.notifier).state++;
+        if (context.mounted) {
+          showSagaToast(context, 'Bookmark added: $label');
+        }
       },
-    ));
-  }
-
-  void _showSleepTimer(BuildContext context, WidgetRef ref, bool isActive) {
-    final tracks = service.currentTracks;
-    final m4bParam = tracks.length == 1
-        ? PlexClient.instance.resolveM4bParam(tracks[0])
-        : null;
-
-    showSagaSheet<void>(context, (_) => Consumer(
-      builder: (ctx, ref, _) {
-          final m4bChapters = m4bParam != null
-              ? ref.watch(m4bChaptersProvider(m4bParam)).valueOrNull
-              : null;
-
-          const timedOptions = [
-            (label: '15 min', duration: Duration(minutes: 15), minutes: 15),
-            (label: '30 min', duration: Duration(minutes: 30), minutes: 30),
-            (label: '45 min', duration: Duration(minutes: 45), minutes: 45),
-            (label: '60 min', duration: Duration(minutes: 60), minutes: 60),
-          ];
-          final defaultMinutes = SettingsStore.defaultSleepTimerMinutes;
-
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Sleep timer',
-                    style: TextStyle(
-                        color: SagaColors.fg,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-                ListTile(
-                  leading: Icon(Icons.skip_next_outlined,
-                      color: SagaColors.accent),
-                  title: Text('End of chapter',
-                      style: TextStyle(color: SagaColors.fg)),
-                  trailing: defaultMinutes == -1
-                      ? Icon(Icons.bedtime_outlined,
-                          color: SagaColors.accent, size: 18)
-                      : null,
-                  onTap: () {
-                    ref
-                        .read(sleepTimerProvider.notifier)
-                        .setEndOfChapter(m4bChapters: m4bChapters);
-                    Navigator.pop(ctx);
-                  },
-                ),
-                Divider(color: SagaColors.border, height: 8),
-                ...timedOptions.map((opt) => ListTile(
-                      title: Text(opt.label,
-                          style: TextStyle(color: SagaColors.fg)),
-                      trailing: defaultMinutes == opt.minutes
-                          ? Icon(Icons.bedtime_outlined,
-                              color: SagaColors.accent, size: 18)
-                          : null,
-                      onTap: () {
-                        ref
-                            .read(sleepTimerProvider.notifier)
-                            .set(opt.duration);
-                        Navigator.pop(ctx);
-                      },
-                    )),
-                if (isActive) ...[
-                  Divider(color: SagaColors.fgSubtle),
-                  ListTile(
-                    leading: const Icon(Icons.cancel_outlined,
-                        color: Colors.redAccent),
-                    title: const Text('Cancel timer',
-                        style: TextStyle(color: Colors.redAccent)),
-                    onTap: () {
-                      ref.read(sleepTimerProvider.notifier).cancel();
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ],
-              ],
-            ),
-          );
-        },
-      ), scrollable: false);
+    );
   }
 }
 
-String _uuid() {
-  final now = DateTime.now().microsecondsSinceEpoch;
-  return now.toRadixString(16).padLeft(16, '0');
-}
 
 // ── Sleep timer button with live countdown ────────────────────────────────────
 
@@ -1831,537 +1330,5 @@ class _ActionButton extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-// ── Cast sheet ────────────────────────────────────────────────────────────────
-
-class _CastSheet extends ConsumerStatefulWidget {
-  final AudioPlayerService service;
-  const _CastSheet({required this.service});
-
-  @override
-  ConsumerState<_CastSheet> createState() => _CastSheetState();
-}
-
-class _CastSheetState extends ConsumerState<_CastSheet> {
-  late final CastService _cast;
-  StreamSubscription<CastState>? _stateSub;
-  StreamSubscription<String>? _errorSub;
-  // Set when the user picks a device; the media handoff fires once the
-  // session reports connected.
-  bool _pendingLoad = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _cast = ref.read(castServiceProvider);
-    _cast.startDiscovery();
-    _stateSub = _cast.stateStream.listen((s) {
-      if (s == CastState.connected && _pendingLoad) {
-        _pendingLoad = false;
-        _castCurrentTrack();
-      }
-    });
-    // Surface session failures — without this the sheet silently snaps back
-    // to the device list with no explanation of what went wrong.
-    _errorSub = _cast.errorStream.listen((reason) {
-      _pendingLoad = false;
-      if (mounted) {
-        showSagaToast(context, 'Cast connection failed: $reason',
-            isError: true);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _stateSub?.cancel();
-    _errorSub?.cancel();
-    _cast.stopDiscovery(); // active scanning costs battery — only while open
-    super.dispose();
-  }
-
-  /// Hands the current track to the Cast device: pauses local playback, then
-  /// loads the server stream URL (token in query — the device can't send
-  /// headers, and can't reach a downloaded file on the phone) at the current
-  /// position with the correct MIME type.
-  Future<void> _castCurrentTrack() async {
-    final service = widget.service;
-    final track = service.currentTrackInfo;
-    if (track == null) return;
-    final client = PlexClient.instance;
-    final url = client.buildCastUrl(track.partKey);
-    if (url == null) {
-      if (mounted) {
-        showSagaToast(context, 'Casting needs your Plex server to be reachable.',
-            isError: true);
-      }
-      return;
-    }
-    final positionMs = service.player.position.inMilliseconds;
-    await service.pause();
-    await _cast.loadMedia(
-      url: url,
-      title: track.bookTitle ?? track.title,
-      artist: track.authorName ?? '',
-      artwork: client.buildArtUri(track.thumbPath)?.toString() ?? '',
-      contentType: castContentTypeFor(track.partFile),
-      positionMs: positionMs,
-    );
-  }
-
-  /// Pulls the playback position back from the Cast device, ends the session,
-  /// and seeks the (paused) local player there so resuming continues
-  /// seamlessly from where the cast left off.
-  Future<void> _disconnect() async {
-    final posMs = await _cast.getCastPosition();
-    await _cast.stopCasting();
-    if (posMs > 0) {
-      await widget.service.player.seek(Duration(milliseconds: posMs));
-      await widget.service.savePosition();
-    }
-    if (mounted) Navigator.pop(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SagaSheetTitle('Cast to device',
-              padding: const EdgeInsets.fromLTRB(0, 4, 0, 16)),
-          StreamBuilder<CastState>(
-            stream: _cast.stateStream,
-            initialData: _cast.state,
-            builder: (context, snap) {
-              final state = snap.data ?? CastState.idle;
-
-              if (state == CastState.connected) {
-                return Column(
-                  children: [
-                    ListTile(
-                      leading:
-                          Icon(Icons.cast_connected, color: SagaColors.accent),
-                      title: Text('Casting audio',
-                          style: TextStyle(color: SagaColors.fg)),
-                      subtitle: Text('Audio is playing on the Cast device',
-                          style: TextStyle(
-                              color: SagaColors.fgSubtle, fontSize: 12)),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _disconnect,
-                        icon: const Icon(Icons.cast_outlined),
-                        label: const Text('Disconnect'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.redAccent,
-                          side: const BorderSide(color: Colors.redAccent),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              }
-
-              if (state == CastState.connecting) {
-                return const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(
-                      child: AnimatedSagaMark(
-                          size: 36, state: SagaMarkState.buffering)),
-                );
-              }
-
-              // Idle: live device list from active discovery.
-              return StreamBuilder<List<CastDevice>>(
-                stream: _cast.devicesStream,
-                initialData: _cast.devices,
-                builder: (context, devSnap) {
-                  final devices = devSnap.data ?? const <CastDevice>[];
-                  if (devices.isEmpty) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        children: [
-                          const AnimatedSagaMark(
-                              size: 22, state: SagaMarkState.buffering),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Searching for Cast devices on your network…',
-                              style: TextStyle(
-                                  color: SagaColors.fgMuted, fontSize: 13),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final device in devices)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.tv_outlined,
-                              color: SagaColors.fgMuted),
-                          title: Text(device.name,
-                              style: TextStyle(color: SagaColors.fg)),
-                          onTap: () {
-                            _pendingLoad = true;
-                            _cast.selectDevice(device);
-                          },
-                        ),
-                    ],
-                  );
-                },
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── M4B chapter list ──────────────────────────────────────────────────────────
-
-class _M4bChapterList extends StatelessWidget {
-  final List<M4bChapter> chapters;
-  final AudioPlayerService service;
-  final ScrollController scrollController;
-
-  const _M4bChapterList({
-    required this.chapters,
-    required this.service,
-    required this.scrollController,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<Duration>(
-      stream: service.positionStream,
-      builder: (context, snap) {
-        final pos = snap.data ?? Duration.zero;
-        final activeIdx = _activeIndex(pos);
-        return ListView.builder(
-          controller: scrollController,
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
-          itemCount: chapters.length,
-          itemBuilder: (context, i) {
-            final chapter = chapters[i];
-            final isActive = i == activeIdx;
-            return ListTile(
-              leading: isActive
-                  ? Icon(Icons.play_arrow_rounded, color: SagaColors.accent)
-                  : Text('${i + 1}',
-                      style: TextStyle(
-                          color: SagaColors.fgSubtle, fontSize: 13)),
-              title: Text(
-                chapter.title,
-                style: TextStyle(
-                  color: isActive ? SagaColors.accent : SagaColors.fg,
-                  fontSize: 14,
-                  fontWeight:
-                      isActive ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-              trailing: Text(
-                fmtDuration(chapter.start),
-                style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12),
-              ),
-              onTap: () {
-                service.seek(chapter.start);
-                Navigator.pop(context);
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-
-  int _activeIndex(Duration pos) => chapterIndexAt(
-      [for (final c in chapters) c.start.inMilliseconds], pos.inMilliseconds);
-
-}
-
-// ── Plex track list ───────────────────────────────────────────────────────────
-
-class _PlexTrackList extends StatelessWidget {
-  final List<PlexTrack> tracks;
-  final int currentIdx;
-  final AudioPlayerService service;
-  final ScrollController scrollController;
-
-  const _PlexTrackList({
-    required this.tracks,
-    required this.currentIdx,
-    required this.service,
-    required this.scrollController,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.builder(
-      controller: scrollController,
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
-      itemCount: tracks.length,
-      itemBuilder: (context, i) {
-        final track = tracks[i];
-        final isActive = i == currentIdx;
-        return ListTile(
-          leading: isActive
-              ? Icon(Icons.play_arrow_rounded, color: SagaColors.accent)
-              : Text('${i + 1}',
-                  style:
-                      TextStyle(color: SagaColors.fgSubtle, fontSize: 13)),
-          title: Text(
-            track.title,
-            style: TextStyle(
-              color: isActive ? SagaColors.accent : SagaColors.fg,
-              fontSize: 14,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-          trailing: Text(
-            fmtDuration(Duration(milliseconds: track.durationMs)),
-            style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12),
-          ),
-          onTap: () {
-            service.skipToQueueItem(i);
-            Navigator.pop(context);
-          },
-        );
-      },
-    );
-  }
-
-}
-
-// ── Finished panel (replaces the cover when a book completes) ──────────────────
-
-class _FinishedPanel extends ConsumerWidget {
-  final AudioPlayerService service;
-  final String bookKey;
-  const _FinishedPanel({required this.service, required this.bookKey});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final count = CompletedBooksStore.completionCount(bookKey);
-    final days = ListenDaysStore.daysListened(bookKey);
-    final start = ListenDaysStore.startDate(bookKey);
-    final dates = CompletedBooksStore.completionDates(bookKey);
-    final finished = dates.isEmpty ? null : dates.last;
-    final spanDays = (start != null && finished != null)
-        ? finished.difference(start).inDays + 1
-        : null;
-    final totalMs = service.totalBookDurationMs;
-    final libraryKey = ref.watch(activeLibraryKeyProvider).valueOrNull;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Align(
-            alignment: Alignment.topRight,
-            child: IconButton(
-              icon: Icon(Icons.close, color: SagaColors.fgSubtle),
-              onPressed: () => service.justFinishedBook.value = null,
-              tooltip: 'Dismiss',
-            ),
-          ),
-          const SizedBox(height: 24),
-          // The bloom is the hero of the page.
-          const AnimatedSagaMark(size: 120, state: SagaMarkState.finished),
-          const SizedBox(height: 22),
-          Text(
-            'FINISHED',
-            style: TextStyle(
-              color: SagaColors.accent,
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 3,
-            ),
-          ),
-          if (finished != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              'on ${finished.day}/${finished.month}/${finished.year}',
-              style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12),
-            ),
-          ],
-          const SizedBox(height: 22),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            alignment: WrapAlignment.center,
-            children: [
-              _FinChip(value: '$count×', label: 'times listened'),
-              if (spanDays != null)
-                _FinChip(
-                    value: '$spanDays ${spanDays == 1 ? 'day' : 'days'}',
-                    label: 'start to finish')
-              else if (days > 0)
-                _FinChip(
-                    value: '$days ${days == 1 ? 'day' : 'days'}',
-                    label: 'days listened'),
-              _FinChip(value: fmtDurationMs(totalMs), label: 'listened'),
-            ],
-          ),
-          const SizedBox(height: 22),
-          if (libraryKey != null)
-            _NextInSeriesButton(
-              libraryKey: libraryKey,
-              bookKey: bookKey,
-              service: service,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FinChip extends StatelessWidget {
-  final String value;
-  final String label;
-  const _FinChip({required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: SagaColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: SagaColors.accent.withValues(alpha: 0.18)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              color: SagaColors.fg,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              color: SagaColors.fgSubtle,
-              fontSize: 11,
-              letterSpacing: 0.3,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NextInSeriesButton extends ConsumerWidget {
-  final String libraryKey;
-  final String bookKey;
-  final AudioPlayerService service;
-  const _NextInSeriesButton({
-    required this.libraryKey,
-    required this.bookKey,
-    required this.service,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final next =
-        ref.watch(nextInSeriesProvider('$libraryKey|$bookKey')).valueOrNull;
-    if (next == null) return const SizedBox.shrink();
-    final col = next.$1;
-    final book = next.$2;
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.playlist_play_rounded,
-                color: SagaColors.accent, size: 18),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                'Up next in ${col.name}',
-                style: TextStyle(
-                  color: SagaColors.fg,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        // When auto-advance is armed this becomes a countdown with a way out.
-        ValueListenableBuilder<int?>(
-          valueListenable: service.autoAdvanceCountdown,
-          builder: (context, secondsLeft, _) => Column(
-            children: [
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _playNext(context, ref, book),
-                  icon: const Icon(Icons.skip_next_rounded, size: 20),
-                  label: Text(
-                    secondsLeft != null
-                        ? 'Playing in ${secondsLeft}s — ${book.title}'
-                        : book.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: SagaColors.accent,
-                    foregroundColor: SagaColors.accentFg,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ),
-              if (secondsLeft != null)
-                TextButton(
-                  onPressed: service.cancelAutoAdvance,
-                  child: Text('Cancel',
-                      style:
-                          TextStyle(color: SagaColors.fgMuted, fontSize: 13)),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _playNext(
-      BuildContext context, WidgetRef ref, PlexBook book) async {
-    final ok = await playNextBook(
-      service: service,
-      book: book,
-      loadTracks: (key) => ref.read(tracksProvider(key).future),
-    );
-    // Used to fail silently, which looked identical to a dead button.
-    if (!ok && context.mounted) {
-      showSagaToast(context, 'Could not start "${book.title}"', isError: true);
-    }
   }
 }

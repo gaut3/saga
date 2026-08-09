@@ -53,6 +53,18 @@ android {
             signingConfig = if (hasSigningConfig) {
                 signingConfigs.getByName("release")
             } else {
+                // Falling back keeps `flutter build apk --release` working for
+                // anyone building from source without the release keystore.
+                // It must never be silent: the debug key is a published private
+                // key with a published password, so an APK signed with it can
+                // be modified and re-signed by anyone. An APK built down this
+                // path is for the device in front of you, not for anyone else.
+                logger.warn(
+                    "\n*** Saga: no release keystore found (KEYSTORE_PATH unset " +
+                    "and no key.properties).\n" +
+                    "*** This APK is signed with Android's PUBLIC debug key. " +
+                    "Do not distribute it.\n"
+                )
                 signingConfigs.getByName("debug")
             }
         }

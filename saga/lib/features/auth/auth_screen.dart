@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/diagnostics/app_log.dart';
 import '../../core/providers.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../shared/widgets/saga_mark.dart';
@@ -28,6 +29,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       final pin = await auth.requestPin();
       await auth.openAuthUrl(pin);
 
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _waitingForAuth = true;
@@ -46,11 +48,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         });
       }
     } catch (e) {
+      // Details go to the redacted log, never the screen: a raw error here can
+      // quote the plex.tv response body — which is where the auth token lives —
+      // and the sign-in screen is exactly what ends up in a bug-report
+      // screenshot.
+      AppLog.log('auth', 'sign-in failed: $e');
       if (!mounted) return;
       setState(() {
         _loading = false;
         _waitingForAuth = false;
-        _error = 'Error: $e';
+        _error = 'Couldn\'t sign in. Check your connection and try again.';
       });
     }
   }
