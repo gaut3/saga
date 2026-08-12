@@ -217,11 +217,14 @@ class _HomeContent extends ConsumerWidget {
 
 /// Home's transparent app bar. Shared so the offline Home is the same screen
 /// with fewer rows on it, rather than a second screen that looks like it.
-class _HomeAppBar extends StatelessWidget {
+class _HomeAppBar extends ConsumerWidget {
   const _HomeAppBar();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Const-constructed by the parent, so its theme-driven rebuild never
+    // reaches us — watch the theme directly.
+    ref.watch(sagaThemeVariantProvider);
     return SliverAppBar(
       pinned: true,
       backgroundColor: Colors.transparent,
