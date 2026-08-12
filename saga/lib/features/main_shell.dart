@@ -7,6 +7,7 @@ import '../core/storage/settings_store.dart';
 import '../core/update/update_checker.dart';
 import '../shared/widgets/mini_player_pill.dart';
 import '../shared/widgets/saga_sheet.dart';
+import '../shared/widgets/saga_toast.dart';
 import '../shared/widgets/swipe_away_pill.dart';
 import 'authors/authors_screen.dart';
 import 'browse/browse_screen.dart';
@@ -90,6 +91,16 @@ class _MainShellState extends ConsumerState<MainShell>
   Widget build(BuildContext context) {
     final selectedIndex = ref.watch(tabIndexProvider);
     ref.watch(sagaThemeVariantProvider);
+
+    // Surface the launch update check — the result was only ever visible in
+    // Settings › About, so an enabled check could find an update nobody saw.
+    // The provider is cached per session, so this fires once per launch.
+    ref.listen(updateCheckProvider, (_, next) {
+      final result = next.valueOrNull;
+      if (result?.isNewer == true) {
+        showSagaToast(context, 'Update available: ${result!.latestTag}');
+      }
+    });
 
     return PopScope(
       // Let the tab's nested navigator consume back-presses first.
