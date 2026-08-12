@@ -78,37 +78,21 @@ class PlexApi {
   Future<List<PlexBook>> fetchBooksInCollection(
       String sectionKey, String collectionRatingKey) async {
     // Approach 1: direct children endpoint (used by plexapi and most Plex clients)
-    final r1 = await _client.get<Map<String, dynamic>>(
-      '/library/metadata/$collectionRatingKey/children',
-    );
-    final items1 = (r1.data?['MediaContainer']?['Metadata'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .toList();
-    if (items1.isNotEmpty) {
-      return items1.map(PlexBook.fromJson).toList();
-    }
+    final direct = await _fetchList(
+        '/library/metadata/$collectionRatingKey/children',
+        fromJson: PlexBook.fromJson);
+    if (direct.isNotEmpty) return direct;
 
     // Approach 2: section filter using collection.id (Plex filter API)
-    final r2 = await _client.get<Map<String, dynamic>>(
-      '/library/sections/$sectionKey/all',
-      queryParameters: {'type': 9, 'collection.id': collectionRatingKey},
-    );
-    final items2 = (r2.data?['MediaContainer']?['Metadata'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .toList();
-    if (items2.isNotEmpty) {
-      return items2.map(PlexBook.fromJson).toList();
-    }
+    final byId = await _fetchList('/library/sections/$sectionKey/all',
+        queryParameters: {'type': 9, 'collection.id': collectionRatingKey},
+        fromJson: PlexBook.fromJson);
+    if (byId.isNotEmpty) return byId;
 
     // Approach 3: filter using collection tag ID
-    final r3 = await _client.get<Map<String, dynamic>>(
-      '/library/sections/$sectionKey/all',
-      queryParameters: {'type': 9, 'collection.tag.id': collectionRatingKey},
-    );
-    final items3 = (r3.data?['MediaContainer']?['Metadata'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .toList();
-    return items3.map(PlexBook.fromJson).toList();
+    return _fetchList('/library/sections/$sectionKey/all',
+        queryParameters: {'type': 9, 'collection.tag.id': collectionRatingKey},
+        fromJson: PlexBook.fromJson);
   }
 
   /// The full record for one book, as the raw Plex map.
@@ -134,21 +118,6 @@ class PlexApi {
 
   Future<List<PlexBook>> fetchCollections(String sectionKey) =>
       _fetchList('/library/sections/$sectionKey/collections',
-          fromJson: PlexBook.fromJson);
-
-  Future<List<PlexTag>> fetchGenres(String sectionKey) async {
-    final items = await _fetchList(
-      '/library/sections/$sectionKey/genre',
-      containerKey: 'Directory',
-      fromJson: PlexTag.fromJson,
-    );
-    return items.where((g) => g.title.isNotEmpty).toList();
-  }
-
-  Future<List<PlexBook>> fetchBooksByGenre(
-          String sectionKey, String genreId) =>
-      _fetchList('/library/sections/$sectionKey/all',
-          queryParameters: {'type': 9, 'genre': genreId},
           fromJson: PlexBook.fromJson);
 
   /// Every narrator in the section, in one request.

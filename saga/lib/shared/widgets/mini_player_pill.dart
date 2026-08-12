@@ -129,25 +129,34 @@ class MiniPlayerPill extends ConsumerWidget {
                     ],
                   ),
                 ),
-                // Controls
+                // Controls. The box is 54×64 (full pill height) so the tap
+                // target clears the 48 dp floor — the mark alone is 26 px.
                 GestureDetector(
                   onTap: loading ? null : () => playing ? service.pause() : service.play(),
                   behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: AnimatedSagaMark(
-                      size: 26,
-                      state: loading
-                          ? SagaMarkState.buffering
-                          : playing
-                              ? SagaMarkState.playing
-                              : SagaMarkState.paused,
+                  child: Semantics(
+                    label: loading ? 'Loading' : (playing ? 'Pause' : 'Play'),
+                    button: true,
+                    enabled: !loading,
+                    child: Container(
+                      width: 54,
+                      height: 64,
+                      alignment: Alignment.center,
+                      child: AnimatedSagaMark(
+                        size: 26,
+                        state: loading
+                            ? SagaMarkState.buffering
+                            : playing
+                                ? SagaMarkState.playing
+                                : SagaMarkState.paused,
+                      ),
                     ),
                   ),
                 ),
                 IconButton(
                   icon: Icon(Icons.skip_next_rounded,
                       color: SagaColors.fgMuted, size: 24),
+                  tooltip: 'Skip to next',
                   onPressed: service.skipToNext,
                 ),
                 const SizedBox(width: 4),

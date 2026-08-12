@@ -68,9 +68,9 @@ A still image undersells it — [tap through every state at saga-app.no](https:/
 
 **Themes**
 
-| Ink (dark) | Cream (light) | Terracotta | Onyx (OLED) |
+| Ink (dark) | Cream (light) | Ember (deep terracotta) | Onyx (OLED) |
 |---|---|---|---|
-| <img src="brand/assets/svg/mark/saga-mark-ink-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-cream-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-terra-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-onyx-bg.svg" width="80"> |
+| <img src="brand/assets/svg/mark/saga-mark-ink-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-cream-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-ember-bg.svg" width="80"> | <img src="brand/assets/svg/mark/saga-mark-onyx-bg.svg" width="80"> |
 
 Onyx is true black — the page is `#000000`, so those pixels are physically off on an OLED screen — with warm near-black surfaces and slightly softened text so nothing blooms during night listening.
 

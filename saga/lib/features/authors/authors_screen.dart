@@ -186,7 +186,9 @@ class _AuthorBooksScreen extends ConsumerWidget {
               16, 8, 16, MediaQuery.of(context).padding.bottom + 16),
           // No author line: every book here has the same author and the app
           // bar already says who.
-          gridDelegate: bookGridDelegate(showAuthor: false),
+          gridDelegate: bookGridDelegate(
+              showAuthor: false,
+              textScaler: MediaQuery.textScalerOf(context)),
           itemCount: books.length,
           itemBuilder: (context, i) =>
               BookCard(book: books[i], showAuthor: false),

@@ -159,11 +159,13 @@ class _CastSheetState extends ConsumerState<_CastSheet> {
               }
 
               if (state == CastState.connecting) {
-                return const Padding(
-                  padding: EdgeInsets.all(16),
+                return Padding(
+                  padding: const EdgeInsets.all(16),
                   child: Center(
-                      child: AnimatedSagaMark(
-                          size: 36, state: SagaMarkState.buffering)),
+                      child: Semantics(
+                          label: 'Connecting',
+                          child: const AnimatedSagaMark(
+                              size: 36, state: SagaMarkState.buffering))),
                 );
               }
 

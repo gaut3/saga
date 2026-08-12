@@ -3,6 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../audio/m4b_chapter_reader.dart';
 
 import 'server_scope.dart';
+import 'user_box.dart';
 
 const _boxName = 'chapters';
 
@@ -27,22 +28,8 @@ class ChapterStore {
   static const _maxCached = 64;
 
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
     _decoded.clear();
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
-  }
-
-  static void _remember(String key, List<M4bChapter>? value) {
-    if (_decoded.length >= _maxCached) {
-      // Dart maps keep insertion order, so this drops the oldest entry.
-      _decoded.remove(_decoded.keys.first);
-    }
-    _decoded[key] = value;
+    _box = await openCacheBox(_boxName, encKey);
   }
 
   /// The track's chapters, or null if it has none.
@@ -67,7 +54,7 @@ class ChapterStore {
         result = null;
       }
     }
-    _remember(trackRatingKey, result);
+    rememberCapped(_decoded, _maxCached, trackRatingKey, result);
     return result;
   }
 
@@ -82,11 +69,9 @@ class ChapterStore {
     // Keep the cache honest: chapters are often written *after* the book has
     // started playing, so a stale "no chapters" entry would otherwise stick for
     // the rest of the session.
-    _remember(trackRatingKey, List<M4bChapter>.unmodifiable(chapters));
+    rememberCapped(_decoded, _maxCached, trackRatingKey,
+        List<M4bChapter>.unmodifiable(chapters));
   }
-
-  static bool has(String trackRatingKey) =>
-      _box.containsKey(ServerScope.key(trackRatingKey));
 
   /// Drops decoded entries. Called by [ServerScope.configure] on a server
   /// switch: the map is keyed by bare track key, so a stale entry would serve

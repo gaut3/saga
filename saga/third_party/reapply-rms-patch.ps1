@@ -18,7 +18,7 @@ On a just_audio version bump:
 
 The tee must stay PREPENDED before Sonic (the speed/pitch processor) so RMS
 reflects original-tempo loudness, and audio offload must stay DISABLED or the
-tap gets no PCM. See SAGA_NOTES.md / CLAUDE.md.
+tap gets no PCM.
 
 NOTE: keep this file pure ASCII. Windows PowerShell 5.1 reads BOM-less files
 as ANSI, and UTF-8 punctuation decodes into curly quotes that break parsing.

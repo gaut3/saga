@@ -1,13 +1,10 @@
 import 'package:audio_service/audio_service.dart';
 
-import '../../core/book_progress.dart';
+import '../../core/local_library.dart';
 import '../../core/storage/artwork_cache.dart';
-import '../../core/storage/book_download_store.dart';
-import '../../core/storage/book_metadata_store.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/completed_books_store.dart';
 import '../../core/storage/custom_collection_store.dart';
-import '../../core/storage/track_cache_store.dart';
 import 'session_restore.dart';
 
 /// The media IDs Android walks when it browses Saga — Android Auto's library,
@@ -97,14 +94,10 @@ List<MediaItem> browseChildren(String parentMediaId) {
       return item == null ? const [] : [item];
 
     case BrowseId.continuing:
-      return _books(_recentlyListenedKeys().take(_continueLimit));
+      return _books(localInProgressKeys().take(_continueLimit));
 
     case BrowseId.downloaded:
-      // Alphabetical: a downloaded list is a shelf, not a history.
-      final items = _books(BookDownloadStore.booksWithDownloads());
-      items.sort((a, b) =>
-          a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-      return items;
+      return _books(localDownloadedKeys());
 
     case BrowseId.collections:
       return [
@@ -134,48 +127,23 @@ List<MediaItem> browseChildren(String parentMediaId) {
 /// Public because [getMediaItem] answers with the same row the browse tree
 /// shows, and the two disagreeing is exactly the kind of drift that makes a
 /// car list and a now-playing screen show different books.
+///
+/// The book itself comes from [localBook], which is also what Home falls back
+/// to with no server — the naming and length rules used to live here alone,
+/// which is how the car could describe a downloaded book that the phone's own
+/// screens could not.
 MediaItem? bookItem(String bookRatingKey) {
-  final meta = BookMetadataStore.load(bookRatingKey);
-  final tracks = TrackCacheStore.load(bookRatingKey);
-  var title = meta?.title;
-  var author = meta?.authorName;
-  var thumb = meta?.thumbPath;
+  final book = localBook(bookRatingKey);
+  if (book == null) return null;
 
-  if ((title == null || title.isEmpty) && tracks != null && tracks.isNotEmpty) {
-    // The full per-book record is only fetched when a book's detail screen is
-    // opened, so a book played straight from a list has none. Its cached
-    // tracks carry enough to name it.
-    final first = tracks.first;
-    title = first.bookTitle;
-    author ??= first.authorName;
-    thumb ??= first.thumbPath;
-  }
-
-  // A row with no name is an unlabelled button on a screen someone is glancing
-  // at while driving. Drop it rather than invent "Unknown".
-  if (title == null || title.isEmpty) return null;
-
-  // Length through the one shared rule (Plex's figure only when it's real,
-  // else the length the position recorded), with the cached tracks' sum as a
-  // last resort. This used to be hand-rolled without the `> 0` guard, so a
-  // book Plex reports as zero-length showed no duration on the car row while
-  // Home knew better.
-  final trackSumMs = (tracks == null || tracks.isEmpty)
-      ? null
-      : tracks.fold<int>(0, (sum, t) => sum + t.durationMs);
-  final durationMs = pickTotalDurationMs(
-        meta?.totalDurationMs,
-        BookmarkStore.load(bookRatingKey)?.totalDurationMs,
-      ) ??
-      ((trackSumMs != null && trackSumMs > 0) ? trackSumMs : null);
-
+  final durationMs = book.totalDurationMs;
   return MediaItem(
     id: BrowseId.book(bookRatingKey),
-    title: title,
-    album: title,
-    artist: author,
+    title: book.title,
+    album: book.title,
+    artist: book.authorName,
     duration: durationMs != null ? Duration(milliseconds: durationMs) : null,
-    artUri: _artUri(thumb),
+    artUri: _artUri(book.thumbPath),
     playable: true,
   );
 }
@@ -193,8 +161,8 @@ List<MediaItem> searchBooks(String query) {
   // Recently-listened first, then everything else the app knows about, with
   // duplicates dropped by the LinkedHashSet's insertion order.
   final keys = <String>{
-    ..._recentlyListenedKeys(),
-    ...BookDownloadStore.booksWithDownloads(),
+    ...localInProgressKeys(),
+    ...localDownloadedKeys(),
     for (final c in CustomCollectionStore.getAll()) ...c.bookRatingKeys,
   };
 
@@ -204,20 +172,6 @@ List<MediaItem> searchBooks(String query) {
           (item.artist?.toLowerCase().contains(q) ?? false))
         item,
   ];
-}
-
-/// Book rating keys ordered by when their position was last saved, newest
-/// first — the same "what I'm in the middle of" rule Continue Listening uses,
-/// including its completed-books filter: finishing a book saves a position at
-/// the very end, so without the filter a shelf called "Continue listening"
-/// leads with the book you just finished.
-List<String> _recentlyListenedKeys() {
-  final positions = BookmarkStore.allPositions();
-  final completed = CompletedBooksStore.allCompleted();
-  return [
-    for (final key in positions.keys)
-      if (!completed.contains(key)) key,
-  ]..sort((a, b) => positions[b]!.savedAt.compareTo(positions[a]!.savedAt));
 }
 
 List<MediaItem> _books(Iterable<String> bookRatingKeys) => [

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -42,7 +43,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// Turning it off deletes all three. It also means nothing in the app speaks
   /// cleartext to localhost any more, which is what allows the network security
   /// config to be tightened.
-  final AudioPlayer _player = AudioPlayer(useProxyForRequestHeaders: false);
+  final AndroidLoudnessEnhancer _loudnessEnhancer = AndroidLoudnessEnhancer();
+  late final AudioPlayer _player = AudioPlayer(
+    useProxyForRequestHeaders: false,
+    audioPipeline: AudioPipeline(androidAudioEffects: [_loudnessEnhancer]),
+  );
   final PlexApi _api;
   late ConcatenatingAudioSource _playlist;
 
@@ -117,6 +122,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   }
 
   AudioPlayerService(this._api) {
+    // Persisted audio settings; both survive setAudioSource, so once per
+    // player is enough. Fire-and-forget: the platform player may not be
+    // attached yet, and just_audio replays them on activation.
+    unawaited(_player.setSkipSilenceEnabled(SettingsStore.skipSilence));
+    unawaited(setVolumeBoost(SettingsStore.volumeBoostDb));
     _player.playbackEventStream.listen(
       _broadcastState,
       onError: (Object e, StackTrace st) {
@@ -797,6 +807,16 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     playbackState.add(playbackState.value.copyWith(speed: speed));
   }
 
+  Future<void> setSkipSilence(bool enabled) =>
+      _player.setSkipSilenceEnabled(enabled);
+
+  /// [db] in whole decibels, 0 = off. The fork's Java converts
+  /// `targetGain * 1000` → millibels, so the Dart-side unit is tens of dB.
+  Future<void> setVolumeBoost(int db) async {
+    await _loudnessEnhancer.setTargetGain(db / 10);
+    await _loudnessEnhancer.setEnabled(db > 0);
+  }
+
   /// Where playback is right now, for the stream-error reload.
   ///
   /// Prefers the live player position over the stored bookmark — the bookmark
@@ -856,7 +876,6 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   List<PlexTrack> get currentTracks => List.unmodifiable(_tracks);
 
   Stream<Duration> get positionStream => _player.positionStream;
-  Stream<Duration?> get durationStream => _player.durationStream;
   Stream<int?> get currentIndexStream => _player.currentIndexStream;
 
   /// Total duration of all tracks in the currently loaded book.
@@ -866,9 +885,6 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// Current position expressed as an absolute offset into the whole book.
   int get absolutePositionMs =>
       _absolutePositionMs(_player.position.inMilliseconds);
-
-  /// Whether there is a previous position that [undoSeek] can restore.
-  bool get canUndoSeek => _previousAbsolutePositionMs >= 0;
 
   /// Restore the position that existed before the most recent [seekAbsolute]
   /// call. Single undo level — a second call is a no-op. Seeks directly
@@ -1068,6 +1084,23 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
             state: t.state,
           );
           await TimelineQueueStore.remove(entry.key);
+        } on DioException catch (e) {
+          // A 4xx means the server saw the report and refused it — retrying
+          // can't fix that, and one such entry would stop the loop at itself
+          // forever, blocking every entry queued behind it. Auth refusals are
+          // the exception: signing back in fixes those, so they wait.
+          final status = e.response?.statusCode;
+          final permanent = status != null &&
+              status >= 400 && status < 500 &&
+              status != 401 && status != 403;
+          if (permanent) {
+            AppLog.log('plex',
+                'queued timeline for ${t.ratingKey} rejected ($status) — '
+                'dropped');
+            await TimelineQueueStore.remove(entry.key);
+            continue;
+          }
+          break; // offline or transient — try again next time
         } catch (_) {
           break; // still offline — try again next time
         }

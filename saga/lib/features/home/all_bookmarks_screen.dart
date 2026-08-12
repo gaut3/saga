@@ -7,6 +7,7 @@ import '../../core/providers.dart';
 import '../../core/storage/named_bookmark_store.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../core/utils/format.dart';
+import '../../shared/widgets/saga_search_field.dart';
 import '../../shared/widgets/saga_toast.dart';
 import '../player/book_launch.dart';
 import '../player/bookmark_edit_sheet.dart';
@@ -59,30 +60,14 @@ class _AllBookmarksScreenState extends ConsumerState<AllBookmarksScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: TextField(
+            child: SagaSearchField(
               controller: _searchController,
-              style: TextStyle(color: SagaColors.fg),
-              decoration: InputDecoration(
-                hintText: 'Search bookmarks…',
-                hintStyle: TextStyle(color: SagaColors.fgSubtle),
-                prefixIcon: Icon(Icons.search, color: SagaColors.fgSubtle),
-                suffixIcon: _query.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(Icons.clear, color: SagaColors.fgSubtle),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _query = '');
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: SagaColors.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: EdgeInsets.zero,
-              ),
+              hintText: 'Search bookmarks…',
+              showClear: _query.isNotEmpty,
+              onClear: () {
+                _searchController.clear();
+                setState(() => _query = '');
+              },
               onChanged: (v) => setState(() => _query = v.trim()),
             ),
           ),

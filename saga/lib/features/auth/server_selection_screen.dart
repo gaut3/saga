@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../shared/widgets/saga_error_view.dart';
 import '../../shared/widgets/saga_toast.dart';
 
 import '../../core/providers.dart';
@@ -34,25 +35,10 @@ class _ServerSelectionScreenState extends ConsumerState<ServerSelectionScreen> {
         loading: () => Center(
           child: CircularProgressIndicator(color: SagaColors.accent),
         ),
-        error: (_, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
-              const SizedBox(height: 12),
-              Text('Failed to load servers — check your connection',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: SagaColors.fgMuted)),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => ref.invalidate(serverListProvider),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: SagaColors.accentDim),
-                child: Text('Retry',
-                    style: TextStyle(color: SagaColors.accentFg)),
-              ),
-            ],
-          ),
+        error: (e, _) => SagaErrorView(
+          message: 'Failed to load servers — check your connection',
+          error: e,
+          onRetry: () => ref.invalidate(serverListProvider),
         ),
         data: (servers) {
           if (servers.isEmpty) {

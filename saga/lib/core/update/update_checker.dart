@@ -50,28 +50,30 @@ class UpdateCheckResult {
   bool get isNewer => status == UpdateCheckStatus.available;
 }
 
-/// True when [latestTag] is strictly newer than [currentVersion]. Tolerant
-/// of a leading `v` and a `+build` suffix; any malformed input is false
-/// (never nag about an update we can't be sure exists).
+/// Version string → numeric parts, or null when it isn't a version number.
+/// Tolerant of a leading `v` and a `+build` suffix.
+List<int>? _parseVersion(String s) {
+  var v = s.trim();
+  if (v.startsWith('v') || v.startsWith('V')) v = v.substring(1);
+  final plus = v.indexOf('+');
+  if (plus >= 0) v = v.substring(0, plus);
+  if (v.isEmpty) return null;
+  final nums = <int>[];
+  for (final part in v.split('.')) {
+    final n = int.tryParse(part);
+    if (n == null || n < 0) return null;
+    nums.add(n);
+  }
+  return nums;
+}
+
+/// True when [latestTag] is strictly newer than [currentVersion]; any
+/// malformed input is false (never nag about an update we can't be sure
+/// exists).
 @visibleForTesting
 bool isNewerVersion(String latestTag, String currentVersion) {
-  List<int>? parse(String s) {
-    var v = s.trim();
-    if (v.startsWith('v') || v.startsWith('V')) v = v.substring(1);
-    final plus = v.indexOf('+');
-    if (plus >= 0) v = v.substring(0, plus);
-    if (v.isEmpty) return null;
-    final nums = <int>[];
-    for (final part in v.split('.')) {
-      final n = int.tryParse(part);
-      if (n == null || n < 0) return null;
-      nums.add(n);
-    }
-    return nums;
-  }
-
-  final latest = parse(latestTag);
-  final current = parse(currentVersion);
+  final latest = _parseVersion(latestTag);
+  final current = _parseVersion(currentVersion);
   if (latest == null || current == null) return false;
   final len = latest.length > current.length ? latest.length : current.length;
   for (var i = 0; i < len; i++) {
@@ -113,10 +115,11 @@ Future<UpdateCheckResult> checkForUpdate() async {
           status: UpdateCheckStatus.failed, currentVersion: installed);
     }
     final newer = isNewerVersion(tag, installed);
-    // A tag that parses to nothing is reported as "not newer" by
+    // A side that parses to nothing is reported as "not newer" by
     // isNewerVersion, which is the safe default but would otherwise pass for a
     // successful check that found nothing.
-    if (!newer && !_comparable(tag, installed)) {
+    if (!newer &&
+        (_parseVersion(tag) == null || _parseVersion(installed) == null)) {
       AppLog.log('update', 'tag "$tag" is not a version number');
       return UpdateCheckResult(
           status: UpdateCheckStatus.failed,
@@ -136,21 +139,6 @@ Future<UpdateCheckResult> checkForUpdate() async {
     return UpdateCheckResult(
         status: UpdateCheckStatus.failed, currentVersion: installed);
   }
-}
-
-/// Whether both sides parsed as version numbers, so a `false` from
-/// [isNewerVersion] means "not newer" rather than "couldn't tell".
-bool _comparable(String latestTag, String currentVersion) =>
-    isNewerVersion(latestTag, currentVersion) ||
-    isNewerVersion(currentVersion, latestTag) ||
-    // Equal versions are comparable but newer in neither direction.
-    _normalize(latestTag) == _normalize(currentVersion);
-
-String _normalize(String v) {
-  var s = v.trim();
-  if (s.startsWith('v') || s.startsWith('V')) s = s.substring(1);
-  final plus = s.indexOf('+');
-  return plus >= 0 ? s.substring(0, plus) : s;
 }
 
 /// Cached per app session; MainShell kicks it off post-frame when enabled,

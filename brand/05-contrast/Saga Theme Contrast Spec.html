@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saga · Theme Contrast Spec</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#17100c;--panel:#1e1410;--card:#261b16;--fg:#f4ead8;--muted:rgba(244,234,216,0.65);--subtle:rgba(244,234,216,0.45);--hair:rgba(244,234,216,0.1);--amber:#e0a050;--terra:#c25a3a;--pass:#9dba85;--fail:#e07a5a}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:'Manrope',sans-serif;line-height:1.55}
+a{color:var(--amber);text-decoration:none}a:hover{color:#eab877;text-decoration:underline}
+.wrap{max-width:1080px;margin:0 auto;padding:64px 40px 96px}
+.kicker{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--amber)}
+h1{font-size:38px;font-weight:800;letter-spacing:-.01em;margin:10px 0 8px}
+.lede{color:var(--muted);font-size:16px;max-width:64ch}
+h2{font-size:22px;font-weight:800;margin:0 0 4px}
+h3{font-size:15px;font-weight:700}
+.sec{margin-top:56px;border-top:1px solid var(--hair);padding-top:36px}
+.mono{font-family:'JetBrains Mono',monospace}
+.strategy{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:22px}
+.strat{background:var(--panel);border:1px solid var(--hair);border-radius:10px;padding:18px 16px}
+.strat .n{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--amber);letter-spacing:.15em}
+.strat h3{margin:6px 0 6px;font-size:14px}
+.strat p{font-size:12.5px;color:var(--muted)}
+.theme-head{display:flex;align-items:baseline;gap:14px;margin-bottom:4px}
+.theme-head .sw{width:14px;height:14px;border-radius:4px;align-self:center;border:1px solid var(--hair)}
+.theme-sub{color:var(--muted);font-size:14px;max-width:72ch;margin-bottom:20px}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
+.mock{border-radius:12px;padding:0;overflow:hidden;border:1px solid var(--hair)}
+.mock .tag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;padding:8px 14px;color:var(--subtle);background:var(--panel);border-bottom:1px solid var(--hair);display:flex;justify-content:space-between}
+.mock .tag .st{color:var(--fail)}.mock.ok .tag .st{color:var(--pass)}
+.stage{padding:20px 18px 0;display:flex;flex-direction:column;gap:12px}
+.mcard{border-radius:10px;padding:14px 14px 12px;display:flex;gap:12px;align-items:center}
+.cov{width:44px;height:44px;border-radius:6px;flex:none}
+.mtitle{font-size:14.5px;font-weight:700;line-height:1.3}
+.mauthor{font-size:12px;margin-top:1px}
+.mmeta{display:flex;justify-content:space-between;font-size:12px;margin-top:6px}
+.mlink{font-size:13px;font-weight:700;padding:0 2px 16px 4px}
+.navbar{display:flex;justify-content:space-around;padding:10px 6px 12px;border-top-width:1px;border-top-style:solid}
+.nav-it{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12px;font-weight:600}
+.nav-it .dot{width:16px;height:16px;border-radius:5px;background:currentColor;opacity:.9}
+table{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:12px}
+th{text-align:left;font-weight:500;color:var(--subtle);padding:6px 10px;border-bottom:1px solid var(--hair);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase}
+td{padding:7px 10px;border-bottom:1px solid var(--hair);color:var(--muted);vertical-align:top}
+td.tok{color:var(--fg);font-weight:500}
+.chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;white-space:nowrap}
+.chip.f{background:rgba(224,122,90,.14);color:var(--fail)}
+.chip.p{background:rgba(157,186,133,.14);color:var(--pass)}
+.chipsw{display:inline-block;width:9px;height:9px;border-radius:3px;vertical-align:-1px;margin-right:6px;border:1px solid rgba(244,234,216,.15)}
+.note{background:var(--panel);border:1px solid var(--hair);border-left:3px solid var(--amber);border-radius:8px;padding:14px 18px;font-size:13.5px;color:var(--muted);margin-top:16px;max-width:78ch}
+.note b{color:var(--fg)}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}
+.opt{background:var(--panel);border:1px solid var(--hair);border-radius:10px;padding:20px}
+.opt.rec{border-color:rgba(224,160,80,.4)}
+.opt .lbl{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--subtle)}
+.opt.rec .lbl{color:var(--amber)}
+.opt h3{margin:8px 0 8px}
+.opt p{font-size:13px;color:var(--muted)}
+.pin{background:#120c09;border:1px solid var(--hair);border-radius:10px;padding:22px 26px;margin-top:20px;overflow-x:auto}
+.pin pre{font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.75;color:var(--muted)}
+.pin .c{color:var(--subtle)}.pin .v{color:var(--fg)}.pin .r{color:var(--pass)}
+@media(max-width:860px){.strategy,.duo,.opts{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<div class="kicker">Saga · saga_theme.dart · WCAG 2.1 AA</div>
+<h1>Text-hierarchy token retune</h1>
+<p class="lede">New fgMuted / fgSubtle / accent-text values for all four themes, with computed ratios against both grounds. Ink, Cream and Onyx keep the alpha-token approach; Terra gets darker grounds. Every proposed value clears 4.5:1 on <em>both</em> bg and surface, so the on-surface rule can be retired.</p>
+</header>
+
+<section class="sec">
+<h2>Strategy — four findings, four answers</h2>
+<div class="strategy">
+<div class="strat"><div class="n">01 · FGSUBTLE</div><h3>Raise the floor, keep alpha</h3><p>fgSubtle stays a real-content tier (it carries the 12px nav labels). Alphas move from 40–55% to 52–80% per theme — the minimum that clears 4.5 on the lighter of the two grounds, plus margin.</p></div>
+<div class="strat"><div class="n">02 · TERRA</div><h3>Darken the grounds</h3><p>No text color passes on #C25A3A (cream 3.65, ink 4.14 — the mid-tone caps everything below 4.5). Recommendation: bg → #8E3A22, surface → #7A301B; #C25A3A stays as the theme's non-text hero color.</p></div>
+<div class="strat"><div class="n">03 · CREAM</div><h3>Two-step raise, not one</h3><p>The 99→A6 nudge does clear fgMuted (5.22) — but fgSubtle then can't pass anywhere below it (min passing alpha is 9C). So both move: muted → B3, subtle → A0, order preserved.</p></div>
+<div class="strat"><div class="n">04 · ACCENT</div><h3>New accentText tier</h3><p>One rule: <b>accent</b> is for large/bold text (≥3:1) and non-text UI; a new <b>accentText</b> passes 4.5 at any size. Ink/Onyx reuse amber as-is; Cream and Terra get one new hex each.</p></div>
+</div>
+</section>
+
+<!-- ═══════════ INK ═══════════ -->
+<section class="sec" data-screen-label="Ink">
+<div class="theme-head"><span class="sw" style="background:#1E1410"></span><h2>Ink</h2><span class="mono" style="font-size:12px;color:var(--subtle)">bg #1E1410 · surface #261B16 · fg #F4EAD8</span></div>
+<p class="theme-sub">One change. fgMuted already passes comfortably and keeps its 65%. fgSubtle moves 40% → 52% (0x84) — still clearly the quietest step against muted's 65%.</p>
+<div class="duo">
+<div class="mock"><div class="tag"><span>Current · subtle @ 40%</span><span class="st">fails</span></div>
+<div class="stage" style="background:#1E1410;color:#F4EAD8">
+<div class="mcard" style="background:#261B16"><div class="cov" style="background:linear-gradient(135deg,#3a2a20,#5a3c28)"></div><div style="flex:1"><div class="mtitle">The Impending Death</div><div class="mauthor" style="color:rgba(244,234,216,.40)">Kugane Maruyama · Chris Guerrero</div><div class="mmeta"><span style="color:rgba(244,234,216,.65)">4h 12m left</span><span style="color:rgba(244,234,216,.40)">Ch. 4 · 33%</span></div></div></div>
+<div class="mlink" style="color:#E0A050">Full details</div>
+<div class="navbar" style="border-top-color:rgba(244,234,216,.1)"><div class="nav-it" style="color:#E0A050"><span class="dot"></span>Home</div><div class="nav-it" style="color:rgba(244,234,216,.40)"><span class="dot"></span>Library</div><div class="nav-it" style="color:rgba(244,234,216,.40)"><span class="dot"></span>History</div><div class="nav-it" style="color:rgba(244,234,216,.40)"><span class="dot"></span>Settings</div></div>
+</div></div>
+<div class="mock ok"><div class="tag"><span>Proposed · subtle @ 52%</span><span class="st">passes</span></div>
+<div class="stage" style="background:#1E1410;color:#F4EAD8">
+<div class="mcard" style="background:#261B16"><div class="cov" style="background:linear-gradient(135deg,#3a2a20,#5a3c28)"></div><div style="flex:1"><div class="mtitle">The Impending Death</div><div class="mauthor" style="color:rgba(244,234,216,.52)">Kugane Maruyama · Chris Guerrero</div><div class="mmeta"><span style="color:rgba(244,234,216,.65)">4h 12m left</span><span style="color:rgba(244,234,216,.52)">Ch. 4 · 33%</span></div></div></div>
+<div class="mlink" style="color:#E0A050">Full details</div>
+<div class="navbar" style="border-top-color:rgba(244,234,216,.1)"><div class="nav-it" style="color:#E0A050"><span class="dot"></span>Home</div><div class="nav-it" style="color:rgba(244,234,216,.52)"><span class="dot"></span>Library</div><div class="nav-it" style="color:rgba(244,234,216,.52)"><span class="dot"></span>History</div><div class="nav-it" style="color:rgba(244,234,216,.52)"><span class="dot"></span>Settings</div></div>
+</div></div>
+</div>
+<table><tr><th>Token</th><th>Current</th><th>bg / surface</th><th>Proposed</th><th>bg / surface</th></tr>
+<tr><td class="tok">fg</td><td>#F4EAD8</td><td><span class="chip p">15.14 / 14.08</span></td><td>unchanged</td><td><span class="chip p">15.14 / 14.08</span></td></tr>
+<tr><td class="tok">fgMuted</td><td>fg @ A6 (65%)</td><td><span class="chip p">6.93 / 6.68</span></td><td>unchanged</td><td><span class="chip p">6.93 / 6.68</span></td></tr>
+<tr><td class="tok">fgSubtle</td><td>fg @ 66 (40%)</td><td><span class="chip f">3.42 / 3.37</span></td><td>fg @ 84 (52%)</td><td><span class="chip p">4.86 / 4.71</span></td></tr>
+<tr><td class="tok">accentText</td><td>— (accent #E0A050)</td><td><span class="chip p">8.01 / 7.45</span></td><td>= accent #E0A050</td><td><span class="chip p">8.01 / 7.45</span></td></tr>
+</table>
+</section>
+
+<!-- ═══════════ CREAM ═══════════ -->
+<section class="sec" data-screen-label="Cream">
+<div class="theme-head"><span class="sw" style="background:#F4EAD8"></span><h2>Cream</h2><span class="mono" style="font-size:12px;color:var(--subtle)">bg #F4EAD8 · surface #EFE3CE · fg #1E1410</span></div>
+<p class="theme-sub">Both steps move together: fgMuted 60% → 70%, fgSubtle 40% → 63%. The gap between them narrows (light themes need high alphas to pass), so size and weight carry more of the hierarchy here — which the type already does. accentText is a new hex: #9E4128, which is Terra's current surface, so it stays in the family; #C25A3A remains for large/bold accent and non-text UI.</p>
+<div class="duo">
+<div class="mock"><div class="tag"><span>Current · subtle @ 40%, accent as 13px text</span><span class="st">fails</span></div>
+<div class="stage" style="background:#F4EAD8;color:#1E1410">
+<div class="mcard" style="background:#EFE3CE"><div class="cov" style="background:linear-gradient(135deg,#d8c4a4,#c09a72)"></div><div style="flex:1"><div class="mtitle">The Impending Death</div><div class="mauthor" style="color:rgba(30,20,16,.40)">Kugane Maruyama · Chris Guerrero</div><div class="mmeta"><span style="color:rgba(30,20,16,.60)">4h 12m left</span><span style="color:rgba(30,20,16,.40)">Ch. 4 · 33%</span></div></div></div>
+<div class="mlink" style="color:#C25A3A">Full details</div>
+<div class="navbar" style="border-top-color:rgba(30,20,16,.1)"><div class="nav-it" style="color:#C25A3A"><span class="dot"></span>Home</div><div class="nav-it" style="color:rgba(30,20,16,.40)"><span class="dot"></span>Library</div><div class="nav-it" style="color:rgba(30,20,16,.40)"><span class="dot"></span>History</div><div class="nav-it" style="color:rgba(30,20,16,.40)"><span class="dot"></span>Settings</div></div>
+</div></div>
+<div class="mock ok"><div class="tag"><span>Proposed · subtle @ 63%, accentText #9E4128</span><span class="st">passes</span></div>
+<div class="stage" style="background:#F4EAD8;color:#1E1410">
+<div class="mcard" style="background:#EFE3CE"><div class="cov" style="background:linear-gradient(135deg,#d8c4a4,#c09a72)"></div><div style="flex:1"><div class="mtitle">The Impending Death</div><div class="mauthor" style="color:rgba(30,20,16,.63)">Kugane Maruyama · Chris Guerrero</div><div class="mmeta"><span style="color:rgba(30,20,16,.70)">4h 12m left</span><span style="color:rgba(30,20,16,.63)">Ch. 4 · 33%</span></div></div></div>
+<div class="mlink" style="color:#9E4128">Full details</div>
+<div class="navbar" style="border-top-color:rgba(30,20,16,.1)"><div class="nav-it" style="color:#9E4128"><span class="dot"></span>Home</div><div class="nav-it" style="color:rgba(30,20,16,.63)"><span class="dot"></span>Library</div><div class="nav-it" style="color:rgba(30,20,16,.63)"><span class="dot"></span>History</div><div class="nav-it" style="color:rgba(30,20,16,.63)"><span class="dot"></span>Settings</div></div>
+</div></div>
+</div>
+<table><tr><th>Token</th><th>Current</th><th>bg / surface</th><th>Proposed</th><th>bg / surface</th></tr>
+<tr><td class="tok">fg</td><td>#1E1410</td><td><span class="chip p">15.14 / 14.23</span></td><td>unchanged</td><td><span class="chip p">15.14 / 14.23</span></td></tr>
+<tr><td class="tok">fgMuted</td><td>fg @ 99 (60%)</td><td><span class="chip f">4.43 / 4.34</span></td><td>fg @ B3 (70%)</td><td><span class="chip p">6.18 / 6.00</span></td></tr>
+<tr><td class="tok">fgSubtle</td><td>fg @ 66 (40%)</td><td><span class="chip f">2.50 / 2.47</span></td><td>fg @ A0 (63%)</td><td><span class="chip p">4.84 / 4.75</span></td></tr>
+<tr><td class="tok">accentText</td><td>— (accent #C25A3A)</td><td><span class="chip f">3.65 / 3.44</span></td><td><span class="chipsw" style="background:#9E4128"></span>#9E4128 new</td><td><span class="chip p">5.43 / 5.11</span></td></tr>
+</table>
+<div class="note"><b>Why not the A6 nudge?</b> fg @ A6 (65%) does clear muted at 5.22 / 5.12. But the minimum passing alpha for <em>any</em> real-content tier is 9C (61%) — there is no room for a passing fgSubtle underneath a 65% fgMuted. Moving both (70 / 63) keeps the order and passes everywhere.</div>
+</section>
+
+<!-- ═══════════ TERRA ═══════════ -->
+<section class="sec" data-screen-label="Terra">
+<div class="theme-head"><span class="sw" style="background:#8E3A22"></span><h2>Terra → Ember — the decision</h2><span class="mono" style="font-size:12px;color:var(--subtle)">bg #C25A3A → #8E3A22 · surface #9E4128 → #7A301B</span></div>
+<p class="theme-sub">The mid-tone is unfixable as a text ground: full cream tops out at 3.65 and full ink at 4.14 — no color in either direction reaches 4.5 on #C25A3A. Retuning alphas, going opaque, or enforcing the on-surface rule all dead-end (even 87% cream on the current surface only just reaches 4.5). So the recommendation is structural but small: shift both grounds one step darker into rust, keep cream text, and let #C25A3A live on as the theme's identity color in non-text roles — hero blocks, seek bar fill, button fills, cover scrims. The darker cut also gets a new display name: <b style="color:var(--fg)">Ember</b> — warm coals rather than raw terracotta, and it sits naturally beside Ink, Cream and Onyx. Rename is display-only; the persisted index is untouched.</p>
+<div class="opts">
+<div class="opt rec"><div class="lbl">Recommended · Option A</div><h3>Darken the grounds, rename to Ember</h3><p>bg #8E3A22 (cream hits 6.34), surface #7A301B (7.77). The darker-surface structure survives; the on-surface rule is retired because everything now passes on bg. Hierarchy is deliberately compressed — fg 100%, muted 85%, subtle 80% — a bold theme reads bold, and all three tiers clear AA. Accent-as-text becomes pale amber #F0C48C (4.67 / 5.73); ink stops being used as text.</p></div>
+<div class="opt"><div class="lbl">Fallback · Option B</div><h3>Declare reduced-contrast</h3><p>Keep #C25A3A exactly as shipped and label Terra "does not meet AA" in settings. Zero visual change, honest, and persisted-index-safe — but it leaves the 12px nav labels at 2.11 for anyone who picks it, and the audit finding stays open. Only worth it if the darkened rust reads as a different theme to you.</p></div>
+</div>
+<div class="duo" style="margin-top:20px">
+<div class="mock"><div class="tag"><span>Current · #C25A3A ground</span><span class="st">fails — even fg</span></div>
+<div class="stage" style="background:#C25A3A;color:#F4EAD8">
+<div class="mcard" style="background:#9E4128"><div class="cov" style="background:linear-gradient(135deg,#7c2d16,#5e2210)"></div><div style="flex:1"><div class="mtitle">The Impending Death</div><div class="mauthor" style="color:rgba(244,234,216,.55)">Kugane Maruyama · Chris Guerrero</div><div class="mmeta"><span style="color:rgba(244,234,216,.78)">4h 12m left</span><span style="color:rgba(244,234,216,.55)">Ch. 4 · 33%</span></div></div></div>
+<div class="mlink" style="color:#1E1410">Full details</div>
+<div class="navbar" style="border-top-color:rgba(244,234,216,.16)"><div class="nav-it" style="color:#1E1410"><span class="dot"></span>Home</div><div class="nav-it" style="color:rgba(244,234,216,.55)"><span class="dot"></span>Library</div><div class="nav-it" style="color:rgba(244,234,216,.55)"><span class="dot"></span>History</div><div class="nav-it" style="color:rgba(244,234,216,.55)"><span class="dot"></span>Settings</div></div>
+</div></div>
+<div class="mock ok"><div class="tag"><span>Proposed "Ember" · #8E3A22 ground, #C25A3A as hero</span><span class="st">passes</span></div>
+<div class="stage" style="background:#8E3A22;color:#F4EAD8">
+<div class="mcard" style="background:#7A301B"><div class="cov" style="background:linear-gradient(135deg,#C25A3A,#9E4128)"></div><div style="flex:1"><div class="mtitle">The Impending Death</div><div class="mauthor" style="color:rgba(244,234,216,.80)">Kugane Maruyama · Chris Guerrero</div><div class="mmeta"><span style="color:rgba(244,234,216,.85)">4h 12m left</span><span style="color:rgba(244,234,216,.80)">Ch. 4 · 33%</span></div></div></div>
+<div class="mlink" style="color:#F0C48C">Full details</div>
+<div class="navbar" style="border-top-color:rgba(244,234,216,.16)"><div class="nav-it" style="color:#F0C48C"><span class="dot"></span>Home</div><div class="nav-it" style="color:rgba(244,234,216,.80)"><span class="dot"></span>Library</div><div class="nav-it" style="color:rgba(244,234,216,.80)"><span class="dot"></span>History</div><div class="nav-it" style="color:rgba(244,234,216,.80)"><span class="dot"></span>Settings</div></div>
+</div></div>
+</div>
+<table><tr><th>Token</th><th>Current</th><th>bg / surface</th><th>Proposed (new grounds)</th><th>bg / surface</th></tr>
+<tr><td class="tok">bg</td><td><span class="chipsw" style="background:#C25A3A"></span>#C25A3A</td><td>—</td><td><span class="chipsw" style="background:#8E3A22"></span>#8E3A22</td><td>—</td></tr>
+<tr><td class="tok">surface</td><td><span class="chipsw" style="background:#9E4128"></span>#9E4128</td><td>—</td><td><span class="chipsw" style="background:#7A301B"></span>#7A301B</td><td>—</td></tr>
+<tr><td class="tok">fg</td><td>#F4EAD8</td><td><span class="chip f">3.65 / 5.43</span></td><td>unchanged</td><td><span class="chip p">6.34 / 7.77</span></td></tr>
+<tr><td class="tok">fgMuted</td><td>fg @ C7 (78%)</td><td><span class="chip f">2.82 / 3.96</span></td><td>fg @ D9 (85%)</td><td><span class="chip p">5.07 / 6.08</span></td></tr>
+<tr><td class="tok">fgSubtle</td><td>fg @ 8C (55%)</td><td><span class="chip f">2.11 / 2.73</span></td><td>fg @ CB (80%)</td><td><span class="chip p">4.63 / 5.53</span></td></tr>
+<tr><td class="tok">accentText</td><td>— (accent #1E1410)</td><td><span class="chip f">4.14 / 2.79</span></td><td><span class="chipsw" style="background:#F0C48C"></span>#F0C48C new</td><td><span class="chip p">4.67 / 5.73</span></td></tr>
+<tr><td class="tok">hero (non-text)</td><td>—</td><td>—</td><td><span class="chipsw" style="background:#C25A3A"></span>#C25A3A, decorative roles only</td><td>1.73 vs bg — never text</td></tr>
+</table>
+</section>
+
+<!-- ═══════════ ONYX ═══════════ -->
+<section class="sec" data-screen-label="Onyx">
+<div class="theme-head"><span class="sw" style="background:#000"></span><h2>Onyx</h2><span class="mono" style="font-size:12px;color:var(--subtle)">bg #000000 · surface #0C0908 · fg #E4D9C6</span></div>
+<p class="theme-sub">One change, bloom-safe. fgSubtle moves 40% → 55% (0x8C); composited on black that's #7D776D — far dimmer than the already-dimmed fg, so nothing new glows at night. fgMuted keeps its 65%.</p>
+<div class="duo">
+<div class="mock"><div class="tag"><span>Current · subtle @ 40%</span><span class="st">fails</span></div>
+<div class="stage" style="background:#000;color:#E4D9C6">
+<div class="mcard" style="background:#0C0908;border:1px solid rgba(228,217,198,.12)"><div class="cov" style="background:linear-gradient(135deg,#241a12,#3d2b1c)"></div><div style="flex:1"><div class="mtitle">The Impending Death</div><div class="mauthor" style="color:rgba(228,217,198,.40)">Kugane Maruyama · Chris Guerrero</div><div class="mmeta"><span style="color:rgba(228,217,198,.65)">4h 12m left</span><span style="color:rgba(228,217,198,.40)">Ch. 4 · 33%</span></div></div></div>
+<div class="mlink" style="color:#E0A050">Full details</div>
+<div class="navbar" style="border-top-color:rgba(228,217,198,.1)"><div class="nav-it" style="color:#E0A050"><span class="dot"></span>Home</div><div class="nav-it" style="color:rgba(228,217,198,.40)"><span class="dot"></span>Library</div><div class="nav-it" style="color:rgba(228,217,198,.40)"><span class="dot"></span>History</div><div class="nav-it" style="color:rgba(228,217,198,.40)"><span class="dot"></span>Settings</div></div>
+</div></div>
+<div class="mock ok"><div class="tag"><span>Proposed · subtle @ 55%</span><span class="st">passes</span></div>
+<div class="stage" style="background:#000;color:#E4D9C6">
+<div class="mcard" style="background:#0C0908;border:1px solid rgba(228,217,198,.12)"><div class="cov" style="background:linear-gradient(135deg,#241a12,#3d2b1c)"></div><div style="flex:1"><div class="mtitle">The Impending Death</div><div class="mauthor" style="color:rgba(228,217,198,.55)">Kugane Maruyama · Chris Guerrero</div><div class="mmeta"><span style="color:rgba(228,217,198,.65)">4h 12m left</span><span style="color:rgba(228,217,198,.55)">Ch. 4 · 33%</span></div></div></div>
+<div class="mlink" style="color:#E0A050">Full details</div>
+<div class="navbar" style="border-top-color:rgba(228,217,198,.1)"><div class="nav-it" style="color:#E0A050"><span class="dot"></span>Home</div><div class="nav-it" style="color:rgba(228,217,198,.55)"><span class="dot"></span>Library</div><div class="nav-it" style="color:rgba(228,217,198,.55)"><span class="dot"></span>History</div><div class="nav-it" style="color:rgba(228,217,198,.55)"><span class="dot"></span>Settings</div></div>
+</div></div>
+</div>
+<table><tr><th>Token</th><th>Current</th><th>bg / surface</th><th>Proposed</th><th>bg / surface</th></tr>
+<tr><td class="tok">fg</td><td>#E4D9C6</td><td><span class="chip p">15.04 / 14.21</span></td><td>unchanged</td><td><span class="chip p">15.04 / 14.21</span></td></tr>
+<tr><td class="tok">fgMuted</td><td>fg @ A6 (65%)</td><td><span class="chip p">6.39 / 6.31</span></td><td>unchanged</td><td><span class="chip p">6.39 / 6.31</span></td></tr>
+<tr><td class="tok">fgSubtle</td><td>fg @ 66 (40%)</td><td><span class="chip f">2.92 / 3.00</span></td><td>fg @ 8C (55%)</td><td><span class="chip p">4.73 / 4.76</span></td></tr>
+<tr><td class="tok">accentText</td><td>— (accent #E0A050)</td><td><span class="chip p">9.31 / 8.80</span></td><td>= accent #E0A050</td><td><span class="chip p">9.31 / 8.80</span></td></tr>
+</table>
+</section>
+
+<!-- ═══════════ MARK TOUCHPOINTS ═══════════ -->
+<section class="sec" data-screen-label="Mark touchpoints">
+<h2>Mark &amp; extension touchpoints</h2>
+<p class="theme-sub" style="margin-top:8px">The four-spine mark is also the transport control, so it's non-text UI with a 3:1 floor — the retune touches it in exactly one place. The Mark Extensions work (generated covers, tiled pattern) is decorative artwork and exempt from AA, but two of its values reference the retired terra grounds.</p>
+<table style="margin-top:10px"><tr><th>Theme</th><th>Side spines · bg</th><th>Accent spine · bg</th><th>Change</th></tr>
+<tr><td class="tok">Ink</td><td>cream <span class="chip p">15.14</span></td><td>amber <span class="chip p">8.01</span></td><td>none</td></tr>
+<tr><td class="tok">Cream</td><td>ink <span class="chip p">15.14</span></td><td>terracotta <span class="chip p">3.65</span></td><td>none (≥3:1 non-text)</td></tr>
+<tr><td class="tok">Ember</td><td>cream <span class="chip p">6.34</span></td><td>ink <span class="chip f">2.39</span> → amber <span class="chip p">3.35</span></td><td class="tok">mark-middle: ink → amber</td></tr>
+<tr><td class="tok">Onyx</td><td>dim cream <span class="chip p">15.04</span></td><td>amber <span class="chip p">9.31</span></td><td>none</td></tr>
+</table>
+<div class="note"><b>Generated cover fallback</b> (Mark Extensions §01): covers carry no text, so AA doesn't apply — but two of the six hashed palette pairs use the retired terra grounds. Swap <span class="mono" style="font-size:11px">#9E4128 → #8E3A22</span> and <span class="mono" style="font-size:11px">#8A3520 → #7A301B</span> so generated covers match Ember's real surfaces; theme-locked mode inherits the new grounds automatically. <b>Pattern fields</b> (§02) are opacity-governed texture and unchanged; the sticker's #9E4128 ground can move to #8E3A22 for consistency whenever it's next exported.</div>
+</section>
+
+<!-- ═══════════ POLICY + PIN ═══════════ -->
+<section class="sec">
+<h2>Accent-as-text policy</h2>
+<p class="theme-sub" style="margin-top:8px">Split the role instead of darkening every accent. <b style="color:var(--fg)">accent</b> keeps its current values for non-text UI and large/bold text (18px+, or 14px+ bold — 3:1 floor). A new <b style="color:var(--fg)">accentText</b> is the only accent allowed at body sizes like the 13px "Full details" links, and must clear 4.5 on both grounds. In Ink and Onyx it aliases accent (amber already passes big); Cream and Terra each get one new hex, both drawn from the existing palette family.</p>
+<h2 style="margin-top:36px">Values to pin in tests</h2>
+<p class="theme-sub" style="margin-top:8px">Ratios are WCAG 2.1, alpha composited onto the named ground before ratioing — same method as the audit. Worst-of-two-grounds shown as the pin value.</p>
+<div class="pin"><pre><span class="c">// theme      token        value                      worst ratio (bg / surface)</span>
+<span class="v">ink         fgMuted      fg @ 0xA6 (65%)</span>            <span class="r">6.68</span>   <span class="c">(6.93 / 6.68) — unchanged</span>
+<span class="v">ink         fgSubtle     fg @ 0x84 (52%)</span>            <span class="r">4.71</span>   <span class="c">(4.86 / 4.71)</span>
+<span class="v">ink         accentText   #E0A050 (= accent)</span>         <span class="r">7.45</span>   <span class="c">(8.01 / 7.45)</span>
+<span class="v">cream       fgMuted      fg @ 0xB3 (70%)</span>            <span class="r">6.00</span>   <span class="c">(6.18 / 6.00)</span>
+<span class="v">cream       fgSubtle     fg @ 0xA0 (63%)</span>            <span class="r">4.75</span>   <span class="c">(4.84 / 4.75)</span>
+<span class="v">cream       accentText   #9E4128</span>                    <span class="r">5.11</span>   <span class="c">(5.43 / 5.11)</span>
+<span class="v">terra       (renamed "Ember" — display only, persisted index unchanged)</span>
+<span class="v">terra       bg           #8E3A22</span>                           <span class="c">was #C25A3A</span>
+<span class="v">terra       surface      #7A301B</span>                           <span class="c">was #9E4128</span>
+<span class="v">terra       fg           #F4EAD8</span>                    <span class="r">6.34</span>   <span class="c">(6.34 / 7.77) — unchanged</span>
+<span class="v">terra       fgMuted      fg @ 0xD9 (85%)</span>            <span class="r">5.07</span>   <span class="c">(5.07 / 6.08)</span>
+<span class="v">terra       fgSubtle     fg @ 0xCB (80%)</span>            <span class="r">4.63</span>   <span class="c">(4.63 / 5.53)</span>
+<span class="v">terra       accentText   #F0C48C</span>                    <span class="r">4.67</span>   <span class="c">(4.67 / 5.73)</span>
+<span class="v">terra       hero         #C25A3A</span>                    <span class="c">non-text only (1.73 vs bg)</span>
+<span class="v">onyx        fgMuted      fg @ 0xA6 (65%)</span>            <span class="r">6.31</span>   <span class="c">(6.39 / 6.31) — unchanged</span>
+<span class="v">onyx        fgSubtle     fg @ 0x8C (55%)</span>            <span class="r">4.73</span>   <span class="c">(4.73 / 4.76)</span>
+<span class="v">onyx        accentText   #E0A050 (= accent)</span>         <span class="r">8.80</span>   <span class="c">(9.31 / 8.80)</span></pre></div>
+<div class="note" style="margin-top:22px"><b>Code-side follow-ups</b> if Option A lands: retire the "secondary text on surface" Terra guideline (everything passes on bg now); repoint Terra's ink-as-text call sites to accentText; keep the alpha-token structure everywhere — no opaque migration needed. The 90 fgSubtle call sites keep their token; no usage-contract change required in any theme.</div>
+</section>
+</div>
+</body>
+</html>

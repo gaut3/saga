@@ -10,6 +10,7 @@ import '../../core/storage/custom_collection_store.dart';
 import '../../core/theme/saga_theme.dart';
 import '../library/book_detail_screen.dart';
 import '../../shared/widgets/saga_error_view.dart';
+import '../../shared/widgets/saga_search_field.dart';
 import '../../shared/widgets/saga_sheet.dart';
 
 class CollectionDetailScreen extends ConsumerStatefulWidget {
@@ -193,31 +194,14 @@ class _CollectionDetailScreenState
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: TextField(
+                child: SagaSearchField(
                   controller: _searchController,
-                  style: TextStyle(color: SagaColors.fg),
-                  decoration: InputDecoration(
-                    hintText: 'Search in collection…',
-                    hintStyle: TextStyle(color: SagaColors.fgSubtle),
-                    prefixIcon:
-                        Icon(Icons.search, color: SagaColors.fgSubtle),
-                    suffixIcon: _query.isNotEmpty
-                        ? IconButton(
-                            icon: Icon(Icons.clear, color: SagaColors.fgSubtle),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _query = '');
-                            },
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: SagaColors.surface,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: EdgeInsets.zero,
-                  ),
+                  hintText: 'Search in collection…',
+                  showClear: _query.isNotEmpty,
+                  onClear: () {
+                    _searchController.clear();
+                    setState(() => _query = '');
+                  },
                   onChanged: (v) => setState(() => _query = v.trim()),
                 ),
               ),
@@ -376,6 +360,7 @@ class _BookTile extends ConsumerWidget {
       trailing: trailing ??
           IconButton(
             icon: Icon(Icons.remove_circle_outline, color: SagaColors.fgSubtle),
+            tooltip: 'Remove from collection',
             onPressed: () => _removeBook(ref),
           ),
       onTap: () => Navigator.push(

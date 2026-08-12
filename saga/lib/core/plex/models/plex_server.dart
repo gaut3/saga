@@ -33,13 +33,11 @@ class PlexServer {
   final String name;
   final String machineIdentifier;
   final List<PlexConnection> connections;
-  String? activeUri;
 
   PlexServer({
     required this.name,
     required this.machineIdentifier,
     required this.connections,
-    this.activeUri,
   });
 
   factory PlexServer.fromJson(Map<String, dynamic> json) {

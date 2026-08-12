@@ -101,8 +101,8 @@ class _SagaToastState extends ConsumerState<_SagaToast>
     ref.watch(sagaThemeVariantProvider);
     // Error toasts use fixed amber+ink — these are static const values unchanged
     // by theme variants, so the toast always pops regardless of which theme is
-    // active (terra surface == terraDeep, so a terra-toned error pill is invisible
-    // on the Terra theme).
+    // active (an ember/terra-toned error pill would sink into the Ember
+    // theme's own grounds).
     final Color bg = widget.isError ? SagaColors.amber : SagaColors.surface;
     final Color fg = widget.isError ? SagaColors.ink   : SagaColors.fg;
 
@@ -131,13 +131,18 @@ class _SagaToastState extends ConsumerState<_SagaToast>
                     ),
                   ],
                 ),
-                child: Text(
-                  widget.message,
-                  style: TextStyle(
-                    color: fg,
-                    fontFamily: 'Manrope',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                // liveRegion is how SnackBar gets TalkBack to read it out;
+                // without it every toast confirmation is visual-only.
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    widget.message,
+                    style: TextStyle(
+                      color: fg,
+                      fontFamily: 'Manrope',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),

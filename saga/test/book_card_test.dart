@@ -11,11 +11,15 @@ import 'package:saga/shared/widgets/book_card.dart';
 /// So the thing to hold still is that the reserved boxes really do hold the type
 /// the card puts in them, and that a cell is as tall as the card it contains.
 void main() {
-  double textHeight(String text, TextStyle style, int maxLines) {
+  const noScale = TextScaler.noScaling;
+
+  double textHeight(String text, TextStyle style, int maxLines,
+      {TextScaler textScaler = noScale}) {
     final painter = TextPainter(
       text: TextSpan(text: text, style: style),
       maxLines: maxLines,
       textDirection: TextDirection.ltr,
+      textScaler: textScaler,
     )..layout(maxWidth: 110); // narrowest real cell: a 3-up grid on a 360 dp phone
     return painter.height;
   }
@@ -27,14 +31,14 @@ void main() {
         bookCardTitleStyle,
         2,
       );
-      expect(h, lessThanOrEqualTo(kBookCardTitleHeight));
+      expect(h, lessThanOrEqualTo(bookCardTitleHeight(noScale)));
     });
 
     test('a one-line title still reserves the full box', () {
       // Two cards side by side must put their author lines at the same height
       // whether or not the titles wrap — that is what the fixed box buys.
       final short = textHeight('Elantris', bookCardTitleStyle, 2);
-      expect(short, lessThanOrEqualTo(kBookCardTitleHeight));
+      expect(short, lessThanOrEqualTo(bookCardTitleHeight(noScale)));
     });
 
     test('one line of author fits the author box', () {
@@ -43,32 +47,57 @@ void main() {
         bookCardAuthorStyle,
         1,
       );
-      expect(h, lessThanOrEqualTo(kBookCardAuthorHeight));
+      expect(h, lessThanOrEqualTo(bookCardAuthorHeight(noScale)));
     });
+
+    // The boxes were hardcoded 1.0× values before, so Android's large font
+    // settings clipped a wrapped title into the author line. Hold the
+    // invariant at the top of Android's font-size range too.
+    for (final scale in [1.3, 1.5, 2.0]) {
+      final scaler = TextScaler.linear(scale);
+      test('the boxes still hold their type at $scale× font scale', () {
+        final title = textHeight(
+          'The Shadow Rising: Book Four of The Wheel of Time',
+          bookCardTitleStyle,
+          2,
+          textScaler: scaler,
+        );
+        expect(title, lessThanOrEqualTo(bookCardTitleHeight(scaler)));
+        final author = textHeight(
+          'Robert Jordan and Brandon Sanderson',
+          bookCardAuthorStyle,
+          1,
+          textScaler: scaler,
+        );
+        expect(author, lessThanOrEqualTo(bookCardAuthorHeight(scaler)));
+      });
+    }
   });
 
   group('bookCardExtent', () {
     test('is the cover plus every piece laid out under it', () {
       expect(
-        bookCardExtent(100),
+        bookCardExtent(100, textScaler: noScale),
         100 +
             kBookCardTitleGap +
-            kBookCardTitleHeight +
+            bookCardTitleHeight(noScale) +
             kBookCardAuthorGap +
-            kBookCardAuthorHeight +
+            bookCardAuthorHeight(noScale) +
             2, // slack
       );
     });
 
     test('dropping the author line shortens the card by exactly that line', () {
       expect(
-        bookCardExtent(100) - bookCardExtent(100, showAuthor: false),
-        kBookCardAuthorGap + kBookCardAuthorHeight,
+        bookCardExtent(100, textScaler: noScale) -
+            bookCardExtent(100, showAuthor: false, textScaler: noScale),
+        kBookCardAuthorGap + bookCardAuthorHeight(noScale),
       );
     });
 
     test('a strip of cards is as tall as the cards in it', () {
-      expect(kBookStripHeight, bookCardExtent(kBookStripCoverWidth));
+      expect(bookStripHeight(noScale),
+          bookCardExtent(kBookStripCoverWidth, textScaler: noScale));
     });
   });
 
@@ -79,7 +108,8 @@ void main() {
     Future<Size> cellSize(WidgetTester tester,
         {required double width,
         bool showAuthor = true,
-        double padding = 16}) async {
+        double padding = 16,
+        TextScaler textScaler = noScale}) async {
       tester.view.physicalSize = Size(width, 800);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -87,7 +117,8 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: GridView.builder(
           padding: EdgeInsets.symmetric(horizontal: padding),
-          gridDelegate: bookGridDelegate(showAuthor: showAuthor),
+          gridDelegate: bookGridDelegate(
+              showAuthor: showAuthor, textScaler: textScaler),
           itemCount: 6,
           itemBuilder: (_, i) => ColoredBox(
             key: ValueKey(i),
@@ -105,12 +136,14 @@ void main() {
       final size = await cellSize(tester, width: 360);
       // The cover is square, so its height is the cell's width — everything
       // left over is the text block the card lays out below it.
-      expect(size.height - size.width, closeTo(bookCardExtent(0), 0.001));
+      expect(size.height - size.width,
+          closeTo(bookCardExtent(0, textScaler: noScale), 0.001));
     });
 
     testWidgets('the same holds on a wide screen', (tester) async {
       final size = await cellSize(tester, width: 800);
-      expect(size.height - size.width, closeTo(bookCardExtent(0), 0.001));
+      expect(size.height - size.width,
+          closeTo(bookCardExtent(0, textScaler: noScale), 0.001));
     });
 
     testWidgets('and under a padding the delegate was never told about',
@@ -118,7 +151,8 @@ void main() {
       // The cell is sized from the width the grid hands it, so a page that
       // pads differently can't end up with cells too short for their text.
       final size = await cellSize(tester, width: 360, padding: 40);
-      expect(size.height - size.width, closeTo(bookCardExtent(0), 0.001));
+      expect(size.height - size.width,
+          closeTo(bookCardExtent(0, textScaler: noScale), 0.001));
     });
 
     testWidgets('an author page cell drops exactly the author line',
@@ -127,7 +161,14 @@ void main() {
       final without = await cellSize(tester, width: 360, showAuthor: false);
       expect(withAuthor.width, closeTo(without.width, 0.001));
       expect(withAuthor.height - without.height,
-          closeTo(kBookCardAuthorGap + kBookCardAuthorHeight, 0.001));
+          closeTo(kBookCardAuthorGap + bookCardAuthorHeight(noScale), 0.001));
+    });
+
+    testWidgets('a cell grows with the text scale', (tester) async {
+      const scaler = TextScaler.linear(2.0);
+      final size = await cellSize(tester, width: 360, textScaler: scaler);
+      expect(size.height - size.width,
+          closeTo(bookCardExtent(0, textScaler: scaler), 0.001));
     });
   });
 }

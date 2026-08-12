@@ -259,9 +259,8 @@ void main() {
       });
 
       await ServerScope.configure('server-b');
-      expect(NarratorIndexStore.has('1'), isFalse,
+      expect(NarratorIndexStore.load('1'), isNull,
           reason: "section ids are per-server integers, like rating keys");
-      expect(NarratorIndexStore.load('1'), isNull);
 
       // Building B's index must not destroy A's.
       await NarratorIndexStore.save('1', {

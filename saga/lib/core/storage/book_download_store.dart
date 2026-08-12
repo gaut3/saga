@@ -1,6 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'server_scope.dart';
+import 'user_box.dart';
 
 const _boxName = 'book_downloads';
 
@@ -10,13 +11,7 @@ class BookDownloadStore {
   static late Box _box;
 
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
+    _box = await openCacheBox(_boxName, encKey);
   }
 
   // Scoped by server — see server_scope.dart. Without it, a second server's
@@ -50,6 +45,10 @@ class BookDownloadStore {
         for (final key in _box.keys)
           if (ServerScope.ratingKeyOf(key.toString()) case final rk?) rk,
       };
+
+  /// Raw storage keys, prefixes included, all servers — see
+  /// [BookmarkStore.rawKeys] for who is allowed to want this.
+  static Set<String> rawKeys() => {for (final k in _box.keys) k.toString()};
 
   static Set<String> _getSet(String bookRatingKey) {
     final val = _box.get(ServerScope.key(bookRatingKey));

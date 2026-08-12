@@ -311,25 +311,39 @@ class _NavPill extends StatelessWidget {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => onTap(i),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    selected ? item.activeIcon : item.icon,
-                    color: selected ? SagaColors.accent : SagaColors.fgSubtle,
-                    size: 22,
+              // The active tab is signalled by colour alone on screen;
+              // `selected` is that signal for TalkBack.
+              child: MergeSemantics(
+                child: Semantics(
+                  button: true,
+                  selected: selected,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        selected ? item.activeIcon : item.icon,
+                        // accentText so the icon matches the 12px label
+                        // below, which needs the AA text tier.
+                        color: selected
+                            ? SagaColors.accentText
+                            : SagaColors.fgSubtle,
+                        size: 22,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: selected
+                              ? SagaColors.accentText
+                              : SagaColors.fgSubtle,
+                          fontWeight:
+                              selected ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    item.label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: selected ? SagaColors.accent : SagaColors.fgSubtle,
-                      fontWeight:
-                          selected ? FontWeight.w600 : FontWeight.normal,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           );

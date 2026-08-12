@@ -15,35 +15,10 @@
   <link rel="icon" href="favicon.ico" sizes="48x48" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="saga.css" />
 
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --ink:    #1E1410;
-      --ink-bg: #150E0A;
-      --cream:  #F4EAD8;
-      --amber:  #E0A050;
-      --terra:  #C25A3A;
-      --sub:    rgba(244,234,216,0.62);
-      --sub2:   rgba(244,234,216,0.48);
-      --border: rgba(244,234,216,0.07);
-      --ff-body:    'Manrope', system-ui, sans-serif;
-      --ff-display: 'Instrument Serif', Georgia, serif;
-    }
-
-    html { scroll-behavior: smooth; }
-
-    body {
-      font-family: var(--ff-body);
-      background: var(--ink-bg);
-      color: var(--cream);
-      -webkit-font-smoothing: antialiased;
-      overflow-x: hidden;
-    }
+    body { overflow-x: hidden; }
 
     /* ─── ANIMATED MARK ─── */
     /* Uniform bar geometry for ALL animated states: y=36 h=128, centred at y=100.
@@ -87,61 +62,6 @@
       .mark.playing .sp3 { animation: sp3 1.85s ease-in-out infinite 0.68s; }
       .mark.playing .sp4 { animation: sp4 1.20s ease-in-out infinite 0.65s; }
     }
-
-    /* ─── NAV ─── */
-    nav {
-      position: sticky; top: 0; z-index: 100;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 0 56px; height: 68px;
-      /* No backdrop-filter: at this opacity the blur was invisible but still cost
-         a full-width re-composite on every scroll frame. */
-      background: rgba(21,14,10,0.94);
-      border-bottom: 1px solid var(--border);
-    }
-
-    .nav-logo {
-      display: flex; align-items: center; gap: 9px; text-decoration: none;
-    }
-    .nav-wordmark {
-      display: inline-flex; align-items: center; gap: 5px;
-      font-family: var(--ff-body); font-weight: 600; font-size: 19px;
-      letter-spacing: -0.025em; color: var(--cream);
-    }
-
-    .nav-links { display: flex; gap: 32px; list-style: none; }
-    .nav-links a {
-      font-size: 13px; font-weight: 500;
-      color: var(--sub); text-decoration: none;
-      transition: color .15s;
-    }
-    .nav-links a:hover { color: var(--cream); }
-
-    .nav-toggle {
-      display: none; background: none; border: none;
-      cursor: pointer; color: var(--cream); padding: 8px;
-      flex-shrink: 0;
-    }
-
-    /* ─── BUTTONS ─── */
-    .btn {
-      display: inline-flex; align-items: center; gap: 7px;
-      font-family: var(--ff-body); font-weight: 700;
-      border-radius: 99px; text-decoration: none; cursor: pointer;
-      transition: opacity .15s, transform .15s;
-      border: none;
-    }
-    .btn:hover { opacity: .88; transform: translateY(-1px); }
-
-    .btn-amber { background: var(--amber); color: var(--ink); }
-    .btn-sm  { font-size: 13px; padding: 10px 20px; }
-    .btn-md  { font-size: 15px; padding: 15px 28px; }
-    .btn-lg  { font-size: 16px; padding: 18px 34px; }
-
-    .btn-ghost {
-      background: transparent; color: var(--cream);
-      border: 1px solid rgba(244,234,216,.22);
-    }
-    .btn-ghost:hover { border-color: rgba(244,234,216,.45); opacity: 1; }
 
     /* ─── PHONE FRAME ─── */
     .phone {
@@ -203,12 +123,6 @@
     }
 
     .hero-copy { display: flex; flex-direction: column; gap: 22px; }
-
-    .eyebrow {
-      font-size: 10.5px; font-weight: 600;
-      letter-spacing: .2em; text-transform: uppercase;
-      color: var(--amber);
-    }
 
     .hero-h1 {
       font-family: var(--ff-display);
@@ -298,7 +212,7 @@
     .feature-copy .feature-eyebrow {
       font-size: 10px; font-weight: 600;
       letter-spacing: .2em; text-transform: uppercase;
-      color: var(--terra); margin-bottom: 10px;
+      color: var(--terracotta); margin-bottom: 10px;
     }
     .feature-copy h3 {
       font-family: var(--ff-display);
@@ -307,8 +221,6 @@
     .feature-copy p { font-size: 14px; line-height: 1.62; color: var(--sub); }
 
     /* ─── THEMES ─── */
-    #themes {}
-
     .themes-grid {
       display: grid; grid-template-columns: repeat(4,1fr);
       gap: 36px;
@@ -405,43 +317,8 @@
       letter-spacing: -0.03em;
     }
 
-    /* ─── FOOTER ─── */
-    footer {
-      padding: 52px 56px;
-      border-top: 1px solid var(--border);
-      display: flex; flex-direction: column;
-      align-items: center; gap: 18px; text-align: center;
-    }
-
-    footer img { height: 18px; opacity: .45; }
-
-    .footer-links { display: flex; gap: 24px; }
-    .footer-links a {
-      font-size: 13px; color: var(--sub2); text-decoration: none;
-    }
-    .footer-links a:hover { color: var(--sub); }
-
-    .footer-legal {
-      font-size: 12px; color: var(--sub2);
-      max-width: 580px; line-height: 1.65;
-    }
-
     /* ─── RESPONSIVE ─── */
     @media (max-width: 860px) {
-      nav { padding: 0 24px; }
-      .nav-toggle { display: flex; align-items: center; }
-      .nav-links {
-        display: none; flex-direction: column;
-        position: absolute; top: 68px; left: 0; right: 0;
-        background: rgba(21,14,10,0.97);
-        padding: 8px 24px 20px; gap: 0;
-        border-bottom: 1px solid var(--border); z-index: 99;
-      }
-      nav.nav-open .nav-links { display: flex; }
-      .nav-links li { padding: 12px 0; border-bottom: 1px solid var(--border); }
-      .nav-links li:last-child { border-bottom: none; }
-      .nav-links a { font-size: 15px; }
-
       #hero { padding: 80px 24px 60px; }
       .hero-inner { grid-template-columns: 1fr; gap: 56px; }
       .hero-copy { align-items: center; text-align: center; }
@@ -467,8 +344,6 @@
       .download-layout > div { text-align: center; }
       .steps { text-align: left; display: inline-block; }
       .download-aside { align-items: center; }
-
-      footer { padding: 40px 24px; }
     }
   </style>
 </head>
@@ -560,7 +435,10 @@
     <div class="demo-stage">
       <!-- JS morph engine sets polygon points each frame.
            4 polygons = 4 bar/triangle slices; z-order handles pause-bar colour. -->
-      <svg id="demo-mark" viewBox="0 0 200 200" width="160" height="160" overflow="visible" style="cursor:pointer" role="button" aria-label="Toggle play/pause">
+      <!-- Click advances the state for pointer users; the state bar's real
+           buttons are the accessible path, so the svg is hidden from AT rather
+           than announced as a button a keyboard can't press. -->
+      <svg id="demo-mark" viewBox="0 0 200 200" width="160" height="160" overflow="visible" style="cursor:pointer" aria-hidden="true">
         <polygon class="sp sp1" fill="#F4EAD8"/>
         <polygon class="sp sp2" fill="#E0A050"/>
         <polygon class="sp sp3" fill="#F4EAD8"/>
@@ -650,10 +528,10 @@
       </div>
 
       <div class="theme-card">
-        <div class="phone"><img src="screens/home-terra.webp" alt="Terra theme" width="720" height="1517" loading="lazy" decoding="async" /></div>
+        <div class="phone"><img src="screens/home-ember.webp" alt="Ember theme" width="720" height="1517" loading="lazy" decoding="async" /></div>
         <div class="theme-label">
-          <div class="theme-swatch" style="background:#C25A3A"></div>
-          <span class="theme-name">Terra</span>
+          <div class="theme-swatch" style="background:#8E3A22"></div>
+          <span class="theme-name">Ember</span>
         </div>
       </div>
 

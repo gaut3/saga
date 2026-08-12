@@ -33,9 +33,15 @@ void showChaptersSheet(BuildContext context,
               const SagaSheetHandle(),
               SagaSheetTitle('Chapters'),
               if (m4bAsync.isLoading)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: AnimatedSagaMark(size: 36, state: SagaMarkState.buffering),
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  // The mark's CustomPaint is semantically silent; without the
+                  // label TalkBack gets no hint the list is still loading.
+                  child: Semantics(
+                    label: 'Loading chapters',
+                    child: const AnimatedSagaMark(
+                        size: 36, state: SagaMarkState.buffering),
+                  ),
                 ),
               Expanded(
                 child: m4bChapters.isNotEmpty
@@ -89,6 +95,9 @@ class _M4bChapterList extends StatelessWidget {
             final chapter = chapters[i];
             final isActive = i == activeIdx;
             return ListTile(
+              // Announced as "selected" — the play arrow is the only visual
+              // cue and carries no label of its own.
+              selected: isActive,
               leading: isActive
                   ? Icon(Icons.play_arrow_rounded, color: SagaColors.accent)
                   : Text('${i + 1}',
@@ -97,7 +106,7 @@ class _M4bChapterList extends StatelessWidget {
               title: Text(
                 chapter.title,
                 style: TextStyle(
-                  color: isActive ? SagaColors.accent : SagaColors.fg,
+                  color: isActive ? SagaColors.accentText : SagaColors.fg,
                   fontSize: 14,
                   fontWeight:
                       isActive ? FontWeight.bold : FontWeight.normal,
@@ -155,6 +164,7 @@ class _PlexTrackList extends StatelessWidget {
             final track = tracks[i];
             final isActive = i == currentIdx;
             return ListTile(
+              selected: isActive,
               leading: isActive
                   ? Icon(Icons.play_arrow_rounded, color: SagaColors.accent)
                   : Text('${i + 1}',
@@ -163,7 +173,7 @@ class _PlexTrackList extends StatelessWidget {
               title: Text(
                 track.title,
                 style: TextStyle(
-                  color: isActive ? SagaColors.accent : SagaColors.fg,
+                  color: isActive ? SagaColors.accentText : SagaColors.fg,
                   fontSize: 14,
                   fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
                 ),

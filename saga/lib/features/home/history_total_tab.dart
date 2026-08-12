@@ -19,7 +19,7 @@ class HistoryTotalTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final today = DateTime.now();
-    final todayClean = DateTime(today.year, today.month, today.day);
+    final todayClean = dayOnly(today);
 
     // Listening-history aggregates (local, always available)
     final allData = ListeningHistoryStore.exportAll();

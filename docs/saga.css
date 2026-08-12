@@ -1,0 +1,158 @@
+/* Shared chrome for saga-app.no — tokens, fonts, nav, buttons, footer.
+   index.html and changelog.html each carried a hand-written copy of all of
+   this, and the copies had already drifted (one kept a backdrop-filter the
+   other removed for scroll performance; one kept a pre-WCAG --sub2). One
+   file so they can't drift again. Page-specific styles stay in each page. */
+
+/* ─── FONTS (self-hosted — no visitor traffic to Google/CDNs) ───
+   Manrope is the same variable font the app bundles. Instrument Serif is the
+   latin subset; anything outside its unicode-range falls back to Georgia,
+   exactly as it did when Google Fonts served the same subset. */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(fonts/Manrope-VariableFont_wght.ttf) format('truetype-variations');
+}
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/instrument-serif.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/instrument-serif-italic.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ─── BASE ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink:    #1E1410;
+  --ink-bg: #150E0A;
+  --cream:  #F4EAD8;
+  --amber:  #E0A050;
+  --terracotta: #C25A3A;
+  --sub:    rgba(244,234,216,0.62);
+  --sub2:   rgba(244,234,216,0.48);
+  --border: rgba(244,234,216,0.07);
+  --ff-body:    'Manrope', system-ui, sans-serif;
+  --ff-display: 'Instrument Serif', Georgia, serif;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--ff-body);
+  background: var(--ink-bg);
+  color: var(--cream);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── NAV ─── */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 56px; height: 68px;
+  /* No backdrop-filter: at this opacity the blur was invisible but still cost
+     a full-width re-composite on every scroll frame. */
+  background: rgba(21,14,10,0.94);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-logo {
+  display: flex; align-items: center; gap: 9px; text-decoration: none;
+}
+.nav-wordmark {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--ff-body); font-weight: 600; font-size: 19px;
+  letter-spacing: -0.025em; color: var(--cream);
+}
+
+.nav-links { display: flex; gap: 32px; list-style: none; }
+.nav-links a {
+  font-size: 13px; font-weight: 500;
+  color: var(--sub); text-decoration: none;
+  transition: color .15s;
+}
+.nav-links a:hover, .nav-links a.active { color: var(--cream); }
+
+.nav-toggle {
+  display: none; background: none; border: none;
+  cursor: pointer; color: var(--cream); padding: 8px;
+  flex-shrink: 0;
+}
+
+/* ─── BUTTONS ─── */
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--ff-body); font-weight: 700;
+  border-radius: 99px; text-decoration: none; cursor: pointer;
+  transition: opacity .15s, transform .15s;
+  border: none;
+}
+.btn:hover { opacity: .88; transform: translateY(-1px); }
+
+.btn-amber { background: var(--amber); color: var(--ink); }
+.btn-sm  { font-size: 13px; padding: 10px 20px; }
+.btn-md  { font-size: 15px; padding: 15px 28px; }
+.btn-lg  { font-size: 16px; padding: 18px 34px; }
+
+.btn-ghost {
+  background: transparent; color: var(--cream);
+  border: 1px solid rgba(244,234,216,.22);
+}
+.btn-ghost:hover { border-color: rgba(244,234,216,.45); opacity: 1; }
+
+/* ─── EYEBROW ─── */
+.eyebrow {
+  font-size: 10.5px; font-weight: 600;
+  letter-spacing: .2em; text-transform: uppercase;
+  color: var(--amber);
+}
+
+/* ─── FOOTER ─── */
+footer {
+  padding: 52px 56px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  align-items: center; gap: 18px; text-align: center;
+}
+
+.footer-links { display: flex; gap: 24px; }
+.footer-links a {
+  font-size: 13px; color: var(--sub2); text-decoration: none;
+}
+.footer-links a:hover { color: var(--sub); }
+
+.footer-legal {
+  font-size: 12px; color: var(--sub2);
+  max-width: 580px; line-height: 1.65;
+}
+
+/* ─── RESPONSIVE (shared chrome only) ─── */
+@media (max-width: 860px) {
+  nav { padding: 0 24px; }
+  .nav-toggle { display: flex; align-items: center; }
+  .nav-links {
+    display: none; flex-direction: column;
+    position: absolute; top: 68px; left: 0; right: 0;
+    background: rgba(21,14,10,0.97);
+    padding: 8px 24px 20px; gap: 0;
+    border-bottom: 1px solid var(--border); z-index: 99;
+  }
+  nav.nav-open .nav-links { display: flex; }
+  .nav-links li { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .nav-links li:last-child { border-bottom: none; }
+  .nav-links a { font-size: 15px; }
+
+  footer { padding: 40px 24px; }
+}

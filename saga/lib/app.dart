@@ -29,10 +29,26 @@ class App extends ConsumerWidget {
     // builds that follow.
     SagaColors.apply(t);
 
+    // A server that has been chosen before but isn't answering *right now* is
+    // not the same thing as an install that never had one, and only the second
+    // wants the setup screen. Routing on live reachability meant opening the
+    // app with no network dropped the listener on "Connect to Plex" — a screen
+    // that suppresses its own back button while it is the setup step, and that
+    // then failed to load a server list, because loading one needs the network
+    // that isn't there. Downloaded books sat on the phone, unreachable, for as
+    // long as the flight lasted.
+    //
+    // `machineIdentifier` is the durable half: it survives `clearServerUri`,
+    // and only signing out clears it. A local-file library, when it lands,
+    // joins this condition rather than replacing it — the shell must be
+    // reachable whenever the phone holds something playable.
+    final hasServer =
+        serverUri != null || ref.watch(plexClientProvider).machineIdentifier != null;
+
     Widget home;
     if (!isAuthenticated) {
       home = const AuthScreen();
-    } else if (serverUri == null) {
+    } else if (!hasServer) {
       home = const ServerSelectionScreen(isSetup: true);
     } else {
       home = const MainShell();

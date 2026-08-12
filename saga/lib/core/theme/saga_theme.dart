@@ -21,6 +21,10 @@ class SagaThemeData {
   // full-brightness amber over big regions blooms on OLED black. Null means
   // "same as accent" (all non-Onyx themes).
   final Color? accentDim;
+  // Accent for BODY-SIZED text (below 18px regular / 14px bold): the only
+  // accent that clears WCAG AA 4.5:1 on both grounds. Null means "same as
+  // accent" (Ink, Onyx). See brand/05-contrast/README.md for the ratios.
+  final Color? accentText;
   final Color markSide;
   final Color markMiddle;
   final Color heatEmpty;
@@ -51,6 +55,7 @@ class SagaThemeData {
     required this.accent,
     required this.accentFg,
     this.accentDim,
+    this.accentText,
     required this.markSide,
     required this.markMiddle,
     required this.heatEmpty,
@@ -72,7 +77,7 @@ class SagaThemeData {
     surfaceAlt: Color(0xFF2F221C),
     fg:         Color(0xFFF4EAD8),
     fgMuted:    Color(0xA6F4EAD8),
-    fgSubtle:   Color(0x66F4EAD8),
+    fgSubtle:   Color(0x84F4EAD8),  // 52%: 4.71 on surface (40% was 3.42)
     border:     Color(0x1FF4EAD8),
     accent:     Color(0xFFE0A050),
     accentFg:   Color(0xFF1E1410),
@@ -94,11 +99,13 @@ class SagaThemeData {
     surface:    Color(0xFFEFE3CE),
     surfaceAlt: Color(0xFFE8D8BD),
     fg:         Color(0xFF1E1410),
-    fgMuted:    Color(0x991E1410),
-    fgSubtle:   Color(0x661E1410),
+    fgMuted:    Color(0xB31E1410),  // 70%: 6.00 on surface (60% was 4.34)
+    fgSubtle:   Color(0xA01E1410),  // 63%: 4.75 on surface (40% was 2.47)
     border:     Color(0x1F1E1410),
     accent:     Color(0xFFC25A3A),
     accentFg:   Color(0xFFF4EAD8),
+    // Terracotta is 3.65 on cream — fine as icon/fill (3:1), not as body text.
+    accentText: Color(0xFF9E4128),  // 5.11 on surface
     markSide:   Color(0xFF1E1410),
     markMiddle: Color(0xFFC25A3A),
     heatEmpty:  Color(0xFFE8D8BD),
@@ -112,28 +119,36 @@ class SagaThemeData {
     coverRevealSaturation: 0.30,
   );
 
-  // ── TERRA (terracotta bold) ────────────────────────────────────────────────────
+  // ── EMBER (deep terracotta bold) ──────────────────────────────────────────────
+  // Display name "Ember"; the enum stays `terra` (persisted by index). The old
+  // terracotta #C25A3A ground was a mid-tone no text color could clear AA on
+  // (cream 3.65, ink 4.14), so the grounds darkened one step per the AA retune
+  // (brand/05-contrast). #C25A3A survives as a non-text hero color only.
   static const terra = SagaThemeData(
     variant:    SagaThemeVariant.terra,
     isDark:     true,
-    bg:         Color(0xFFC25A3A),
-    surface:    Color(0xFF9E4128),
-    surfaceAlt: Color(0xFF8A3520),
+    bg:         Color(0xFF8E3A22),  // cream fg: 6.34 (was #C25A3A @ 3.65)
+    surface:    Color(0xFF7A301B),
+    surfaceAlt: Color(0xFF6E2A17),
     fg:         Color(0xFFF4EAD8),
-    fgMuted:    Color(0xC7F4EAD8),
-    fgSubtle:   Color(0x8CF4EAD8),
+    fgMuted:    Color(0xD9F4EAD8),  // 85%: 5.07 on bg
+    fgSubtle:   Color(0xCBF4EAD8),  // 80%: 4.63 on bg
     border:     Color(0x33F4EAD8),
-    accent:     Color(0xFF1E1410),
-    accentFg:   Color(0xFFF4EAD8),
+    // Ink-as-accent retired with the darker grounds (2.39 on bg, under the
+    // 3:1 non-text floor); amber takes over, as on Ink/Onyx.
+    accent:     Color(0xFFE0A050),  // 3.35 bg / 4.11 surface — non-text + large
+    accentFg:   Color(0xFF1E1410),
+    accentText: Color(0xFFF0C48C),  // 4.67 on bg
     markSide:   Color(0xFFF4EAD8),
-    markMiddle: Color(0xFF1E1410),
-    heatEmpty:  Color(0xFF8A3520),
+    markMiddle: Color(0xFFE0A050),  // ink spine fails 3:1 on the new ground
+    heatEmpty:  Color(0xFF6E2A17),  // tracks surfaceAlt, as before
     heat1:      Color(0xFFA04530),
     heat2:      Color(0xFFB87060),
     heat3:      Color(0xFFCFA890),
     heat4:      Color(0xFFE0D0B8),
     heatMax:    Color(0xFFF4EAD8),
-    // Terra is a mid-tone, not a dark: secondary text needs more behind it.
+    // Deeper than the old terra but still warmer than Ink: keep the heavier
+    // scrim so text over defocused cover art has enough behind it.
     coverRevealScrim: 0.68,
   );
 
@@ -154,7 +169,7 @@ class SagaThemeData {
     surfaceAlt: Color(0xFF16100D),
     fg:         Color(0xFFE4D9C6),
     fgMuted:    Color(0xA6E4D9C6),
-    fgSubtle:   Color(0x66E4D9C6),
+    fgSubtle:   Color(0x8CE4D9C6),  // 55%: 4.73 on bg; #7D776D on black — no bloom
     border:     Color(0x24E4D9C6),
     accent:     Color(0xFFE0A050),
     accentFg:   Color(0xFF000000),
@@ -215,6 +230,11 @@ abstract final class SagaColors {
   /// to [accent] except on Onyx, where full amber over big regions blooms on
   /// OLED black. Use for any new full-width or panel-sized accent fill.
   static Color get accentDim  => _current.accentDim ?? _current.accent;
+
+  /// Accent for BODY-SIZED text — the only accent permitted below 18px
+  /// regular / 14px bold. [accent] stays for icons, fills and large/bold text
+  /// (3:1 floor); this tier clears 4.5:1 on both grounds in every theme.
+  static Color get accentText => _current.accentText ?? _current.accent;
   static double get coverRevealScrim      => _current.coverRevealScrim;
   static double get coverRevealSaturation => _current.coverRevealSaturation;
   static Color get markSide   => _current.markSide;

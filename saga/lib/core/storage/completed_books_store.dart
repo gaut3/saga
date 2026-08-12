@@ -98,24 +98,4 @@ class CompletedBooksStore {
       await _box.put(ServerScope.key(entry.key), merged);
     }
   }
-
-  /// All books that were completed on [day] (year/month/day match).
-  /// Ignores epoch-sentinel entries (no known date).
-  static List<String> completedOn(DateTime day) {
-    final d = DateTime(day.year, day.month, day.day);
-    final result = <String>[];
-    for (final key in _box.keys) {
-      final ratingKey = ServerScope.ratingKeyOf(key.toString());
-      if (ratingKey == null) continue;
-      for (final ms in _timestampsAt(key.toString())) {
-        if (ms == 0) continue;
-        final dt = DateTime.fromMillisecondsSinceEpoch(ms);
-        if (DateTime(dt.year, dt.month, dt.day) == d) {
-          result.add(ratingKey);
-          break;
-        }
-      }
-    }
-    return result;
-  }
 }

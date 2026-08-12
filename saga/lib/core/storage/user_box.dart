@@ -30,3 +30,26 @@ Future<Box> openUserBox(String name, List<int> encKey) async {
     return Hive.openBox(name, encryptionCipher: cipher);
   }
 }
+
+/// Opens a derived-cache box — contents re-fetch, so any [HiveError] wipes and
+/// recreates. User-data boxes must use [openUserBox] instead. This open was
+/// hand-copied in seven stores; one function so they can't drift.
+Future<Box> openCacheBox(String name, List<int> encKey) async {
+  final cipher = HiveAesCipher(encKey);
+  try {
+    return await Hive.openBox(name, encryptionCipher: cipher);
+  } on HiveError catch (e) {
+    // Contents re-fetch, but the wipe still explains symptoms — a wiped track
+    // cache is why a downloaded book won't open until the server is back.
+    AppLog.log('storage', '$name cache box wiped after open failure: $e');
+    await Hive.deleteBoxFromDisk(name);
+    return Hive.openBox(name, encryptionCipher: cipher);
+  }
+}
+
+/// Caps a decoded-entry cache at [max] entries by dropping the oldest (Dart
+/// maps keep insertion order). Shared by the stores that memoise box reads.
+void rememberCapped<V>(Map<String, V> cache, int max, String key, V value) {
+  if (cache.length >= max) cache.remove(cache.keys.first);
+  cache[key] = value;
+}

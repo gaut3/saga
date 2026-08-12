@@ -11,6 +11,7 @@ import '../../core/audio/m4b_chapter_reader.dart';
 import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/providers.dart';
+import '../../core/storage/artwork_cache.dart';
 import '../../core/storage/book_download_store.dart';
 import '../../core/storage/download_store.dart';
 import '../../core/storage/settings_store.dart';
@@ -259,6 +260,10 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
         final unmetered = conn.contains(ConnectivityResult.wifi) ||
             conn.contains(ConnectivityResult.ethernet);
         if (!unmetered) {
+          // The UI shows the same "Retry N failed" for every failure kind —
+          // without this line a metered-connection skip reads as a broken app.
+          AppLog.log('download',
+              'track $key skipped: Wi-Fi only is on and connection is metered');
           _markFailed(key);
           return;
         }
@@ -267,6 +272,7 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
       final client = _ref.read(plexClientProvider);
       final url = client.buildDownloadUrl(track.partKey);
       if (url == null) {
+        AppLog.log('download', 'track $key failed: no server URI configured');
         _markFailed(key);
         return;
       }
@@ -302,6 +308,17 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
 
       await DownloadStore.save(key, filePath);
       BookDownloadStore.recordDownload(bookRatingKey, key);
+
+      // Take the cover while the server is still in reach. Nothing else caches
+      // it until the player loads the book, so a book downloaded for a trip and
+      // not played before leaving showed a grey tile on the offline shelf — the
+      // one screen where re-fetching it isn't an option. Not awaited, and a
+      // failure is ignored: a missing cover must never fail a download.
+      final thumb = track.thumbPath;
+      final serverUri = client.serverUri;
+      if (thumb != null && serverUri != null) {
+        unawaited(ArtworkCache.prefetch(thumb, serverUri, client.authHeaders));
+      }
 
       state = state.copyWith(
         progress: Map<String, double>.from(state.progress)..remove(key),
@@ -395,30 +412,6 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
     }
   }
 
-  Future<void> deleteTrack(PlexTrack track, String bookRatingKey) async {
-    final path = DownloadStore.getPath(track.ratingKey);
-    if (path != null) {
-      final file = File(path);
-      if (await file.exists()) await file.delete();
-    }
-    await DownloadStore.remove(track.ratingKey);
-    BookDownloadStore.removeDownload(bookRatingKey, track.ratingKey);
-    // The cache exists to serve downloaded books; drop it with the last track.
-    if (!BookDownloadStore.hasDownload(bookRatingKey)) {
-      await TrackCacheStore.delete(bookRatingKey);
-    }
-
-    final newCompleted = Set<String>.from(state.completed)
-      ..remove(track.ratingKey);
-    final newBooks = BookDownloadStore.hasDownload(bookRatingKey)
-        ? state.downloadedBooks
-        : (Set<String>.from(state.downloadedBooks)..remove(bookRatingKey));
-    state = state.copyWith(
-      completed: newCompleted,
-      downloadedBooks: newBooks,
-      failed: {...state.failed}..remove(track.ratingKey),
-    );
-  }
 }
 
 final downloadNotifierProvider =
@@ -436,12 +429,17 @@ final nowPlayingKeyProvider = StreamProvider<String?>((ref) async* {
 
 // ── Sleep timer ───────────────────────────────────────────────────────────────
 
-enum SleepMode { timed, endOfChapter }
-
 typedef _PlaybackPhase = ({bool playing, AudioProcessingState processing});
 
 class SleepTimerNotifier extends StateNotifier<DateTime?> {
+  // Fade the last moments of the countdown instead of cutting mid-sentence.
+  // Floor of 0.05 rather than 0: the pause lands before silence, and a true
+  // zero would trip loadBook's stray-mute restore if a book loaded mid-fade.
+  static const _fadeWindow = Duration(seconds: 15);
+
   Timer? _timer;
+  Timer? _fadeTicker;
+  bool _faded = false;
   StreamSubscription<_PlaybackPhase>? _playbackSub;
   final AudioPlayerService _service;
 
@@ -500,8 +498,6 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
 
   void cancel() => _cancelAll();
 
-  bool get isActive => state != null;
-
   Duration? get remaining {
     if (_pausedRemaining != null) return _pausedRemaining;
     final end = state;
@@ -516,9 +512,31 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
     _pausedRemaining = null;
     state = DateTime.now().add(remaining);
     _timer = Timer(remaining, () async {
-      _cancelAll();
+      // Volume is restored only after the pause, so the fade's tail never
+      // jumps back to full volume while still audible.
+      _cancelAll(restoreVolume: false);
       await _service.pause();
+      _restoreVolume();
     });
+    _fadeTicker ??=
+        Timer.periodic(const Duration(milliseconds: 500), (_) => _fadeTick());
+  }
+
+  /// Eases volume down over the countdown's final [_fadeWindow]. Runs for the
+  /// timer's whole life but is a no-op until the window; while paused
+  /// mid-countdown `remaining` is frozen, so it just re-sets the same volume.
+  void _fadeTick() {
+    final r = remaining;
+    if (r == null || r > _fadeWindow) return;
+    _faded = true;
+    _service.player
+        .setVolume((r.inMilliseconds / _fadeWindow.inMilliseconds).clamp(0.05, 1.0));
+  }
+
+  void _restoreVolume() {
+    if (!_faded) return;
+    _faded = false;
+    _service.player.setVolume(1.0);
   }
 
   /// Pauses the countdown when playback pauses and resumes it when playback
@@ -561,13 +579,16 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
     });
   }
 
-  void _cancelAll() {
+  void _cancelAll({bool restoreVolume = true}) {
     _timer?.cancel();
     _timer = null;
+    _fadeTicker?.cancel();
+    _fadeTicker = null;
     _playbackSub?.cancel();
     _playbackSub = null;
     _pausedRemaining = null;
     state = null;
+    if (restoreVolume) _restoreVolume();
   }
 
   @override

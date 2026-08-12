@@ -252,7 +252,7 @@ class _WeekCardState extends State<_WeekCard>
   @override
   Widget build(BuildContext context) {
     final today = DateTime.now();
-    final todayClean = DateTime(today.year, today.month, today.day);
+    final todayClean = dayOnly(today);
     final avgMs = widget.listenedDays > 0
         ? widget.totalMs ~/ widget.listenedDays
         : 0;
@@ -305,8 +305,9 @@ class _WeekCardState extends State<_WeekCard>
                   labelBuilder: (i, isToday) => Text(
                     ['M', 'T', 'W', 'T', 'F', 'S', 'S'][i],
                     style: TextStyle(
-                      color:
-                          isToday ? SagaColors.accent : SagaColors.fgSubtle,
+                      color: isToday
+                          ? SagaColors.accentText
+                          : SagaColors.fgSubtle,
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),

@@ -133,6 +133,13 @@ class ArtworkCache {
           sendTimeout: const Duration(seconds: 10),
         ),
       );
+      // Hold the ceiling here too, not only at launch: [init] was the sole
+      // caller, so a long run that opened many books stayed oversized until the
+      // next cold start. Cheap to do per download — a cover is only downloaded
+      // once per book ever (the `exists` check above is the common path), so
+      // this is one directory listing per *new* cover, unawaited, never on the
+      // read path.
+      unawaited(prune());
       return File(filePath).uri;
     } catch (_) {
       return null;

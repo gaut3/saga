@@ -41,22 +41,43 @@ class HomeScreen extends ConsumerWidget {
     ref.watch(sagaThemeVariantProvider);
     final libraryKeyAsync = ref.watch(activeLibraryKeyProvider);
 
+    // Home is never gated on a request. Everything it leads with — what you
+    // are in the middle of, this week's listening, what is downloaded — is
+    // already on this phone and reads synchronously, so it paints on the first
+    // frame and the library sections arrive underneath it when they arrive.
+    // Waiting for the library first cost a spinner on every launch, and on a
+    // launch with no network it cost the connectivity check as well.
+    //
+    // `valueOrNull` is deliberate for the error case too: a server that failed
+    // outright leaves this phone's downloads playable, so a failure demotes
+    // Home to its local self rather than replacing it with a message.
+    final libraryKey = libraryKeyAsync.valueOrNull;
+    final local = ref.watch(offlineBooksProvider);
+    final nothingLocal = local.inProgress.isEmpty && local.downloaded.isEmpty;
+
+    // Nothing on the phone and no library either: there is genuinely nothing to
+    // show, and the reason is the most useful thing on the screen.
+    if (libraryKey == null && nothingLocal && !libraryKeyAsync.isLoading) {
+      return Scaffold(
+        backgroundColor: SagaColors.bg,
+        body: libraryKeyAsync.hasError
+            ? SagaErrorView(
+                message: 'Could not load your library',
+                error: libraryKeyAsync.error,
+                onRetry: () => ref.invalidate(activeLibraryKeyProvider))
+            : _NoServerView(
+                onSelectServer: () => _openServerSelection(context, ref)),
+      );
+    }
+
     return Scaffold(
       backgroundColor: SagaColors.bg,
-      body: libraryKeyAsync.when(
-        loading: () => Center(
-          child: CircularProgressIndicator(color: SagaColors.accent),
-        ),
-        error: (e, _) => SagaErrorView(
-            message: 'Could not load your library',
-            error: e,
-            onRetry: () => ref.invalidate(activeLibraryKeyProvider)),
-        data: (key) {
-          if (key == null) {
-            return _NoServerView(onSelectServer: () => _openServerSelection(context, ref));
-          }
-          return _HomeContent(libraryKey: key);
-        },
+      body: _HomeContent(
+        libraryKey: libraryKey,
+        local: local,
+        // Don't say the server is unreachable while it is still being asked.
+        resolving: libraryKeyAsync.isLoading,
+        onSelectServer: () => _openServerSelection(context, ref),
       ),
     );
   }
@@ -70,73 +91,83 @@ class HomeScreen extends ConsumerWidget {
 }
 
 class _HomeContent extends ConsumerWidget {
-  final String libraryKey;
-  const _HomeContent({required this.libraryKey});
+  /// The library, once it resolves. Null while it is still being fetched, and
+  /// for as long as it can't be — an unreachable server, or none configured.
+  final String? libraryKey;
+  final ({List<PlexBook> inProgress, List<PlexBook> downloaded}) local;
+
+  /// Still asking. Distinguishes "no server" from "no answer *yet*", which is
+  /// the difference between telling the listener something is wrong and
+  /// telling them so a second before it turns out not to be.
+  final bool resolving;
+  final VoidCallback onSelectServer;
+
+  const _HomeContent({
+    required this.libraryKey,
+    required this.local,
+    required this.resolving,
+    required this.onSelectServer,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(sagaThemeVariantProvider);
     ref.watch(wantToReadRevisionProvider);
-    final continueAsync = ref.watch(continueListeningProvider(libraryKey));
-    final upNextAsync = ref.watch(upNextSeriesQueuesProvider(libraryKey));
-    final recentAsync = ref.watch(recentlyAddedProvider(libraryKey));
+    final key = libraryKey;
+    final continueAsync =
+        key == null ? null : ref.watch(continueListeningProvider(key));
+    final upNextAsync =
+        key == null ? null : ref.watch(upNextSeriesQueuesProvider(key));
+    final recentAsync =
+        key == null ? null : ref.watch(recentlyAddedProvider(key));
+
+    // The same books either way — both sources are "has a saved position, not
+    // finished, newest first" — so the local list stands in until the server's
+    // arrives and the swap is invisible. This is what lets the resume card be
+    // on the first frame instead of behind a fetch of the entire library.
+    final continueBooks = continueAsync?.valueOrNull ?? local.inProgress;
 
     // Keys already shown above — exclude from Recently Added to avoid duplicates.
     final shownKeys = {
-      ...?continueAsync.valueOrNull?.map((b) => b.ratingKey),
-      ...?upNextAsync.valueOrNull
+      ...continueBooks.map((b) => b.ratingKey),
+      ...?upNextAsync?.valueOrNull
           ?.expand((p) => p.$2.map((b) => b.ratingKey)),
     };
 
+    // With no library there is no "everything else", so what's on the phone is
+    // worth its own shelf. Online it would only repeat what Browse already
+    // filters, so it stays out of the way there.
+    final downloadedShelf = key == null
+        ? [for (final b in local.downloaded) if (!shownKeys.contains(b.ratingKey)) b]
+        : const <PlexBook>[];
+
     return CustomScrollView(
       slivers: [
-        SliverAppBar(
-          pinned: true,
-          backgroundColor: Colors.transparent,
-          foregroundColor: SagaColors.fg,
-          elevation: 0,
-          surfaceTintColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          flexibleSpace: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [SagaColors.bg, SagaColors.bg.withValues(alpha: 0.0)],
-                stops: const [0.6, 1.0],
-              ),
-            ),
-          ),
-          title: SagaWordmark(fontSize: 24),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.bookmark_border),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AllBookmarksScreen()),
-              ),
-            ),
-          ],
-        ),
+        const _HomeAppBar(),
 
         SliverToBoxAdapter(child: const _ListeningStrip()),
 
-        // valueOrNull returns the previous list while the provider is
-        // refreshing (e.g. on every bookmark save), so the section never
-        // flickers away during an active session.
-        Builder(builder: (_) {
-          final books = continueAsync.valueOrNull;
-          if (books == null || books.isEmpty) {
-            return const SliverToBoxAdapter(child: SizedBox.shrink());
-          }
-          return SliverToBoxAdapter(child: _ContinueListeningSection(books: books));
-        }),
+        if (continueBooks.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _ContinueListeningSection(books: continueBooks),
+          ),
 
-        SliverToBoxAdapter(
-          child: _UpNextSection(libraryKey: libraryKey),
-        ),
+        if (downloadedShelf.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _Section(title: 'Downloaded', books: downloadedShelf),
+          ),
 
-        recentAsync.when(
+        if (key != null) SliverToBoxAdapter(child: _UpNextSection(libraryKey: key)),
+
+        if (key == null && !resolving)
+          SliverToBoxAdapter(
+            child: _OfflineNote(onSelectServer: onSelectServer),
+          ),
+
+        if (recentAsync == null)
+          const SliverToBoxAdapter(child: SizedBox.shrink())
+        else
+          recentAsync.when(
           loading: () => const SliverToBoxAdapter(
             child: _SkeletonSection(title: 'Recently Added'),
           ),
@@ -154,12 +185,15 @@ class _HomeContent extends ConsumerWidget {
 
         Builder(builder: (_) {
           final wantedKeys = WantToReadStore.all;
-          if (wantedKeys.isEmpty) {
+          // Want to Read is a list of *keys*; naming them needs the library,
+          // and the phone has nothing cached for a book never opened. So this
+          // one genuinely can't be shown offline.
+          if (key == null || wantedKeys.isEmpty) {
             return const SliverToBoxAdapter(child: SizedBox.shrink());
           }
-          final allBooks = recentAsync.valueOrNull ?? [];
+          final allBooks = recentAsync?.valueOrNull ?? [];
           // Pull from booksProvider if recently-added doesn't cover all wanted
-          final booksAsync = ref.watch(booksProvider(libraryKey));
+          final booksAsync = ref.watch(booksProvider(key));
           final fullList = booksAsync.valueOrNull ?? allBooks;
           final wanted = fullList
               .where((b) => wantedKeys.contains(b.ratingKey))
@@ -181,6 +215,89 @@ class _HomeContent extends ConsumerWidget {
 
 }
 
+/// Home's transparent app bar. Shared so the offline Home is the same screen
+/// with fewer rows on it, rather than a second screen that looks like it.
+class _HomeAppBar extends StatelessWidget {
+  const _HomeAppBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverAppBar(
+      pinned: true,
+      backgroundColor: Colors.transparent,
+      foregroundColor: SagaColors.fg,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.transparent,
+      flexibleSpace: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [SagaColors.bg, SagaColors.bg.withValues(alpha: 0.0)],
+            stops: const [0.6, 1.0],
+          ),
+        ),
+      ),
+      title: SagaWordmark(fontSize: 24),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.bookmark_border),
+          tooltip: 'Bookmarks',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AllBookmarksScreen()),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The one line that explains why the rest of the library isn't here.
+///
+/// At the bottom, not the top: what the listener came for is playable, and a
+/// banner over it would make a working app look broken. A book that isn't
+/// downloaded will say so itself when tapped.
+class _OfflineNote extends ConsumerWidget {
+  final VoidCallback onSelectServer;
+  const _OfflineNote({required this.onSelectServer});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(sagaThemeVariantProvider);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Your server isn't reachable — showing what's on this phone.",
+            style: TextStyle(color: SagaColors.fgMuted, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              TextButton(
+                onPressed: () => ref.invalidate(activeLibraryKeyProvider),
+                style: TextButton.styleFrom(
+                    foregroundColor: SagaColors.accentText),
+                child: const Text('Try again'),
+              ),
+              TextButton(
+                onPressed: onSelectServer,
+                style: TextButton.styleFrom(
+                    foregroundColor: SagaColors.accentText),
+                child: const Text('Select server'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Section extends StatelessWidget {
   final String title;
   final List<PlexBook> books;
@@ -192,29 +309,8 @@ class _Section extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-          child: Text(
-            title,
-            style: TextStyle(
-              color: SagaColors.fg,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        SizedBox(
-          height: kBookStripHeight,
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            scrollDirection: Axis.horizontal,
-            itemCount: books.length,
-            itemBuilder: (context, index) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: BookCard(book: books[index], width: kBookStripCoverWidth),
-            ),
-          ),
-        ),
+        _SectionTitle(title),
+        _BookStrip(books),
         const SizedBox(height: 8),
       ],
     );
@@ -230,19 +326,9 @@ class _SkeletonSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-          child: Text(
-            title,
-            style: TextStyle(
-              color: SagaColors.fg,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
+        _SectionTitle(title),
         SizedBox(
-          height: kBookStripHeight,
+          height: bookStripHeight(MediaQuery.textScalerOf(context)),
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             scrollDirection: Axis.horizontal,
@@ -360,13 +446,20 @@ class _ListeningStrip extends ConsumerWidget {
           MaterialPageRoute(
               builder: (ctx) => HistoryScreen(libraryKey: libraryKey)),
         ),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          decoration: BoxDecoration(
-            color: SagaColors.surface,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
+        // One TalkBack stop, announced as a button; the streak and week-total
+        // texts merge into it. The sparkline is excluded below — its data is
+        // already in the "this week" line.
+        child: MergeSemantics(
+          child: Semantics(
+            button: true,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              decoration: BoxDecoration(
+                color: SagaColors.surface,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
             children: [
               Icon(Icons.local_fire_department,
                   color: SagaColors.accent, size: 20),
@@ -393,18 +486,23 @@ class _ListeningStrip extends ConsumerWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
-              SizedBox(
-                width: 52,
-                height: 32,
-                child: _Sparkline(
-                    weekMs: weekMs,
-                    weekDays: weekDays,
-                    todayClean: todayClean),
+                  const SizedBox(width: 10),
+                  ExcludeSemantics(
+                    child: SizedBox(
+                      width: 52,
+                      height: 32,
+                      child: _Sparkline(
+                          weekMs: weekMs,
+                          weekDays: weekDays,
+                          todayClean: todayClean),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(Icons.chevron_right,
+                      color: SagaColors.fgSubtle, size: 18),
+                ],
               ),
-              const SizedBox(width: 8),
-              Icon(Icons.chevron_right, color: SagaColors.fgSubtle, size: 18),
-            ],
+            ),
           ),
         ),
       ),
@@ -458,18 +556,7 @@ class _ContinueListeningSection extends StatelessWidget {
         if (rest.isNotEmpty) ...[
           const SizedBox(height: 18),
           const _SectionTitle('Also in progress'),
-          SizedBox(
-            height: kBookStripHeight,
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              scrollDirection: Axis.horizontal,
-              itemCount: rest.length,
-              itemBuilder: (context, index) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: BookCard(book: rest[index], width: kBookStripCoverWidth),
-              ),
-            ),
-          ),
+          _BookStrip(rest),
         ],
         const SizedBox(height: 8),
       ],
@@ -478,12 +565,15 @@ class _ContinueListeningSection extends StatelessWidget {
 }
 
 /// Shared section header used across the home screen.
-class _SectionTitle extends StatelessWidget {
+class _SectionTitle extends ConsumerWidget {
   final String title;
   const _SectionTitle(this.title);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Const-constructed by the parent, so its theme-driven rebuild never
+    // reaches us — watch the theme directly.
+    ref.watch(sagaThemeVariantProvider);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       child: Text(
@@ -492,6 +582,29 @@ class _SectionTitle extends StatelessWidget {
           color: SagaColors.fg,
           fontSize: 18,
           fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+}
+
+/// Horizontal strip of standard-width [BookCard]s — the home screen's rows.
+/// Three sections carried this ListView verbatim before.
+class _BookStrip extends StatelessWidget {
+  final List<PlexBook> books;
+  const _BookStrip(this.books);
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: bookStripHeight(MediaQuery.textScalerOf(context)),
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        scrollDirection: Axis.horizontal,
+        itemCount: books.length,
+        itemBuilder: (context, index) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: BookCard(book: books[index], width: kBookStripCoverWidth),
         ),
       ),
     );
@@ -554,9 +667,14 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _openPlayerView,
-              child: SizedBox(
-                height: 152,
-                child: Row(
+              // One TalkBack stop for the whole body, announced as a button;
+              // title, chapter and remaining-time texts merge into it.
+              child: MergeSemantics(
+                child: Semantics(
+                  button: true,
+                  child: SizedBox(
+                    height: 152,
+                    child: Row(
                   children: [
                     // Square footprint so square covers aren't cropped on the
                     // sides (BoxFit.cover in a portrait box clipped left/right).
@@ -626,7 +744,9 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
                         ),
                       ),
                     ),
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -857,8 +977,10 @@ class _SeriesQueueRow extends StatelessWidget {
               children: [
                 Text(
                   'Up next in ',
+                  // 18px bold sits just under WCAG's large-text line
+                  // (14pt bold ≈ 18.7px), so it takes the AA text tier.
                   style: TextStyle(
-                    color: SagaColors.accent,
+                    color: SagaColors.accentText,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -880,18 +1002,7 @@ class _SeriesQueueRow extends StatelessWidget {
             ),
           ),
         ),
-        SizedBox(
-          height: kBookStripHeight,
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            scrollDirection: Axis.horizontal,
-            itemCount: books.length,
-            itemBuilder: (context, i) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: BookCard(book: books[i], width: kBookStripCoverWidth),
-            ),
-          ),
-        ),
+        _BookStrip(books),
         const SizedBox(height: 8),
       ],
     );
@@ -928,9 +1039,11 @@ class _UpNextNudge extends StatelessWidget {
                 ),
                 IconButton(
                   icon: Icon(Icons.close, color: SagaColors.fgSubtle, size: 18),
+                  tooltip: 'Dismiss',
                   onPressed: onDismiss,
+                  // Default constraints keep the target at the 48 dp floor —
+                  // the zero-constraints version was an 18 dp target.
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
                 ),
               ],
             ),

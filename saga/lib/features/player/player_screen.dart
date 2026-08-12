@@ -21,6 +21,7 @@ import '../../core/plex/plex_client.dart';
 import '../../core/utils/format.dart';
 import '../../core/utils/text_measure.dart';
 import '../library/effective_chapter_count.dart';
+import '../../shared/widgets/book_cover_image.dart' show CoverPlaceholder;
 import '../../shared/widgets/meta_chip.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_toast.dart';
@@ -322,18 +323,22 @@ class _RevealCoverState extends ConsumerState<_RevealCover>
     super.dispose();
   }
 
-  bool get _revealed => _reveal.value > 0.5;
+  // A plain field, not `_reveal.value > 0.5`: the semantic label below reads
+  // it in build, which doesn't re-run during the animation — derived from the
+  // controller it stayed on the pre-toggle action for the life of the route.
+  bool _detailsShown = false;
 
   bool get _reduceMotion =>
       MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
   void _toggle() {
+    setState(() => _detailsShown = !_detailsShown);
     if (_reduceMotion) {
       // No tween at all — land on the end state.
-      _reveal.value = _revealed ? 0 : 1;
+      _reveal.value = _detailsShown ? 1 : 0;
       return;
     }
-    _revealed ? _reveal.reverse() : _reveal.forward();
+    _detailsShown ? _reveal.forward() : _reveal.reverse();
   }
 
   ImageProvider? get _provider {
@@ -358,8 +363,9 @@ class _RevealCoverState extends ConsumerState<_RevealCover>
       onTap: canReveal ? _toggle : null,
       child: Semantics(
         button: canReveal,
-        label:
-            canReveal ? (_revealed ? 'Show cover' : 'Show book details') : null,
+        label: canReveal
+            ? (_detailsShown ? 'Show cover' : 'Show book details')
+            : null,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: AnimatedBuilder(
@@ -399,9 +405,9 @@ class _RevealCoverState extends ConsumerState<_RevealCover>
         ? Image(
             image: provider,
             fit: BoxFit.contain,
-            errorBuilder: (_, _, _) => _coverPlaceholder(),
+            errorBuilder: (_, _, _) => const CoverPlaceholder(),
           )
-        : _coverPlaceholder();
+        : const CoverPlaceholder();
     if (t > 0) {
       artwork = ImageFiltered(
         imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
@@ -489,12 +495,6 @@ List<double> _saturationMatrix(double s) {
   ];
 }
 
-Widget _coverPlaceholder() => ColoredBox(
-      color: SagaColors.surface,
-      child: Center(
-          child: Icon(Icons.book, size: 80, color: SagaColors.fgSubtle)),
-    );
-
 /// The detail that surfaces through the defocused cover: a blurb, not a
 /// document.
 ///
@@ -581,7 +581,8 @@ class _CoverDetail extends ConsumerWidget {
                     const SizedBox(height: 2),
                     Text(
                       book.authorName!,
-                      style: TextStyle(color: SagaColors.accent, fontSize: 13),
+                      style:
+                          TextStyle(color: SagaColors.accentText, fontSize: 13),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -599,22 +600,8 @@ class _CoverDetail extends ConsumerWidget {
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
-                    children: [
-                      if (book.year != null)
-                        MetaChip(Icons.calendar_today_outlined, '${book.year}'),
-                      if (lengthMs != null)
-                        MetaChip(
-                            Icons.schedule_outlined, fmtDurationMs(lengthMs)),
-                      if (chapters != null)
-                        MetaChip(Icons.format_list_numbered_outlined,
-                            chapters == 1
-                                ? '1 chapter'
-                                : '$chapters chapters'),
-                      if (book.studio != null)
-                        MetaChip(Icons.business_outlined, book.studio!),
-                      for (final g in book.genres.take(2))
-                        MetaChip(Icons.local_offer_outlined, g),
-                    ],
+                    children: bookMetaChips(book,
+                        lengthMs: lengthMs, chapterCount: chapters),
                   ),
                 ],
               ),
@@ -635,20 +622,21 @@ class _CoverDetail extends ConsumerWidget {
                 alignment: Alignment.centerLeft,
                 child: TextButton(
                   onPressed: onFullDetails,
+                  // Default tap-target padding keeps this at the 48 dp floor;
+                  // shrinkWrap made it a ~26 dp target.
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 4),
                     minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text('Full details',
                           style: TextStyle(
-                              color: SagaColors.accent, fontSize: 13)),
+                              color: SagaColors.accentText, fontSize: 13)),
                       Icon(Icons.chevron_right,
-                          color: SagaColors.accent, size: 16),
+                          color: SagaColors.accentText, size: 16),
                     ],
                   ),
                 ),
@@ -741,7 +729,8 @@ class _TrackInfo extends StatelessWidget {
                 Flexible(
                   child: Text(
                     item?.album ?? '',
-                    style: TextStyle(color: SagaColors.accent, fontSize: 13),
+                    style:
+                        TextStyle(color: SagaColors.accentText, fontSize: 13),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1053,12 +1042,15 @@ class _Controls extends StatelessWidget {
               onPressed: service.rewind,
             ),
             const SizedBox(width: 8),
-            Semantics(
-              label: playing ? 'Pause' : 'Play',
-              button: true,
-              excludeSemantics: true,
-              child: GestureDetector(
-                onTap: playing ? service.pause : service.play,
+            // Gesture outside, Semantics inside (like the view toggle in
+            // Browse): the other way round, excludeSemantics strips the
+            // GestureDetector's tap action and TalkBack gets a button that
+            // announces but can't be activated.
+            GestureDetector(
+              onTap: playing ? service.pause : service.play,
+              child: Semantics(
+                label: playing ? 'Pause' : 'Play',
+                button: true,
                 child: AnimatedSagaMark(
                   size: 56,
                   state: loading
@@ -1309,14 +1301,16 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? SagaColors.accent : SagaColors.fgMuted;
-    return Semantics(
-      label: semanticLabel ?? label,
-      button: true,
-      excludeSemantics: true,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+    // accentText, not accent: the 10px label below is body-sized text.
+    final color = active ? SagaColors.accentText : SagaColors.fgMuted;
+    // Gesture outside, Semantics inside — see the play/pause control above.
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Semantics(
+        label: semanticLabel ?? label,
+        button: true,
+        excludeSemantics: true,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Column(

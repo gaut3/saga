@@ -1,6 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'server_scope.dart';
+import 'user_box.dart';
 
 const _boxName = 'narrator_index';
 
@@ -14,13 +15,7 @@ class NarratorIndexStore {
   static late Box _box;
 
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
+    _box = await openCacheBox(_boxName, encKey);
   }
 
   // Section keys are per-server integers like rating keys, so they go through
@@ -28,8 +23,6 @@ class NarratorIndexStore {
   // destroy) each other's index.
   static String _key(String sectionKey) =>
       'idx_${ServerScope.key(sectionKey)}';
-  static String _stampKey(String sectionKey) =>
-      'built_${ServerScope.key(sectionKey)}';
 
   /// The section's index, or null if it has never been built.
   static Map<String, List<String>>? load(String sectionKey) {
@@ -49,23 +42,8 @@ class NarratorIndexStore {
   }
 
   static Future<void> save(
-      String sectionKey, Map<String, List<String>> index) async {
-    await _box.put(_key(sectionKey), index);
-    await _box.put(_stampKey(sectionKey), DateTime.now().toIso8601String());
-  }
-
-  /// When the section was last indexed, for offering a refresh.
-  static DateTime? builtAt(String sectionKey) {
-    final raw = _box.get(_stampKey(sectionKey));
-    return raw == null ? null : DateTime.tryParse(raw.toString());
-  }
-
-  static bool has(String sectionKey) => _box.containsKey(_key(sectionKey));
-
-  static Future<void> clear(String sectionKey) async {
-    await _box.delete(_key(sectionKey));
-    await _box.delete(_stampKey(sectionKey));
-  }
+          String sectionKey, Map<String, List<String>> index) =>
+      _box.put(_key(sectionKey), index);
 }
 
 /// Inverts narrator → books into book → narrators.

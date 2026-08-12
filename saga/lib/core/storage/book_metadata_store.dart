@@ -2,7 +2,10 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../plex/models/plex_book.dart';
 
+import 'book_download_store.dart';
+import 'bookmark_store.dart';
 import 'server_scope.dart';
+import 'user_box.dart';
 
 const _boxName = 'book_metadata';
 
@@ -26,21 +29,8 @@ class BookMetadataStore {
   static const _maxCached = 64;
 
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
     _decoded.clear();
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
-  }
-
-  static void _remember(String key, PlexBook? value) {
-    if (_decoded.length >= _maxCached) {
-      _decoded.remove(_decoded.keys.first);
-    }
-    _decoded[key] = value;
+    _box = await openCacheBox(_boxName, encKey);
   }
 
   static PlexBook? load(String bookRatingKey) {
@@ -55,7 +45,7 @@ class BookMetadataStore {
         result = null;
       }
     }
-    _remember(bookRatingKey, result);
+    rememberCapped(_decoded, _maxCached, bookRatingKey, result);
     return result;
   }
 
@@ -63,17 +53,42 @@ class BookMetadataStore {
       String bookRatingKey, Map<String, dynamic> raw) async {
     await _box.put(ServerScope.key(bookRatingKey), raw);
     try {
-      _remember(bookRatingKey, PlexBook.fromJson(raw));
+      rememberCapped(_decoded, _maxCached, bookRatingKey, PlexBook.fromJson(raw));
     } catch (_) {
       _decoded.remove(bookRatingKey);
     }
   }
 
-  static bool has(String bookRatingKey) =>
-      _box.containsKey(ServerScope.key(bookRatingKey));
-
   /// Drops decoded entries. Called by [ServerScope.configure] on a server
   /// switch: the map is keyed by bare rating key, so a stale entry would serve
   /// the previous server's book for the new server's same-numbered one.
   static void clearDecodedCache() => _decoded.clear();
+
+  /// Deletes every record whose book has neither a saved position nor a
+  /// download, on any server. Returns how many went.
+  ///
+  /// Called on sign-out. This box holds one raw Plex record per book ever
+  /// *opened* — titles, authors, summaries: a picture of the account's library
+  /// that would otherwise outlive the account, exactly like the covers
+  /// [PlexClient.purgeCachedArtwork] exists to remove. What survives is what
+  /// sign-out deliberately keeps (positions, downloads — signing back in must
+  /// never lose anything), so those books keep their names and covers on the
+  /// offline shelves and in the car.
+  ///
+  /// Raw keys compare across boxes because every per-book store files under
+  /// the same [ServerScope.key]; no scope is consulted, so a secondary
+  /// server's kept books are kept too.
+  static Future<int> pruneOrphans() async {
+    final keep = <String>{
+      ...BookmarkStore.rawKeys(),
+      ...BookDownloadStore.rawKeys(),
+    };
+    final doomed = [
+      for (final k in _box.keys)
+        if (!keep.contains(k.toString())) k,
+    ];
+    await _box.deleteAll(doomed);
+    _decoded.clear();
+    return doomed.length;
+  }
 }

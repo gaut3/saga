@@ -3,6 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../plex/models/plex_track.dart';
 
 import 'server_scope.dart';
+import 'user_box.dart';
 
 const _boxName = 'track_cache';
 
@@ -16,13 +17,7 @@ class TrackCacheStore {
   static late Box _box;
 
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
+    _box = await openCacheBox(_boxName, encKey);
   }
 
   static List<PlexTrack>? load(String bookRatingKey) {
@@ -49,9 +44,6 @@ class TrackCacheStore {
   static Future<void> delete(String bookRatingKey) async {
     await _box.delete(ServerScope.key(bookRatingKey));
   }
-
-  static bool has(String bookRatingKey) =>
-      _box.containsKey(ServerScope.key(bookRatingKey));
 
   /// Expected number of tracks for a downloaded book, or null when unknown
   /// (book downloaded before the cache existed and not yet backfilled).

@@ -72,6 +72,14 @@ class BookmarkStore {
 
   static Set<String> savedBookKeys() => allPositions().keys.toSet();
 
+  /// Every raw storage key in the box — scope prefixes included, all servers.
+  ///
+  /// For cross-store housekeeping only (the sign-out metadata prune compares
+  /// raw keys across boxes, which works because every per-book store files
+  /// under the same [ServerScope.key]). Anything reading *positions* wants
+  /// [allPositions], which is scoped.
+  static Set<String> rawKeys() => {for (final k in _box.keys) k.toString()};
+
   static Map<String, BookPosition> allPositions() {
     final result = <String, BookPosition>{};
     for (final key in _box.keys) {

@@ -16,7 +16,7 @@ class SagaErrorView extends StatefulWidget {
 
   const SagaErrorView({
     super.key,
-    this.message = 'Something went wrong',
+    required this.message,
     this.error,
     this.onRetry,
   });

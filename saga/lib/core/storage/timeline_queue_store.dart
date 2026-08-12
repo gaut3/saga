@@ -1,6 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'server_scope.dart';
+import 'user_box.dart';
 
 /// A position update that failed to reach the Plex server and is waiting to be
 /// retried. One pending entry per book (last-write-wins) — there's no point
@@ -50,13 +51,7 @@ class TimelineQueueStore {
   static const _boxName = 'timeline_queue';
 
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
+    _box = await openCacheBox(_boxName, encKey);
   }
 
   /// Stores [pending] for [bookRatingKey], overwriting any earlier pending

@@ -72,11 +72,9 @@ void main() {
       // The distinction matters: null means "offer to build", empty would mean
       // "built, and this library has no narrators".
       expect(NarratorIndexStore.load('1'), isNull);
-      expect(NarratorIndexStore.has('1'), isFalse);
-      expect(NarratorIndexStore.builtAt('1'), isNull);
     });
 
-    test('round-trips an index and stamps when it was built', () async {
+    test('round-trips an index', () async {
       await NarratorIndexStore.save('1', {
         'b1': ['A Narrator'],
         'b2': ['Kate Reading', 'Michael Kramer'],
@@ -84,7 +82,6 @@ void main() {
       final loaded = NarratorIndexStore.load('1')!;
       expect(loaded['b1'], ['A Narrator']);
       expect(loaded['b2'], ['Kate Reading', 'Michael Kramer']);
-      expect(NarratorIndexStore.builtAt('1'), isNotNull);
     });
 
     test('sections are independent', () async {
@@ -109,15 +106,6 @@ void main() {
       final loaded = NarratorIndexStore.load('1')!;
       expect(loaded['b1'], ['New']);
       expect(loaded.containsKey('gone'), isFalse);
-    });
-
-    test('clear returns it to never-built', () async {
-      await NarratorIndexStore.save('1', {
-        'b1': ['A']
-      });
-      await NarratorIndexStore.clear('1');
-      expect(NarratorIndexStore.load('1'), isNull);
-      expect(NarratorIndexStore.builtAt('1'), isNull);
     });
 
     test('survives a restart', () async {

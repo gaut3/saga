@@ -52,7 +52,7 @@ class _SwipeAwayPillState extends State<SwipeAwayPill>
   /// Drag distance that breaks the pill free of its slot, measured from where
   /// the horizontal drag is recognised — real finger travel is this plus
   /// `kTouchSlop` (~18), and the resistance is felt across all of it.
-  static const _kUnstick = 34.0;
+  static const _kUnstick = 48.0;
 
   /// How far the pill actually moves while stuck. It strains toward this and
   /// never reaches it, which is what makes the snap feel earned.

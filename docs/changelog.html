@@ -12,71 +12,9 @@
   <link rel="icon" href="favicon.ico" sizes="48x48" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="saga.css" />
 
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --ink:    #1E1410;
-      --ink-bg: #150E0A;
-      --cream:  #F4EAD8;
-      --amber:  #E0A050;
-      --terra:  #C25A3A;
-      --sub:    rgba(244,234,216,0.62);
-      --sub2:   rgba(244,234,216,0.35);
-      --border: rgba(244,234,216,0.07);
-      --ff-body:    'Manrope', system-ui, sans-serif;
-      --ff-display: 'Instrument Serif', Georgia, serif;
-    }
-
-    html { scroll-behavior: smooth; }
-
-    body {
-      font-family: var(--ff-body);
-      background: var(--ink-bg);
-      color: var(--cream);
-      -webkit-font-smoothing: antialiased;
-    }
-
-    /* ─── NAV ─── */
-    nav {
-      position: sticky; top: 0; z-index: 100;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 0 56px; height: 68px;
-      background: rgba(21,14,10,0.88);
-      backdrop-filter: blur(14px);
-      border-bottom: 1px solid var(--border);
-    }
-    .nav-logo {
-      display: flex; align-items: center; gap: 9px; text-decoration: none;
-    }
-    .nav-wordmark {
-      display: inline-flex; align-items: center; gap: 5px;
-      font-family: var(--ff-body); font-weight: 600; font-size: 19px;
-      letter-spacing: -0.025em; color: var(--cream);
-    }
-    .nav-links { display: flex; gap: 32px; list-style: none; }
-    .nav-links a {
-      font-size: 13px; font-weight: 500;
-      color: var(--sub); text-decoration: none;
-      transition: color .15s;
-    }
-    .nav-links a:hover, .nav-links a.active { color: var(--cream); }
-
-    .btn {
-      display: inline-flex; align-items: center; gap: 7px;
-      font-family: var(--ff-body); font-weight: 700;
-      border-radius: 99px; text-decoration: none; cursor: pointer;
-      transition: opacity .15s, transform .15s;
-      border: none;
-    }
-    .btn:hover { opacity: .88; transform: translateY(-1px); }
-    .btn-amber { background: var(--amber); color: var(--ink); }
-    .btn-sm  { font-size: 13px; padding: 10px 20px; }
-
     /* ─── PAGE HEADER ─── */
     .page-header {
       padding: 80px 56px 56px;
@@ -85,11 +23,7 @@
     .page-header-inner {
       max-width: 760px; margin: 0 auto;
     }
-    .eyebrow {
-      font-size: 10.5px; font-weight: 600;
-      letter-spacing: .2em; text-transform: uppercase;
-      color: var(--amber); margin-bottom: 14px;
-    }
+    .eyebrow { margin-bottom: 14px; }
     .page-h1 {
       font-family: var(--ff-display);
       font-size: clamp(40px, 5vw, 64px);
@@ -181,30 +115,12 @@
       position: relative; top: -3px;
     }
 
-    /* ─── FOOTER ─── */
-    footer {
-      padding: 52px 56px;
-      border-top: 1px solid var(--border);
-      display: flex; flex-direction: column;
-      align-items: center; gap: 18px; text-align: center;
-    }
-    .footer-links { display: flex; gap: 24px; }
-    .footer-links a {
-      font-size: 13px; color: var(--sub2); text-decoration: none;
-    }
-    .footer-links a:hover { color: var(--sub); }
-    .footer-legal {
-      font-size: 12px; color: var(--sub2);
-      max-width: 580px; line-height: 1.65;
-    }
-
     /* ─── RESPONSIVE ─── */
+    /* This page has no nav-toggle element, so the shared dropdown never
+       opens — mobile keeps logo + Download, same as before. */
     @media (max-width: 860px) {
-      nav { padding: 0 24px; }
-      .nav-links { display: none; }
       .page-header { padding: 60px 24px 40px; }
       .content { padding: 48px 24px 80px; }
-      footer { padding: 40px 24px; }
     }
   </style>
 </head>
@@ -274,7 +190,12 @@
   <p class="footer-legal">&copy; 2026 gaut3 &middot; MIT License</p>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- Pinned + SRI: the unpinned URL resolved to whatever jsdelivr served that
+     day, with no integrity check. These are byte-for-byte the same bytes the
+     page was serving when pinned (marked 15.0.12). -->
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"
+        integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+"
+        crossorigin="anonymous"></script>
 <script>
 (function () {
   const RAW_URL = 'https://raw.githubusercontent.com/gaut3/saga/main/CHANGELOG.md';

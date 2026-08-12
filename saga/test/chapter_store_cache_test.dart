@@ -69,7 +69,6 @@ void main() {
 
   test('a missing track stays null', () {
     expect(ChapterStore.load('nothing-here'), isNull);
-    expect(ChapterStore.has('nothing-here'), isFalse);
   });
 
   test('the cache is bounded', () async {

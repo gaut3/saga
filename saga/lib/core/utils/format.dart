@@ -16,16 +16,6 @@ String fmtDurationMs(int? ms) {
   return '${m}m';
 }
 
-String fmtPositionMs(int ms) {
-  final h = ms ~/ 3600000;
-  final m = (ms % 3600000) ~/ 60000;
-  final s = (ms % 60000) ~/ 1000;
-  if (h > 0) {
-    return '${h}h ${m.toString().padLeft(2, '0')}m ${s.toString().padLeft(2, '0')}s';
-  }
-  return '${m}m ${s.toString().padLeft(2, '0')}s';
-}
-
 /// Listening time for the History and Home strips: "2h 5m", "45m", "<1m".
 ///
 /// Distinct from [fmtDurationMs], which formats a book's *length* and returns

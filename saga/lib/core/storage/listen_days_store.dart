@@ -17,18 +17,8 @@ class ListenDaysStore {
     _box = await openUserBox(_boxName, encKey);
   }
 
-  static String _dk(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-  static DateTime? _parse(String s) {
-    final p = s.split('-');
-    if (p.length != 3) return null;
-    final y = int.tryParse(p[0]);
-    final m = int.tryParse(p[1]);
-    final d = int.tryParse(p[2]);
-    if (y == null || m == null || d == null) return null;
-    return DateTime(y, m, d);
-  }
+  // yyyy-MM-dd
+  static String _dk(DateTime d) => d.toIso8601String().substring(0, 10);
 
   /// Records that [bookRatingKey] was listened to today. Starts a **fresh cycle**
   /// when there's no cycle yet, or when [lastCompletedAt] falls on/after the
@@ -44,7 +34,7 @@ class ListenDaysStore {
 
     var startNew = start == null || days == null;
     if (!startNew && lastCompletedAt != null) {
-      final startDate = _parse(start);
+      final startDate = DateTime.tryParse(start);
       if (startDate != null) {
         final completedDay = DateTime(
             lastCompletedAt.year, lastCompletedAt.month, lastCompletedAt.day);
@@ -72,7 +62,7 @@ class ListenDaysStore {
   static DateTime? startDate(String bookRatingKey) {
     final raw = _box.get(ServerScope.key(bookRatingKey)) as Map?;
     final s = raw?['s'] as String?;
-    return s == null ? null : _parse(s);
+    return s == null ? null : DateTime.tryParse(s);
   }
 
   static Future<void> clearAll() => _box.clear();
@@ -114,8 +104,8 @@ class ListenDaysStore {
         await _box.put(scoped, {'s': inStart, 'd': inDays});
         continue;
       }
-      final inDate = _parse(inStart);
-      final exDate = _parse(exStart);
+      final inDate = DateTime.tryParse(inStart);
+      final exDate = DateTime.tryParse(exStart);
       if (inDate != null && exDate != null && inDate.isBefore(exDate)) {
         continue; // local cycle is newer — keep it
       }

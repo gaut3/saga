@@ -4,7 +4,7 @@ publish_to: 'none'
 
 # versionName+versionCode. Bump both together with the CHANGELOG entry — the
 # release workflow tags from this, and Android refuses a downgrade install.
-version: 1.1.0+19
+version: 1.1.1+20
 
 environment:
   sdk: ^3.10.7

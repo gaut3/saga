@@ -1,0 +1,61 @@
+/* ─────────────────────────────────────────────────────────────
+   Saga — AA contrast retune (2026-08) + Terra → Ember
+   Override layer: import AFTER 01-brand/tokens.css.
+   Values + computed ratios: see 05-contrast/README.md.
+   data-theme="terra" is kept as the attribute (persisted index);
+   "Ember" is the display name only.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  /* new raw tokens */
+  --saga-ember:       #8E3A22;  /* ember bg (was terracotta #C25A3A as ground) */
+  --saga-ember-deep:  #7A301B;  /* ember surface */
+  --saga-ember-pitch: #6E2A17;  /* ember raised/alt surface */
+  --saga-amber-pale:  #F0C48C;  /* ember accent-as-text */
+
+  /* CREAM (default) — muted 60→70%, subtle 40→63%, accentText new */
+  --saga-fg-muted:    rgba(30,20,16,0.70);   /* 6.18 bg / 6.00 surface */
+  --saga-fg-subtle:   rgba(30,20,16,0.63);   /* 4.84 / 4.75 */
+  --saga-accent-text: var(--saga-terra-deep);/* #9E4128 · 5.43 / 5.11 */
+}
+
+:root[data-theme="ink"], .theme-ink {
+  --saga-fg-subtle:   rgba(244,234,216,0.52); /* 4.86 / 4.71 (was 0.40 @ 3.42) */
+  --saga-accent-text: var(--saga-amber);      /* 8.01 / 7.45 */
+}
+
+:root[data-theme="onyx"], .theme-onyx {
+  --saga-fg-muted:    rgba(228,217,198,0.65); /* 6.39 / 6.31 */
+  --saga-fg-subtle:   rgba(228,217,198,0.55); /* 4.73 / 4.76 · #7D776D on black — no bloom */
+  --saga-accent-text: var(--saga-amber);      /* 9.31 / 8.80 */
+}
+
+/* ── EMBER (data-theme="terra") — darkened grounds ──────────
+   #C25A3A is unfixable as a text ground (cream 3.65, ink 4.14).
+   Grounds drop one step; #C25A3A becomes the non-text hero color
+   (seek fill, buttons, scrims — 1.73 vs bg, never text).
+   On-surface rule retired: every tier passes on bg.            */
+:root[data-theme="terra"], .theme-terra {
+  --saga-bg:          var(--saga-ember);       /* cream fg: 6.34 */
+  --saga-surface:     var(--saga-ember-deep);  /* cream fg: 7.77 */
+  --saga-surface-alt: var(--saga-ember-pitch);
+  --saga-fg-muted:    rgba(244,234,216,0.85);  /* 5.07 / 6.08 */
+  --saga-fg-subtle:   rgba(244,234,216,0.80);  /* 4.63 / 5.53 */
+  --saga-accent:      var(--saga-amber);       /* large/bold + non-text: 3.35 / 4.11 */
+  --saga-accent-text: var(--saga-amber-pale);  /* #F0C48C · 4.67 / 5.73 */
+  --saga-accent-fg:   var(--saga-ink);
+  --saga-hero:        var(--saga-terracotta);  /* non-text roles only */
+  --saga-mark-side:   var(--saga-cream);       /* 6.34 */
+  --saga-mark-middle: var(--saga-amber);       /* ink spine fails 3:1 on new ground (2.39) */
+}
+
+/* prefers-color-scheme fallback (resolves to Ink) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --saga-fg-subtle:   rgba(244,234,216,0.52);
+    --saga-accent-text: var(--saga-amber);
+  }
+}
+
+/* Policy: --saga-accent-text is the ONLY accent permitted at body
+   sizes (e.g. 13px links). --saga-accent stays for non-text UI and
+   large/bold text (18px+, or 14px+ bold — 3:1 floor). */

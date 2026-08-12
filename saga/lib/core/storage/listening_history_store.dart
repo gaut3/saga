@@ -20,8 +20,8 @@ class ListeningHistoryStore {
     _box = await openUserBox(_boxName, encKey);
   }
 
-  static String _dk(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  // yyyy-MM-dd
+  static String _dk(DateTime d) => d.toIso8601String().substring(0, 10);
 
   static void recordListening(int ms) {
     if (ms <= 0) return;
@@ -81,13 +81,8 @@ class ListeningHistoryStore {
     for (final key in _box.keys) {
       if (key is! String) continue;
       if (!key.startsWith('t_') && !key.startsWith('d_')) continue;
-      final parts = key.substring(2).split('-');
-      if (parts.length != 3) continue;
-      final y = int.tryParse(parts[0]);
-      final m = int.tryParse(parts[1]);
-      final d = int.tryParse(parts[2]);
-      if (y == null || m == null || d == null) continue;
-      final day = DateTime(y, m, d);
+      final day = DateTime.tryParse(key.substring(2));
+      if (day == null) continue;
       if (min == null || day.isBefore(min)) min = day;
     }
     return min;

@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en" data-theme="ink">
+<head>
+<meta charset="utf-8" />
+<title>Saga — Mark extensions: cover fallback &amp; pattern</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=Caveat:wght@500&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@500;700&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--ff-body:'Manrope',system-ui,sans-serif;--ff-display:'Instrument Serif',Georgia,serif;--ff-hand:'Caveat',cursive;--ff-mono:'JetBrains Mono',ui-monospace,monospace}
+html{--bg:#150E0A;--surface:#1E1410;--surface2:#261B16;--fg:#F4EAD8;--accent:#E0A050;--accent-hi:#EFC078;--sub:rgba(244,234,216,0.66);--sub2:rgba(244,234,216,0.52);--track:rgba(244,234,216,0.16);--border:rgba(244,234,216,0.1);--rule:rgba(244,234,216,0.2);--tint:rgba(244,234,216,0.05);--hand:rgba(224,160,80,0.88)}
+body{font-family:var(--ff-body);background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased;padding:0 0 130px}
+a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent-hi)}
+.label{font-family:var(--ff-display);font-style:italic;font-size:19px;color:var(--sub2)}
+h1{font-family:var(--ff-display);font-size:clamp(34px,4vw,54px);line-height:1.06;letter-spacing:-.015em;margin:10px 0 18px;max-width:15em}
+h1 em{color:var(--accent);font-style:italic}
+h2{font-family:var(--ff-display);font-size:clamp(27px,2.6vw,36px);line-height:1.14;margin:8px 0 14px}
+h3.sub{font-family:var(--ff-display);font-size:23px;margin-bottom:10px}
+.lede{font-size:16.5px;line-height:1.62;color:var(--sub);max-width:62ch;text-wrap:pretty}
+.mono{font-family:var(--ff-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--sub2)}
+.cap{font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--sub2)}
+.hand{font-family:var(--ff-hand);font-size:19px;line-height:1.3;color:var(--hand)}
+header.top{padding:76px 48px 56px;max-width:1216px;margin:0 auto}
+section.sec{padding:74px 48px;border-top:1px solid var(--border);max-width:1216px;margin:0 auto}
+.sec-head{margin-bottom:40px}
+.block{margin-top:56px}
+.cap-row{display:flex;gap:26px;flex-wrap:wrap;margin-top:24px}
+.cap-row p{font-size:14px;line-height:1.6;color:var(--sub);max-width:36ch}
+.q{font-size:14px;line-height:1.6;color:var(--sub);max-width:52ch;border-left:1px solid var(--accent);padding-left:16px;margin-top:22px}
+.q b{color:var(--accent-hi);font-weight:600}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+.spec{font-family:var(--ff-mono);font-size:11.5px;line-height:2;color:var(--sub);letter-spacing:.03em;background:var(--tint);border-radius:12px;padding:20px 22px}
+.spec b{color:var(--accent);font-weight:500;display:inline-block;min-width:132px}
+/* covers */
+.cover{aspect-ratio:1;border-radius:10px;overflow:hidden;display:grid;place-items:center;padding:15%;position:relative}
+.cover .sp{width:100%;height:auto;display:block}
+.cover.xs{border-radius:7px;padding:17%}
+.cover.lg{border-radius:14px}
+.grid5{display:grid;grid-template-columns:repeat(5,1fr);gap:22px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:22px}
+.cell{display:flex;flex-direction:column;gap:9px}
+.sizes{display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap}
+.sizes .s{display:flex;flex-direction:column;gap:10px;align-items:center}
+/* shelf */
+.shelf{padding:24px 0 26px}
+.shelf-h{display:flex;align-items:baseline;justify-content:space-between;padding:0 24px 16px}
+.shelf-h span{font-size:16px;font-weight:700;letter-spacing:-.01em}
+.shelf-row{display:flex;gap:16px;padding:0 24px;overflow:hidden}
+.shelf-row .it{width:132px;flex-shrink:0;display:flex;flex-direction:column;gap:9px}
+.shelf-row img{width:132px;height:132px;object-fit:cover;border-radius:10px;display:block}
+.shelf-row .t{font-size:12.5px;font-weight:700;line-height:1.3}
+.shelf-row .a{font-size:11px;color:var(--sub2)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+.two.wide{grid-template-columns:1.35fr 1fr}
+/* generator */
+.gen{display:grid;grid-template-columns:1fr 260px;gap:44px;align-items:start;background:var(--tint);border-radius:16px;padding:28px;margin-top:34px}
+.gen input{width:100%;font-family:var(--ff-body);font-size:14px;color:var(--fg);background:transparent;border:none;border-bottom:1px solid var(--rule);padding:9px 0;outline:none}
+.gen input:focus{border-color:var(--accent)}
+.gen .fld+.fld{margin-top:18px}
+.readout{font-family:var(--ff-mono);font-size:11px;color:var(--sub);line-height:2;letter-spacing:.03em;margin-top:24px}
+.readout b{color:var(--accent);font-weight:500;display:inline-block;min-width:86px}
+.seg{display:inline-flex;background:var(--tint);border-radius:99px;padding:3px;gap:2px;width:fit-content}
+.seg button{font-family:var(--ff-body);font-size:12.5px;font-weight:600;color:var(--sub);background:none;border:none;padding:8px 16px;border-radius:99px;cursor:pointer}
+.seg button.on{background:var(--accent);color:#1E1410}
+/* pattern */
+.pat{position:relative;overflow:hidden;border-radius:16px}
+.pat>svg.field{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.pat>*:not(svg.field){position:relative}
+.band{min-height:250px;display:flex;flex-direction:column;justify-content:center;gap:14px;padding:52px}
+.band h3{font-family:var(--ff-display);font-size:clamp(26px,3vw,38px);line-height:1.08;max-width:16ch}
+.band p{font-size:15px;line-height:1.6;max-width:44ch;opacity:.72}
+.ghhead{aspect-ratio:2/1;padding:8%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;text-align:center}
+.ghhead .lock{display:flex;align-items:center;gap:11px}
+.ghhead .lock span{font-weight:600;font-size:26px;letter-spacing:-.03em}
+.ghhead p{font-size:14px;opacity:.72;max-width:36ch}
+.og{aspect-ratio:1200/630;padding:42px;display:flex;flex-direction:column;justify-content:space-between}
+.og .lock{display:flex;align-items:center;gap:10px}
+.og .lock span{font-weight:600;font-size:21px;letter-spacing:-.025em}
+.og h3{font-family:var(--ff-display);font-size:clamp(21px,2.5vw,34px);line-height:1.1;max-width:15ch}
+.og .foot{font-size:12.5px;opacity:.6}
+.splash{aspect-ratio:9/16;display:grid;place-items:center;border-radius:22px}
+.sticker{aspect-ratio:1;border-radius:50%;display:grid;place-items:center;overflow:hidden;position:relative}
+.ladder{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.ladder .sw{aspect-ratio:1.4;border-radius:10px;background:var(--surface);position:relative;overflow:hidden}
+.tilebox{background:var(--surface);border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:16px}
+@media(max-width:960px){header.top,section.sec{padding-left:22px;padding-right:22px}.grid5{grid-template-columns:repeat(2,1fr)}.grid4,.two,.two.wide,.gen{grid-template-columns:1fr}.ladder{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div style="display:flex;align-items:center;gap:9px;margin-bottom:26px">
+    <svg viewBox="0 0 200 200" width="25" height="25" aria-hidden="true"><rect x="41" y="48" width="22" height="104" rx="5" fill="#F4EAD8"/><rect x="73" y="38" width="22" height="124" rx="5" fill="#E0A050"/><rect x="105" y="56" width="22" height="88" rx="5" fill="#F4EAD8"/><rect x="137" y="46" width="22" height="108" rx="5" fill="#F4EAD8"/></svg>
+    <span style="font-weight:600;font-size:19px;letter-spacing:-.025em">saga</span><span class="mono" style="margin-left:10px">mark extensions · exploration</span>
+  </div>
+  <div class="label">Two uses for the four spines</div>
+  <h1>The mark can <em>generate artwork</em>, and it can become a surface.</h1>
+  <p class="lede">Neither touches the mark itself: same four bars, same geometry, same accent rule. One turns a book title into a cover for the shelves Plex leaves empty; the other tiles the spines into a field for promo material. This is a draft to react to, not a spec &mdash; open questions are marked in amber.</p>
+</header>
+
+<section class="sec">
+  <div class="sec-head">
+    <div class="label">01 — Cover fallback</div>
+    <h2>Every book without art still gets its own.</h2>
+    <p class="lede">A title is hashed into four spine heights, an accent position and a palette. Deterministic, so a book looks identical on every device and every launch, and two titles have to collide on all four values to look alike.</p>
+  </div>
+  <div class="grid5" id="grid"></div>
+  <div class="spec" style="margin-top:26px">
+    <div><b>input</b>series key + volume number, else the full title</div>
+    <div><b>hash</b>FNV-1a 32-bit, lowercased, punctuation stripped</div>
+    <div><b>heights</b>4 × 5 bits → 44–100% of box height</div>
+    <div><b>accent</b>2 bits → which spine takes the accent</div>
+    <div><b>palette</b>8 bits → one of six brand pairs, ember grounds per 05-contrast (never a new colour)</div>
+  </div>
+
+  <div class="block">
+    <h3 class="sub">Series should look like a family</h3>
+    <p class="lede">Hashing the whole title makes Vol. 1 and Vol. 2 strangers. Hashing the <em>series</em> and letting the volume number vary only the accent spine and one height keeps a shelf of a long series legible as one set &mdash; which is exactly how a physical series is designed.</p>
+    <div class="two" style="margin-top:26px">
+      <div class="cell"><div class="cap">A — hash the full title</div><div class="grid4" id="famA" style="gap:14px"></div></div>
+      <div class="cell"><div class="cap">B — hash the series, vary by volume</div><div class="grid4" id="famB" style="gap:14px"></div></div>
+    </div>
+    <p class="q"><b>Open:</b> B needs a series key. Plex gives us one for grouped series, but loose files won't have it &mdash; parsing &ldquo;, Vol. N&rdquo; out of a title is a guess that will misfire on some libraries. Fall back to A silently, or only run B when Plex supplies the series?</p>
+  </div>
+
+  <div class="block">
+    <h3 class="sub">Palette: hashed, or locked to the theme?</h3>
+    <p class="lede">Hashed palettes give a shelf variety and make covers findable by colour. Theme-locked keeps the library calm and means a generated cover never fights the surface it sits on &mdash; all the variation comes from the spines.</p>
+    <div class="two" style="margin-top:26px">
+      <div class="cell"><div class="cap">Hashed — six pairs in rotation</div><div class="panel shelf"><div class="shelf-row" id="palA"></div></div></div>
+      <div class="cell"><div class="cap">Theme-locked — Ink only, spines vary</div><div class="panel shelf"><div class="shelf-row" id="palB"></div></div></div>
+    </div>
+    <p class="q"><b>My read:</b> theme-locked for the library, hashed only where covers appear away from the app &mdash; share cards, the site. A shelf of ten hashed covers starts to look like a colour test. <b>Worth deciding before either ships.</b></p>
+  </div>
+
+  <div class="block">
+    <h3 class="sub">No title on the cover</h3>
+    <p class="lede">Every place a cover appears in Saga already prints the title under it, so text on the artwork was a second copy of the same words &mdash; and the thing that broke on long titles and non-Latin scripts. The cover is spines only, centred, and the title sits above the shelf where it always was.</p>
+    <div class="panel shelf" style="margin-top:26px" id="txtB"></div>
+    <p class="q"><b>Consequence:</b> two unread books in a list are told apart by their spine signature and colour, not by reading the cover. That's fine on a shelf with row text under every item; the one place it costs something is a share card or the media notification, where the cover travels alone &mdash; those get the lockup instead.</p>
+  </div>
+
+  <div class="block">
+    <h3 class="sub">At the sizes it actually appears</h3>
+    <p class="lede">Same book, the four real sizes in the app. With no text to shrink, the only rule left is padding &mdash; 15% of the box, 17% at row size so the spines don't crowd the corners.</p>
+    <div class="sizes" style="margin-top:26px" id="sizes"></div>
+  </div>
+
+  <div class="block">
+    <h3 class="sub">Titles that used to break things</h3>
+    <p class="lede">An 80-character title, a single word, numerals, Japanese, Cyrillic. With the text gone these are just five more hashes &mdash; the string still has to produce a distinct cover, which is all that's left to check.</p>
+    <div class="grid5" style="margin-top:26px" id="edge"></div>
+    <p class="q"><b>Settled by dropping the text:</b> no font fallback to ship, no clamping, no RTL layout. The hash is over the raw string, so scripts and punctuation are handled by the same rule as everything else.</p>
+  </div>
+
+  <div class="block">
+    <h3 class="sub">Next to real artwork</h3>
+    <p class="lede">The test that matters: a shelf mixing covers Plex has with covers it doesn't. Generated ones should read as part of the app, not as something missing.</p>
+    <div class="panel shelf" style="margin-top:22px"><div class="shelf-h"><span>Continue listening</span><span class="mono">see all</span></div><div class="shelf-row" id="shelf"></div></div>
+    <p class="hand" style="margin-top:16px">covers 3, 5 and 6 have no art in the library</p>
+  </div>
+
+  <div class="gen">
+    <div>
+      <div class="mono" style="margin-bottom:18px">Try a title</div>
+      <div class="fld"><input id="in-t" value="The Wandering Inn, Vol. 3" aria-label="Title" /></div>
+      <div class="fld"><input id="in-a" value="pirateaba" aria-label="Author" /></div>
+      <div style="margin-top:22px;display:flex;gap:10px;flex-wrap:wrap">
+        <div class="seg" id="modeseg"><button data-mode="series" class="on">Series hash</button><button data-mode="title">Title hash</button></div>
+        <div class="seg" id="palseg"><button data-pal="hash" class="on">Hashed palette</button><button data-pal="theme">Theme-locked</button></div>
+      </div>
+      <div class="readout" id="readout"></div>
+    </div>
+    <div class="cell"><div id="live"></div><div class="cap">live — same string always gives this cover</div></div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="sec-head">
+    <div class="label">02 — Pattern &amp; texture</div>
+    <h2>The spines, tiled.</h2>
+    <p class="lede">Repeat the bars at varying heights and the mark becomes a field &mdash; a meter that never resolves. One tile, one accent, four strengths. Everything below is that same tile at a different scale and opacity.</p>
+  </div>
+
+  <div class="two wide">
+    <div class="tilebox">
+      <div class="cap">The tile — 320 × 200 units</div>
+      <svg viewBox="0 0 320 200" style="width:100%;background:#150E0A;border-radius:8px" aria-hidden="true">
+        <g fill="#F4EAD8" opacity="0.5"><rect x="8" y="52" width="22" height="96" rx="5"/><rect x="88" y="62" width="22" height="76" rx="5"/><rect x="128" y="44" width="22" height="112" rx="5"/><rect x="168" y="66" width="22" height="68" rx="5"/><rect x="208" y="38" width="22" height="124" rx="5"/><rect x="248" y="58" width="22" height="84" rx="5"/><rect x="288" y="46" width="22" height="108" rx="5"/></g>
+        <rect x="48" y="34" width="22" height="132" rx="5" fill="#E0A050"/>
+        <g stroke="#E0A050" stroke-width="1" opacity="0.45" stroke-dasharray="3 4"><line x1="0" y1="100" x2="320" y2="100"/><line x1="0" y1="2" x2="320" y2="2"/><line x1="0" y1="198" x2="320" y2="198"/></g>
+      </svg>
+      <div class="spec" style="background:transparent;padding:0">
+        <div><b>tile</b>320 × 200, repeats on both axes</div>
+        <div><b>spines</b>8 · width 22 · pitch 40 · radius 5</div>
+        <div><b>heights</b>96 · 132 · 76 · 112 · 68 · 124 · 84 · 108</div>
+        <div><b>alignment</b>centred on the tile's mid-line, never shelved</div>
+        <div><b>accent</b>spine 2 only — one per tile, as in the mark</div>
+        <div><b>scale</b>0.55 mobile · 0.8 card · 1.0 band · 1.5 ghost</div>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="cap">Opacity ladder</div>
+      <div class="ladder" id="ladder"></div>
+      <p style="font-size:14px;line-height:1.6;color:var(--sub);margin-top:6px">Opacity is the whole control. 5% behind body copy, 7&ndash;8% for site bands, 10% for cards with headings only, 16% for print and stickers where nothing has to be read through it.</p>
+      <p class="q"><b>Rule of thumb:</b> if text sits on top of it, the field must be invisible when you stop looking for it. If nothing sits on top, push it.</p>
+    </div>
+  </div>
+
+  <div class="block">
+    <h3 class="sub">Surfaces</h3>
+    <div class="two" style="margin-top:26px">
+      <div class="cell">
+        <div class="pat ghhead" style="background:#1E1410;color:#F4EAD8" id="s-gh">
+          <div class="lock"><svg viewBox="0 0 200 200" width="34" height="34" aria-hidden="true"><rect x="41" y="48" width="22" height="104" rx="5" fill="#F4EAD8"/><rect x="73" y="38" width="22" height="124" rx="5" fill="#E0A050"/><rect x="105" y="56" width="22" height="88" rx="5" fill="#F4EAD8"/><rect x="137" y="46" width="22" height="108" rx="5" fill="#F4EAD8"/></svg><span>saga</span></div>
+          <p>Audiobook player for your self-hosted Plex library. Android, MIT.</p>
+        </div>
+        <div class="cap">GitHub repo header · 1280×640, safe area centred — the corners get cropped in the social preview</div>
+      </div>
+      <div class="cell">
+        <div class="pat og" style="background:#150E0A;color:#F4EAD8" id="s-og">
+          <div class="lock"><svg viewBox="0 0 200 200" width="28" height="28" aria-hidden="true"><rect x="41" y="48" width="22" height="104" rx="5" fill="#F4EAD8"/><rect x="73" y="38" width="22" height="124" rx="5" fill="#E0A050"/><rect x="105" y="56" width="22" height="88" rx="5" fill="#F4EAD8"/><rect x="137" y="46" width="22" height="108" rx="5" fill="#F4EAD8"/></svg><span>saga</span></div>
+          <h3>An audiobook player for the Plex library you already own.</h3>
+          <div class="foot">Free · open source · Android</div>
+        </div>
+        <div class="cap">Social share card · 1200×630</div>
+      </div>
+    </div>
+
+    <div class="two wide" style="margin-top:26px">
+      <div class="pat band" style="background:var(--surface);color:var(--fg)" id="s-band">
+        <div class="label">Site section band</div>
+        <h3>Your library, already paid for.</h3>
+        <p>At 7% the field fills a band that would otherwise be empty, without competing with the copy.</p>
+      </div>
+      <div class="two" style="gap:26px">
+        <div class="cell">
+          <div class="pat splash" style="background:#000" id="s-splash">
+            <svg viewBox="0 0 200 200" width="60" height="60" aria-hidden="true"><rect x="41" y="48" width="22" height="104" rx="5" fill="#E4D9C6"/><rect x="73" y="38" width="22" height="124" rx="5" fill="#E0A050"/><rect x="105" y="56" width="22" height="88" rx="5" fill="#E4D9C6"/><rect x="137" y="46" width="22" height="108" rx="5" fill="#E4D9C6"/></svg>
+          </div>
+          <div class="cap">Splash · onyx, 8%</div>
+        </div>
+        <div class="cell">
+          <div class="pat sticker" style="background:#8E3A22;color:#F4EAD8" id="s-sticker">
+            <div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px">
+              <svg viewBox="0 0 200 200" width="44" height="44" aria-hidden="true"><rect x="41" y="48" width="22" height="104" rx="5" fill="#F4EAD8"/><rect x="73" y="38" width="22" height="124" rx="5" fill="#E0A050"/><rect x="105" y="56" width="22" height="88" rx="5" fill="#F4EAD8"/><rect x="137" y="46" width="22" height="108" rx="5" fill="#F4EAD8"/></svg>
+              <div style="font-family:var(--ff-display);font-size:19px;line-height:1.1">Four bars,<br>one shape.</div>
+            </div>
+          </div>
+          <div class="cap">Sticker · 16%, ember ground, die-cut circle</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap-row">
+      <p>The tile is eight spines wide with one accent, so the repeat reads as a long meter rather than a pattern until you look for the seam.</p>
+      <p>On print, the accent spine is the only place the second colour appears &mdash; a one-colour screen print drops it and still works.</p>
+      <p>Not tried yet: the field as a mask over cover art, and an animated version for the site hero. Both are easy to overdo.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+/* ── palettes ── */
+const PAL=[
+ {bg:'#1E1410',fg:'#F4EAD8',ac:'#E0A050'},
+ {bg:'#8E3A22',fg:'#F4EAD8',ac:'#E0A050'},
+ {bg:'#F4EAD8',fg:'#1E1410',ac:'#9E4128'},
+ {bg:'#0C0908',fg:'#E4D9C6',ac:'#E0A050'},
+ {bg:'#7A301B',fg:'#F4EAD8',ac:'#E0A050'},
+ {bg:'#E8D8BD',fg:'#1E1410',ac:'#9E4128'}
+];
+const THEME={bg:'#1E1410',fg:'#F4EAD8',ac:'#E0A050'};
+function hash(s){let h=0x811c9dc5;const t=s.trim().toLowerCase().replace(/[^\p{L}\p{N} ]/gu,'');for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0}return h}
+function parseSeries(title){
+  const m=title.match(/^(.*?)[,:]?\s*(?:vol\.?|volume|book|part|#)\s*(\d+)\s*$/i);
+  return m?{key:m[1],vol:+m[2]}:{key:title,vol:0};
+}
+/* mode: 'series' hashes the series key and varies by volume; 'title' hashes the whole string */
+function spec(title,mode,palMode){
+  const s=parseSeries(title),useSeries=mode!=='title'&&s.vol>0;
+  const h=hash(useSeries?s.key:title);
+  const heights=[0,1,2,3].map(i=>{const n=(h>>>(i*5))&31;return 44+Math.round(n/31*56)});
+  let accent=(h>>>21)&3;
+  if(useSeries){const v=s.vol-1;accent=(accent+v)%4;const j=v%4;heights[j]=44+((heights[j]-44+17*(1+v))%57)}
+  return {h:h,heights:heights,accent:accent,pal:palMode==='theme'?THEME:PAL[(h>>>24)%PAL.length],series:useSeries?s.key:null,vol:s.vol};
+}
+function spines(sp,fg,ac){
+  const xs=[0,32,64,96];
+  return '<svg class="sp" viewBox="0 0 118 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">'+sp.heights.map((hh,i)=>
+    '<rect x="'+xs[i]+'" y="'+((100-hh)/2).toFixed(1)+'" width="22" height="'+hh+'" rx="5" fill="'+(i===sp.accent?ac:fg)+'"/>').join('')+'</svg>';
+}
+function cover(title,author,o){
+  o=o||{};const sp=spec(title,o.mode||'series',o.pal||'hash'),p=sp.pal;
+  const st=o.px?'width:'+o.px+'px;':'';
+  return '<div class="cover '+(o.size||'')+'" style="'+st+'background:'+p.bg+';color:'+p.fg+'">'+spines(sp,p.fg,p.ac)+'</div>';
+}
+/* ── main grid ── */
+const BOOKS=[['Moby-Dick','Herman Melville'],['Frankenstein','Mary Shelley'],['The Odyssey','Homer'],['Dracula','Bram Stoker'],['Jane Eyre','Charlotte Brontë'],
+ ['Walden','Henry David Thoreau'],['The Time Machine','H. G. Wells'],['Meditations','Marcus Aurelius'],['Treasure Island','R. L. Stevenson'],['The Wind in the Willows','Kenneth Grahame']];
+document.getElementById('grid').innerHTML=BOOKS.map(b=>'<div class="cell">'+cover(b[0],b[1])+'<div class="cap">#'+spec(b[0],'series','hash').h.toString(16).slice(0,6)+'</div></div>').join('');
+/* ── series family ── */
+const FAM=[1,2,3,4].map(v=>['Overlord, Vol. '+v,'Kugane Maruyama']);
+document.getElementById('famA').innerHTML=FAM.map(b=>cover(b[0],b[1],{size:'sm',mode:'title'})).join('');
+document.getElementById('famB').innerHTML=FAM.map(b=>cover(b[0],b[1],{size:'sm',mode:'series'})).join('');
+/* ── palette compare ── */
+const PALBOOKS=[['Dracula','Bram Stoker'],['Walden','H. D. Thoreau'],['Meditations','Marcus Aurelius'],['The Odyssey','Homer']];
+function shelfRow(el,palMode){document.getElementById(el).innerHTML=PALBOOKS.map(b=>
+ '<div class="it">'+cover(b[0],b[1],{pal:palMode,size:'sm'})+'<div class="t">'+b[0]+'</div><div class="a">'+b[1]+'</div></div>').join('')}
+shelfRow('palA','hash');shelfRow('palB','theme');
+/* ── title vs no title ── */
+function txtDemo(el){
+  document.getElementById(el).innerHTML='<div class="shelf-row" style="align-items:center">'+
+   PALBOOKS.slice(0,2).map(b=>'<div class="it">'+cover(b[0],b[1],{size:'sm'})+'<div class="t">'+b[0]+'</div><div class="a">'+b[1]+'</div></div>').join('')+
+   '<div style="display:flex;flex-direction:column;gap:12px;padding-left:6px">'+
+   PALBOOKS.slice(2).map(b=>'<div style="display:flex;align-items:center;gap:12px">'+cover(b[0],b[1],{size:'xs',px:48})+
+     '<div><div class="t" style="font-size:13.5px">'+b[0]+'</div><div class="a">'+b[1]+'</div></div></div>').join('')+'</div></div>';
+}
+txtDemo('txtB');
+/* ── sizes ── */
+document.getElementById('sizes').innerHTML=[[48,'xs','48 · list row'],[86,'sm','86 · finished shelf'],[132,'sm','132 · grid'],[300,'lg','300 · player']].map(s=>
+ '<div class="s"><div style="width:'+s[0]+'px">'+cover('Treasure Island','R. L. Stevenson',{size:s[1],px:s[0]})+'</div><div class="cap">'+s[2]+'</div></div>').join('');
+/* ── edge cases ── */
+const EDGE=[
+ ['The Strange Case of Dr Jekyll and Mr Hyde, and Other Stories of the Supernatural','R. L. Stevenson','80 characters'],
+ ['Dune','Frank Herbert','single word'],
+ ['1984','George Orwell','numerals only'],
+ ['夜は短し歩けよ乙女','森見登美彦','japanese'],
+ ['Преступление и наказание','Фёдор Достоевский','cyrillic']
+];
+document.getElementById('edge').innerHTML=EDGE.map(e=>'<div class="cell">'+cover(e[0],e[1])+'<div class="cap">'+e[2]+'</div></div>').join('');
+/* ── mixed shelf ── */
+const SHELF=[{img:'covers/overlord-1.png',t:'Overlord, Vol. 1',a:'Kugane Maruyama'},{img:'covers/overlord-2.png',t:'Overlord, Vol. 2',a:'Kugane Maruyama'},
+ {gen:1,t:'The Odyssey',a:'Homer'},{img:'covers/overlord-4.png',t:'Overlord, Vol. 4',a:'Kugane Maruyama'},{gen:1,t:'Meditations',a:'Marcus Aurelius'},
+ {gen:1,t:'Treasure Island',a:'R. L. Stevenson'},{img:'covers/overlord-7.png',t:'Overlord, Vol. 7',a:'Kugane Maruyama'}];
+document.getElementById('shelf').innerHTML=SHELF.map(s=>'<div class="it">'+
+ (s.gen?cover(s.t,s.a,{size:'sm'}):'<img src="'+s.img+'" alt="'+s.t+'" loading="lazy" />')+
+ '<div class="t">'+s.t+'</div><div class="a">'+s.a+'</div></div>').join('');
+/* ── live generator ── */
+const it=document.getElementById('in-t'),ia=document.getElementById('in-a');let gMode='series',gPal='hash';
+function live(){
+  const t=it.value||'Untitled',a=ia.value||'Unknown';
+  document.getElementById('live').innerHTML=cover(t,a,{mode:gMode,pal:gPal});
+  const sp=spec(t,gMode,gPal);
+  document.getElementById('readout').innerHTML=
+   '<div><b>hashed on</b>'+(sp.series?sp.series+'  (vol '+sp.vol+')':'full title')+'</div>'+
+   '<div><b>hash</b>0x'+sp.h.toString(16)+'</div>'+
+   '<div><b>heights</b>'+sp.heights.join(' · ')+'</div>'+
+   '<div><b>accent</b>spine '+(sp.accent+1)+'</div>'+
+   '<div><b>palette</b>'+sp.pal.bg+(gPal==='theme'?'  (locked)':'')+'</div>';
+}
+it.addEventListener('input',live);ia.addEventListener('input',live);
+document.getElementById('modeseg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;[...e.currentTarget.children].forEach(c=>c.classList.toggle('on',c===b));gMode=b.dataset.mode;live()});
+document.getElementById('palseg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;[...e.currentTarget.children].forEach(c=>c.classList.toggle('on',c===b));gPal=b.dataset.pal;live()});
+live();
+
+/* ── pattern field ── */
+const HEIGHTS=[96,132,76,112,68,124,84,108];
+let pid=0;
+function field(target,color,opacity,scale,accent){
+  const el=typeof target==='string'?document.getElementById(target):target;
+  if(!el)return;const id='fp'+(pid++);
+  const bars=HEIGHTS.map((h,i)=>'<rect x="'+(8+i*40)+'" y="'+(100-h/2)+'" width="22" height="'+h+'" rx="5"/>').join('');
+  el.insertAdjacentHTML('afterbegin','<svg class="field" aria-hidden="true"><defs><pattern id="'+id+'" width="320" height="200" patternUnits="userSpaceOnUse" patternTransform="scale('+scale+')">'+
+   '<g fill="'+color+'" opacity="'+opacity+'">'+bars+'</g>'+
+   (accent?'<rect x="48" y="34" width="22" height="132" rx="5" fill="'+accent+'" opacity="'+(opacity*2)+'"/>':'')+
+   '</pattern></defs><rect width="100%" height="100%" fill="url(#'+id+')"/></svg>');
+}
+field('s-gh','#F4EAD8',0.09,0.9,'#E0A050');
+field('s-og','#F4EAD8',0.10,0.8,'#E0A050');
+field('s-band','#F4EAD8',0.07,1,'#E0A050');
+field('s-splash','#E4D9C6',0.08,0.55,null);
+field('s-sticker','#F4EAD8',0.16,0.62,'#E0A050');
+document.getElementById('ladder').innerHTML=[5,7,10,16].map(o=>'<div><div class="sw" id="lad'+o+'"></div><div class="cap" style="margin-top:8px">'+o+'%</div></div>').join('');
+[5,7,10,16].forEach(o=>{const el=document.getElementById('lad'+o);el.classList.add('pat');field(el,'#F4EAD8',o/100,0.5,'#E0A050')});
+</script>
+</body>
+</html>

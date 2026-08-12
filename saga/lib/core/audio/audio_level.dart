@@ -63,9 +63,6 @@ class AudioLevel implements AudioLevelSource {
 
   List<(DateTime, double)>? _capture;
 
-  /// Whether a capture is currently running.
-  bool get isCapturing => _capture != null;
-
   /// Records [duration] of emitted levels and returns a paste-ready Dart
   /// snippet for `lib/core/audio/speech_trace.dart`.
   ///

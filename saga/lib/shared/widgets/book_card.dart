@@ -25,13 +25,26 @@ const double kBookCardTitleGap = 4;
 
 /// Two lines of [bookCardTitleStyle], whether the title wraps or not — so the
 /// author line sits at the same height on every card in a row.
-const double kBookCardTitleHeight = 30;
+///
+/// A function of the text scale, not a constant: hardcoded 1.0× boxes clipped
+/// wrapped titles into the author line at Android's large font settings.
+///
+/// The ceil is per line, not on the total — the text engine rounds each line's
+/// height up to a whole pixel, so two 19.5 px lines lay out as 40, not 39.
+double bookCardTitleHeight(TextScaler textScaler) =>
+    (textScaler.scale(bookCardTitleStyle.fontSize!) *
+                bookCardTitleStyle.height!)
+            .ceilToDouble() *
+        2;
 
 /// Title → author.
 const double kBookCardAuthorGap = 2;
 
 /// One line of [bookCardAuthorStyle].
-const double kBookCardAuthorHeight = 15;
+double bookCardAuthorHeight(TextScaler textScaler) =>
+    (textScaler.scale(bookCardAuthorStyle.fontSize!) *
+            bookCardAuthorStyle.height!)
+        .ceilToDouble();
 
 /// Rounding slack, so a cell is never a fraction of a pixel short.
 const double _slack = 2;
@@ -47,15 +60,19 @@ const double kBookStripCoverWidth = 120;
 /// Total height of a [BookCard] whose square cover is [coverWidth] wide.
 ///
 /// Use for a grid's `mainAxisExtent` and for the height of a strip of cards.
-double bookCardExtent(double coverWidth, {bool showAuthor = true}) =>
+/// [textScaler] is required, not defaulted: a call site that forgets it lays
+/// out 1.0× boxes that clip at large font sizes — the bug this fixed.
+double bookCardExtent(double coverWidth,
+        {bool showAuthor = true, required TextScaler textScaler}) =>
     coverWidth +
     kBookCardTitleGap +
-    kBookCardTitleHeight +
-    (showAuthor ? kBookCardAuthorGap + kBookCardAuthorHeight : 0) +
+    bookCardTitleHeight(textScaler) +
+    (showAuthor ? kBookCardAuthorGap + bookCardAuthorHeight(textScaler) : 0) +
     _slack;
 
 /// Height of a horizontal strip of [BookCard]s at the standard cover width.
-final double kBookStripHeight = bookCardExtent(kBookStripCoverWidth);
+double bookStripHeight(TextScaler textScaler) =>
+    bookCardExtent(kBookStripCoverWidth, textScaler: textScaler);
 
 /// Grid delegate for a page of [BookCard]s.
 ///
@@ -63,39 +80,31 @@ final double kBookStripHeight = bookCardExtent(kBookStripCoverWidth);
 /// told a different padding than the one the caller used — the reason the
 /// numbers are here at all. Pass [showAuthor] to the cards as well: it is the
 /// one thing the cell height depends on that the delegate can't see.
-SliverGridDelegate bookGridDelegate({
-  bool showAuthor = true,
-  double spacing = 10,
-  int crossAxisCount = 3,
-}) =>
-    _BookGridDelegate(
-      crossAxisCount: crossAxisCount,
-      spacing: spacing,
-      showAuthor: showAuthor,
-    );
+SliverGridDelegate bookGridDelegate(
+        {bool showAuthor = true, required TextScaler textScaler}) =>
+    _BookGridDelegate(showAuthor: showAuthor, textScaler: textScaler);
 
 class _BookGridDelegate extends SliverGridDelegate {
-  final int crossAxisCount;
-  final double spacing;
-  final bool showAuthor;
+  static const _crossAxisCount = 3;
+  static const _spacing = 10.0;
 
-  const _BookGridDelegate({
-    required this.crossAxisCount,
-    required this.spacing,
-    required this.showAuthor,
-  });
+  final bool showAuthor;
+  final TextScaler textScaler;
+
+  const _BookGridDelegate({required this.showAuthor, required this.textScaler});
 
   @override
   SliverGridLayout getLayout(SliverConstraints constraints) {
     // crossAxisExtent already has the grid's padding taken out of it.
     final coverW =
-        (constraints.crossAxisExtent - spacing * (crossAxisCount - 1)) /
-            crossAxisCount;
-    final extent = bookCardExtent(coverW, showAuthor: showAuthor);
+        (constraints.crossAxisExtent - _spacing * (_crossAxisCount - 1)) /
+            _crossAxisCount;
+    final extent =
+        bookCardExtent(coverW, showAuthor: showAuthor, textScaler: textScaler);
     return SliverGridRegularTileLayout(
-      crossAxisCount: crossAxisCount,
-      mainAxisStride: extent + spacing,
-      crossAxisStride: coverW + spacing,
+      crossAxisCount: _crossAxisCount,
+      mainAxisStride: extent + _spacing,
+      crossAxisStride: coverW + _spacing,
       childMainAxisExtent: extent,
       childCrossAxisExtent: coverW,
       reverseCrossAxis: axisDirectionIsReversed(constraints.crossAxisDirection),
@@ -104,9 +113,7 @@ class _BookGridDelegate extends SliverGridDelegate {
 
   @override
   bool shouldRelayout(_BookGridDelegate old) =>
-      old.crossAxisCount != crossAxisCount ||
-      old.spacing != spacing ||
-      old.showAuthor != showAuthor;
+      old.showAuthor != showAuthor || old.textScaler != textScaler;
 }
 
 // ── The card ──────────────────────────────────────────────────────────────────
@@ -149,6 +156,7 @@ class BookCard extends ConsumerWidget {
     // honest about completeness (all tracks, not just the first).
     ref.watch(downloadNotifierProvider);
     final hasDownload = isBookFullyDownloaded(book.ratingKey);
+    final textScaler = MediaQuery.textScalerOf(context);
 
     return GestureDetector(
       onTap: onTap ??
@@ -158,9 +166,15 @@ class BookCard extends ConsumerWidget {
                     builder: (_) => BookDetailScreen(book: book)),
               ),
       onLongPress: onLongPress,
-      child: SizedBox(
-        width: width,
-        child: Column(
+      // One TalkBack stop per card (title + author merged), announced as a
+      // button; in multi-select the tick state rides along as "selected".
+      child: MergeSemantics(
+        child: Semantics(
+          button: true,
+          selected: selectMode ? selected : null,
+          child: SizedBox(
+            width: width,
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             AspectRatio(
@@ -206,23 +220,25 @@ class BookCard extends ConsumerWidget {
                 ],
               ),
             ),
-            const SizedBox(height: kBookCardTitleGap),
-            SizedBox(
-              height: kBookCardTitleHeight,
-              child: Text(book.title,
-                  style: bookCardTitleStyle.copyWith(color: SagaColors.fg),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
+                const SizedBox(height: kBookCardTitleGap),
+                SizedBox(
+                  height: bookCardTitleHeight(textScaler),
+                  child: Text(book.title,
+                      style: bookCardTitleStyle.copyWith(color: SagaColors.fg),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
+                ),
+                if (showAuthor && book.authorName != null) ...[
+                  const SizedBox(height: kBookCardAuthorGap),
+                  Text(book.authorName!,
+                      style: bookCardAuthorStyle.copyWith(
+                          color: SagaColors.fgSubtle),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ],
+              ],
             ),
-            if (showAuthor && book.authorName != null) ...[
-              const SizedBox(height: kBookCardAuthorGap),
-              Text(book.authorName!,
-                  style:
-                      bookCardAuthorStyle.copyWith(color: SagaColors.fgSubtle),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
-            ],
-          ],
+          ),
         ),
       ),
     );

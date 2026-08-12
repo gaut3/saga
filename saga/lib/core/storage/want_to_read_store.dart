@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'server_scope.dart';
@@ -7,9 +6,6 @@ import 'user_box.dart';
 class WantToReadStore {
   static const _boxName = 'want_to_read';
   static late Box _box;
-
-  static final _revision = ValueNotifier<int>(0);
-  static ValueNotifier<int> get revisionNotifier => _revision;
 
   static Future<void> init(List<int> encKey) async {
     _box = await openUserBox(_boxName, encKey);
@@ -26,7 +22,6 @@ class WantToReadStore {
     } else {
       await _box.put(key, true);
     }
-    _revision.value++;
   }
 
   static Set<String> get all => {

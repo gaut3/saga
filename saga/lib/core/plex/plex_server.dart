@@ -148,13 +148,25 @@ class PlexServerDiscovery {
 
   Future<void> selectServer(PlexServer server) async {
     final uri = await findReachableUri(server);
-    if (uri != null) {
-      await _client.saveServerUri(uri);
-      await _client.saveMachineIdentifier(server.machineIdentifier);
-      // Re-point per-book storage at the newly selected server before anything
-      // reads it. Without this, this server's book 12345 would resume at the
-      // previous server's book 12345 — see server_scope.dart.
-      await ServerScope.configure(server.machineIdentifier);
+    // Individual probe failures are expected noise (most connections lose),
+    // so the log line lives here, at the decision: "can't reach my server" is
+    // the most likely diagnostics paste there is, and it used to say nothing.
+    if (uri == null) {
+      AppLog.log('server',
+          'none of ${server.connections.length} connections reachable');
+      return;
     }
+    final index = server.connections.indexWhere((c) => c.uri == uri);
+    final conn = server.connections[index];
+    final kind = conn.relay ? 'relay' : (conn.local ? 'local' : 'remote');
+    AppLog.log('server',
+        'selected connection ${index + 1}/${server.connections.length} '
+        '($kind, ${conn.https ? 'https' : 'http'})');
+    await _client.saveServerUri(uri);
+    await _client.saveMachineIdentifier(server.machineIdentifier);
+    // Re-point per-book storage at the newly selected server before anything
+    // reads it. Without this, this server's book 12345 would resume at the
+    // previous server's book 12345 — see server_scope.dart.
+    await ServerScope.configure(server.machineIdentifier);
   }
 }

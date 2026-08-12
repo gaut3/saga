@@ -29,6 +29,8 @@ void showSpeedSheet(BuildContext context,
             SagaSheetTitle('Playback speed',
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
             ..._speeds.map((s) => ListTile(
+                  // Announced as "selected" — the check mark alone is silent.
+                  selected: current == s,
                   title:
                       Text('$s×', style: TextStyle(color: SagaColors.fg)),
                   trailing: current == s

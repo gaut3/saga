@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Local-only diagnostics log. No telemetry: entries are written to a small
 /// rotating file in app-private storage, and nothing here ever sends them
-/// anywhere. "Copy diagnostics" in Settings → About puts them on the clipboard;
+/// anywhere. Entries older than 72 hours are dropped at startup. "Copy diagnostics" in Settings → About puts them on the clipboard;
 /// where they go after that is the user's doing.
 ///
 /// Entries are redacted at write time — the Plex token and any server host
@@ -14,6 +15,11 @@ import 'package:path_provider/path_provider.dart';
 class AppLog {
   static const _fileName = 'saga_diagnostics.log';
   static const _maxLines = 400;
+
+  /// Entries older than this are dropped at startup. The 400-line cap bounds
+  /// the file's size but not its age — a quiet install was still carrying
+  /// two-month-old crash dumps into every "Copy diagnostics".
+  static const _maxAge = Duration(hours: 72);
 
   /// A crash entry carries a native stack of 60-odd frames. Three of those and
   /// the 400-line budget is gone, which is exactly what happened: a log full of
@@ -33,6 +39,12 @@ class AppLog {
         _buffer.addAll(await _file!.readAsLines());
         if (_buffer.length > _maxLines) {
           _buffer.removeRange(0, _buffer.length - _maxLines);
+        }
+        final stale =
+            staleCount(_buffer, DateTime.now().subtract(_maxAge));
+        if (stale > 0) {
+          _buffer.removeRange(0, stale);
+          await _flush();
         }
       }
     } catch (_) {
@@ -64,6 +76,20 @@ class AppLog {
     try {
       await file.writeAsString('${_buffer.join('\n')}\n');
     } catch (_) {}
+  }
+
+  /// How many leading lines are older than [cutoff]. Lines that don't start
+  /// with a timestamp — stack frames, `pid:` headers, blanks — belong to the
+  /// entry above them, so a stale crash dump leaves with its header instead
+  /// of surviving it. The log is chronological, so everything before the
+  /// first fresh timestamp goes.
+  @visibleForTesting
+  static int staleCount(List<String> lines, DateTime cutoff) {
+    final first = lines.indexWhere((l) {
+      final ts = DateTime.tryParse(l.split(' ').first);
+      return ts != null && !ts.isBefore(cutoff);
+    });
+    return first == -1 ? lines.length : first;
   }
 
   /// Full log content for the "Copy diagnostics" action.

@@ -28,8 +28,10 @@ import '../../core/storage/settings_store.dart';
 import '../../core/storage/track_cache_store.dart';
 import '../../core/update/update_checker.dart';
 import '../auth/server_selection_screen.dart';
+import '../home/history_shared.dart' show historyMonthAbbr;
 import '../player/player_provider.dart';
 import '../../core/audio/canned_audio_level.dart';
+import '../../shared/widgets/confirm_dialog.dart';
 import '../../shared/widgets/saga_mark.dart'
     show SagaWordmark, SagaMark, AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_sheet.dart';
@@ -45,6 +47,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _skipOptions = [15, 30, 45, 60];
   static const _speedOptions = [0.75, 1.0, 1.25, 1.5, 2.0];
+  static const _boostOptions = [0, 3, 6, 9];
   static const _sleepTimerOptions = [
     (label: 'Off', minutes: 0),
     (label: '15 min', minutes: 15),
@@ -63,6 +66,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late int _skipForward;
   late int _skipBackward;
   late double _defaultSpeed;
+  late int _volumeBoost;
+  late bool _skipSilence;
   late bool _autoRewind;
   late bool _autoPlayNextBook;
   late bool _resumeAfterInterruption;
@@ -81,6 +86,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _skipForward = SettingsStore.skipForwardSeconds;
     _skipBackward = SettingsStore.skipBackwardSeconds;
     _defaultSpeed = SettingsStore.defaultSpeed;
+    _volumeBoost = SettingsStore.volumeBoostDb;
+    _skipSilence = SettingsStore.skipSilence;
     _autoRewind = SettingsStore.autoRewindEnabled;
     _autoPlayNextBook = SettingsStore.autoPlayNextBook;
     _resumeAfterInterruption = SettingsStore.resumeAfterInterruption;
@@ -152,7 +159,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   },
                 ),
                 _SegmentedTile(
-                  icon: Icons.fast_forward_rounded,
+                  icon: Icons.replay_rounded,
+                  flipIcon: true,
                   title: 'Skip forward',
                   options: _skipOptions.map((s) => '${s}s').toList(),
                   selectedIndex:
@@ -180,6 +188,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ref.read(playerServiceProvider).setSpeed(v);
                   },
                 ),
+                _SegmentedTile(
+                  icon: Icons.volume_up_rounded,
+                  title: 'Volume boost',
+                  options: _boostOptions
+                      .map((d) => d == 0 ? 'Off' : '+$d dB')
+                      .toList(),
+                  selectedIndex:
+                      _boostOptions.indexOf(_volumeBoost).clamp(0, 3),
+                  onChanged: (i) async {
+                    final v = _boostOptions[i];
+                    await SettingsStore.setVolumeBoostDb(v);
+                    if (!mounted) return;
+                    setState(() => _volumeBoost = v);
+                    ref.read(playerServiceProvider).setVolumeBoost(v);
+                  },
+                ),
                 _PlayerAnimationTile(
                   markMotion: _markMotion.clamp(0, 2),
                   animationSyncDelay: _animationSyncDelay,
@@ -193,6 +217,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     AudioLevel.instance.setDelay(ms);
                     if (!mounted) return;
                     setState(() => _animationSyncDelay = ms);
+                  },
+                ),
+                _SwitchTile(
+                  icon: Icons.compress_rounded,
+                  title: 'Skip silence',
+                  subtitle: 'Shorten long pauses in narration',
+                  value: _skipSilence,
+                  onChanged: (v) async {
+                    await SettingsStore.setSkipSilence(v);
+                    if (!mounted) return;
+                    setState(() => _skipSilence = v);
+                    ref.read(playerServiceProvider).setSkipSilence(v);
                   },
                 ),
                 _SwitchTile(
@@ -410,6 +446,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         'Diagnostics copied — server address and token are redacted');
                   },
                 ),
+                // Sits directly under "Copy diagnostics" because that is the
+                // order the two are used in: copy, then paste into the report.
+                _SettingsTile(
+                  icon: Icons.open_in_new,
+                  title: 'Report an issue',
+                  subtitle: 'Opens GitHub — paste the diagnostics there',
+                  onTap: () => launchUrl(
+                    Uri.parse('https://github.com/gaut3/saga/issues/new'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
                 const SizedBox(height: 36),
 
                 // Brand footer — the actual app/launcher icon + wordmark.
@@ -469,64 +516,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final backupId = data.serverMachineIdentifier;
       final localId = PlexClient.instance.machineIdentifier;
       if (backupId != null && localId != null && backupId != localId) {
-        final proceed = await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            backgroundColor: SagaColors.surface,
-            title: Text('Different server',
-                style: TextStyle(color: SagaColors.fg)),
-            content: Text(
-              'This backup is from a different Plex server. '
+        final proceed = await confirmDialog(
+          context,
+          title: 'Different server',
+          message: 'This backup is from a different Plex server. '
               'Book IDs may overlap, so restoring could overwrite positions '
               'for unrelated books. Continue anyway?',
-              style: TextStyle(color: SagaColors.fgMuted),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: Text('Continue',
-                    style: TextStyle(color: SagaColors.accent)),
-              ),
-            ],
-          ),
+          confirmLabel: 'Continue',
         );
-        if (proceed != true || !mounted) return;
+        if (!proceed || !mounted) return;
       }
 
       final conflicts = ProgressBackup.detectConflicts(data);
       Set<String>? skipKeys;
 
       if (conflicts.isEmpty) {
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            backgroundColor: SagaColors.surface,
-            title: Text('Restore progress',
-                style: TextStyle(color: SagaColors.fg)),
-            content: Text(
+        final confirmed = await confirmDialog(
+          context,
+          title: 'Restore progress',
+          message:
               'Restore ${data.positions.length} listening position${data.positions.length == 1 ? '' : 's'}, '
               '${data.completed.length} completed, '
               '${data.namedBookmarks.length} bookmark${data.namedBookmarks.length == 1 ? '' : 's'}?',
-              style: TextStyle(color: SagaColors.fgMuted),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: Text('Restore',
-                    style: TextStyle(color: SagaColors.accent)),
-              ),
-            ],
-          ),
+          confirmLabel: 'Restore',
         );
-        if (confirmed != true) return;
+        if (!confirmed) return;
         skipKeys = const {};
       } else {
         skipKeys = await showDialog<Set<String>>(
@@ -571,35 +585,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _confirmClearProgress() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: SagaColors.surface,
-        title: Text('Clear progress', style: TextStyle(color: SagaColors.fg)),
-        content: Text(
-          'This will permanently erase:\n'
+    final confirmed = await confirmDialog(
+      context,
+      title: 'Clear progress',
+      message: 'This will permanently erase:\n'
           '• All listening positions\n'
           '• Listening history, streaks and heatmap\n'
           '• Completed-book records\n'
           '• Named bookmarks\n'
           '• Session logs\n\n'
           'This cannot be undone.',
-          style: TextStyle(color: SagaColors.fgMuted),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Clear all',
-                style: TextStyle(color: Colors.orangeAccent)),
-          ),
-        ],
-      ),
+      confirmLabel: 'Clear all',
+      confirmColor: Colors.orangeAccent,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await BookmarkStore.clearAll();
       await CompletedBooksStore.clearAll();
       await ListeningHistoryStore.clearAll();
@@ -615,30 +614,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _confirmSignOut(WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      // Pop with the dialog's own context: the settings screen sits in a tab
-      // navigator while the dialog is on the root navigator, so popping with
-      // the outer context targets the wrong stack.
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: SagaColors.surface,
-        title: Text('Sign out', style: TextStyle(color: SagaColors.fg)),
-        content: Text('Sign out of your Plex account?',
-            style: TextStyle(color: SagaColors.fgMuted)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, true),
-            child: const Text('Sign out',
-                style: TextStyle(color: Colors.redAccent)),
-          ),
-        ],
-      ),
+    final confirmed = await confirmDialog(
+      context,
+      title: 'Sign out',
+      message: 'Sign out of your Plex account?',
+      confirmLabel: 'Sign out',
+      confirmColor: Colors.redAccent,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       // Stop cleanly first: position saves file under the *current* server's
       // storage scope, and clearAuth re-points the scope at the primary
       // server's keys — a book left playing across sign-out would file the
@@ -660,6 +643,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           SagaSheetTitle('Default sleep timer',
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
           ..._sleepTimerOptions.map((opt) => ListTile(
+                selected: _defaultSleepTimer == opt.minutes,
                 title: Text(opt.label, style: TextStyle(color: SagaColors.fg)),
                 trailing: _defaultSleepTimer == opt.minutes
                     ? Icon(Icons.check_rounded, color: SagaColors.accent)
@@ -771,7 +755,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   );
                 },
                 child: Text('View all licenses',
-                    style: TextStyle(color: SagaColors.accent)),
+                    style: TextStyle(color: SagaColors.accentText)),
               ),
             ),
           ],
@@ -884,7 +868,7 @@ class _ThemePicker extends ConsumerWidget {
   static const _themes = [
     (variant: SagaThemeVariant.ink,   label: 'Ink',   bg: Color(0xFF1E1410), accent: Color(0xFFE0A050)),
     (variant: SagaThemeVariant.cream, label: 'Cream', bg: Color(0xFFF4EAD8), accent: Color(0xFFC25A3A)),
-    (variant: SagaThemeVariant.terra, label: 'Terra', bg: Color(0xFFC25A3A), accent: Color(0xFF1E1410)),
+    (variant: SagaThemeVariant.terra, label: 'Ember', bg: Color(0xFF8E3A22), accent: Color(0xFFE0A050)),
     (variant: SagaThemeVariant.onyx,  label: 'Onyx',  bg: Color(0xFF000000), accent: Color(0xFFE0A050)),
   ];
 
@@ -955,6 +939,9 @@ class _ThemePicker extends ConsumerWidget {
 
 class _SegmentedTile extends StatelessWidget {
   final IconData icon;
+  // Material has no unnumbered forward-arc icon, so "skip forward" mirrors
+  // Icons.replay_rounded — same trick as the player's _SkipIntervalIcon.
+  final bool flipIcon;
   final String title;
   final List<String> options;
   final int selectedIndex;
@@ -962,6 +949,7 @@ class _SegmentedTile extends StatelessWidget {
 
   const _SegmentedTile({
     required this.icon,
+    this.flipIcon = false,
     required this.title,
     required this.options,
     required this.selectedIndex,
@@ -975,7 +963,10 @@ class _SegmentedTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Icon(icon, color: SagaColors.accent, size: 22),
+          Transform.flip(
+            flipX: flipIcon,
+            child: Icon(icon, color: SagaColors.accent, size: 22),
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Text(title,
@@ -1048,6 +1039,7 @@ class _PlayerAnimationTile extends StatelessWidget {
             ..._options.asMap().entries.map((e) {
               final selected = localMotion == e.key;
               return ListTile(
+                selected: selected,
                 title: Text(e.value, style: TextStyle(color: SagaColors.fg)),
                 subtitle: Text(_descriptions[e.key],
                     style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12)),
@@ -1079,7 +1071,7 @@ class _PlayerAnimationTile extends StatelessWidget {
                     Text(
                       localDelay == 0 ? 'Off' : '$localDelay ms',
                       style: TextStyle(
-                          color: SagaColors.accent,
+                          color: SagaColors.accentText,
                           fontSize: 14,
                           fontWeight: FontWeight.w600),
                     ),
@@ -1097,6 +1089,11 @@ class _PlayerAnimationTile extends StatelessWidget {
                   inactiveColor: SagaColors.surfaceAlt,
                   onChanged: (v) => setLocal(() => localDelay = v.round()),
                   onChangeEnd: (v) => onSyncDelayChanged(v.round()),
+                  // Announced in the slider's real unit — the default reads
+                  // a raw percentage ("50%" for 200 ms).
+                  semanticFormatterCallback: (v) => v.round() == 0
+                      ? 'Off'
+                      : '${v.round()} milliseconds',
                 ),
               ),
               Padding(
@@ -1118,7 +1115,7 @@ class _PlayerAnimationTile extends StatelessWidget {
                 child: TextButton(
                   onPressed: () => Navigator.pop(ctx),
                   child: Text('Done',
-                      style: TextStyle(color: SagaColors.accent)),
+                      style: TextStyle(color: SagaColors.accentText)),
                 ),
               ),
             ),
@@ -1181,14 +1178,14 @@ class _PlayerAnimationTile extends StatelessWidget {
 /// book happens to be playing and otherwise replays a recorded speech trace.
 /// One mark, one ticker — three small side-by-side previews were too small to
 /// tell the motions apart and cost three tickers to run.
-class _MotionPreview extends StatefulWidget {
+class _MotionPreview extends ConsumerStatefulWidget {
   const _MotionPreview();
 
   @override
-  State<_MotionPreview> createState() => _MotionPreviewState();
+  ConsumerState<_MotionPreview> createState() => _MotionPreviewState();
 }
 
-class _MotionPreviewState extends State<_MotionPreview> {
+class _MotionPreviewState extends ConsumerState<_MotionPreview> {
   late final CannedAudioLevel _source;
 
   @override
@@ -1205,6 +1202,9 @@ class _MotionPreviewState extends State<_MotionPreview> {
 
   @override
   Widget build(BuildContext context) {
+    // Const-constructed by the parent, so its theme-driven rebuild never
+    // reaches us — watch the theme directly.
+    ref.watch(sagaThemeVariantProvider);
     // No motion selector here: AnimatedSagaMark already listens to
     // markMotionListenable, and selecting an option writes it — so the preview
     // follows the selection without being told.
@@ -1357,7 +1357,8 @@ class _LibraryPickerTile extends ConsumerWidget {
                 ),
                 title: Text(lib.title,
                     style: TextStyle(
-                        color: isSelected ? SagaColors.accent : SagaColors.fg,
+                        color:
+                            isSelected ? SagaColors.accentText : SagaColors.fg,
                         fontWeight: isSelected
                             ? FontWeight.bold
                             : FontWeight.normal)),
@@ -1411,11 +1412,7 @@ class _ConflictResolutionDialogState
   bool get _allKeep => _keepLocal.length == widget.conflicts.length;
   bool get _allRestore => _keepLocal.isEmpty;
 
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-  String _fmtDate(DateTime dt) => '${_months[dt.month - 1]} ${dt.day}';
+  String _fmtDate(DateTime dt) => '${historyMonthAbbr(dt.month)} ${dt.day}';
 
   @override
   Widget build(BuildContext context) {
@@ -1482,7 +1479,8 @@ class _ConflictResolutionDialogState
         TextButton(
           onPressed: () =>
               Navigator.pop(context, Set<String>.from(_keepLocal)),
-          child: Text('Restore', style: TextStyle(color: SagaColors.accent)),
+          child:
+              Text('Restore', style: TextStyle(color: SagaColors.accentText)),
         ),
       ],
     );
@@ -1507,7 +1505,7 @@ class _ConflictResolutionDialogState
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? SagaColors.accent : SagaColors.fgMuted,
+            color: selected ? SagaColors.accentText : SagaColors.fgMuted,
             fontSize: 12,
             fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
           ),
@@ -1591,7 +1589,8 @@ class _ConflictResolutionDialogState
                 Text(
                   label,
                   style: TextStyle(
-                    color: selected ? SagaColors.accent : SagaColors.fgSubtle,
+                    color:
+                        selected ? SagaColors.accentText : SagaColors.fgSubtle,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1730,35 +1729,17 @@ class _StorageTileState extends ConsumerState<_StorageTile> {
                     trailing: IconButton(
                       icon: Icon(Icons.delete_outline,
                           color: SagaColors.fgSubtle),
+                      tooltip: 'Delete download',
                       onPressed: () async {
                         if (!ctx.mounted) return;
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (dialogCtx) => AlertDialog(
-                            backgroundColor: SagaColors.surface,
-                            title: Text('Delete download',
-                                style: TextStyle(color: SagaColors.fg)),
-                            content: Text(
-                              'Remove "${book.title}" from this device?',
-                              style: TextStyle(color: SagaColors.fgMuted),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () =>
-                                    Navigator.pop(dialogCtx, false),
-                                child: const Text('Cancel'),
-                              ),
-                              TextButton(
-                                onPressed: () =>
-                                    Navigator.pop(dialogCtx, true),
-                                child: const Text('Delete',
-                                    style: TextStyle(
-                                        color: Colors.redAccent)),
-                              ),
-                            ],
-                          ),
+                        final confirmed = await confirmDialog(
+                          context,
+                          title: 'Delete download',
+                          message: 'Remove "${book.title}" from this device?',
+                          confirmLabel: 'Delete',
+                          confirmColor: Colors.redAccent,
                         );
-                        if (confirmed != true) return;
+                        if (!confirmed) return;
                         // Through the notifier so files, store metadata,
                         // track cache, and the Browse badge all update
                         // together — never delete download files directly.
@@ -1784,7 +1765,7 @@ class _StorageTileState extends ConsumerState<_StorageTile> {
   @override
   Widget build(BuildContext context) {
     // Const-constructed by the parent, so its theme-driven rebuild never
-    // reaches us — watch the theme directly (see CLAUDE.md theme reactivity).
+    // reaches us — watch the theme directly.
     ref.watch(sagaThemeVariantProvider);
     // Re-scan when downloads complete or books are deleted. The settings tab
     // lives in an IndexedStack, so this state survives the whole app session —

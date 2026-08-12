@@ -1,0 +1,49 @@
+version: 2
+
+# Dependabot *alerts* (enabled in repo settings) only fire on published
+# advisories. They say nothing about a dependency that is simply out of date —
+# and for actions that staleness is the whole cost of SHA-pinning, so version
+# updates are configured here to buy that half back. Action bumps arrive as PRs
+# that rewrite both the SHA and the trailing `# vX.Y.Z` comment, which is why
+# the workflows keep those comments.
+#
+# Both ecosystems are grouped and monthly: one PR each at most, and CI
+# (analyze + tests) gates it, since a Dependabot branch touching saga/** is an
+# ordinary pull_request as far as ci.yml is concerned. Never auto-merge.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: pub
+    directory: /saga
+    schedule:
+      interval: monthly
+    groups:
+      dart:
+        patterns: ['*']
+    ignore:
+      # The pubspec line is not what builds. `dependency_overrides` points
+      # just_audio at the vendored fork in third_party/, so a bump here changes
+      # nothing at runtime while reading as "the fork is current" — and moving
+      # the fork means re-extracting the package and re-applying the RMS patch
+      # by hand. That is a deliberate session, never a merge button.
+      - dependency-name: just_audio
+      # Majors by hand only, via `flutter pub upgrade --major-versions`. The
+      # ones that would hurt are all in this list — hive_flutter and
+      # flutter_secure_storage hold saved positions and the key that decrypts
+      # them, audio_service/audio_session move with just_audio's fork, riverpod
+      # needs a migration — so the rule is simpler than the exceptions.
+      # Trade-off: ignore conditions apply to Dependabot's *security* updates
+      # too, so a fix published only in a new major arrives as an alert with no
+      # PR attached. Alerts themselves are unaffected; act on those by hand.
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+    commit-message:
+      prefix: deps

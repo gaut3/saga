@@ -1,6 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/saga_theme.dart';
+import '../../core/utils/format.dart';
+
+const _weekdayNames = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
 
 /// The Mon-first week bar chart — Home's listening-strip sparkline and
 /// History's week card are the same chart at two sizes, and their two
@@ -82,22 +93,34 @@ class WeekBars extends StatelessWidget {
         );
 
         final label = labelBuilder?.call(i, isToday);
+        // The bars are plain Containers — silent under TalkBack without this.
+        // Month/year heatmaps already label per cell; the same data shouldn't
+        // be readable in one view and invisible in the next. Future days are
+        // skipped rather than read as seven "no listening"s.
+        final semanticLabel = isFuture
+            ? null
+            : '${_weekdayNames[day.weekday - 1]}: '
+                '${ms > 0 ? fmtListenedMs(ms) : 'no listening'}';
         return Expanded(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: barPadding),
-            child: label == null
-                ? Align(alignment: Alignment.bottomCenter, child: bar)
-                : Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Align(
-                            alignment: Alignment.bottomCenter, child: bar),
-                      ),
-                      const SizedBox(height: 6),
-                      label,
-                    ],
-                  ),
+          child: Semantics(
+            label: semanticLabel,
+            excludeSemantics: true,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: barPadding),
+              child: label == null
+                  ? Align(alignment: Alignment.bottomCenter, child: bar)
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Align(
+                              alignment: Alignment.bottomCenter, child: bar),
+                        ),
+                        const SizedBox(height: 6),
+                        label,
+                      ],
+                    ),
+            ),
           ),
         );
       }),

@@ -53,7 +53,7 @@ class _MonthTabState extends ConsumerState<HistoryMonthTab> {
   @override
   Widget build(BuildContext context) {
     final today = DateTime.now();
-    final todayClean = DateTime(today.year, today.month, today.day);
+    final todayClean = dayOnly(today);
 
     // Mon-first calendar: leadingBlanks gives Mon=0, Tue=1, … Sun=6
     final grid = monthGridMetrics(_month.year, _month.month);
@@ -104,7 +104,7 @@ class _MonthTabState extends ConsumerState<HistoryMonthTab> {
     for (final key in allCompleted) {
       for (final dt in CompletedBooksStore.completionDates(key)) {
         if (dt.millisecondsSinceEpoch == 0) continue;
-        final d = DateTime(dt.year, dt.month, dt.day);
+        final d = dayOnly(dt);
         if (d.year == _month.year && d.month == _month.month) {
           completedByDay.putIfAbsent(d, () => []).add(key);
         }
@@ -170,6 +170,7 @@ class _MonthTabState extends ConsumerState<HistoryMonthTab> {
                   color: canGoBack
                       ? SagaColors.fg
                       : SagaColors.fgSubtle.withValues(alpha: 0.3)),
+              tooltip: 'Previous month',
               onPressed: canGoBack
                   ? () => setState(() =>
                       _month = DateTime(_month.year, _month.month - 1))
@@ -198,6 +199,7 @@ class _MonthTabState extends ConsumerState<HistoryMonthTab> {
                   color: canGoForward
                       ? SagaColors.fg
                       : SagaColors.fgSubtle.withValues(alpha: 0.3)),
+              tooltip: 'Next month',
               onPressed: canGoForward
                   ? () => setState(() =>
                       _month = DateTime(_month.year, _month.month + 1))
@@ -474,7 +476,7 @@ class _MonthTabState extends ConsumerState<HistoryMonthTab> {
                       isFinished ? 'Finished' : 'In progress',
                       style: TextStyle(
                         color: isFinished
-                            ? SagaColors.accent
+                            ? SagaColors.accentText
                             : SagaColors.fgMuted,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -600,7 +602,7 @@ class _MonthTabState extends ConsumerState<HistoryMonthTab> {
           const SizedBox(width: 6),
           Text(label,
               style: TextStyle(
-                color: SagaColors.accent,
+                color: SagaColors.accentText,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.4,

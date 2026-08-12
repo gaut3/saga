@@ -1,7 +1,9 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'audio/m4b_chapter_reader.dart';
+import 'local_library.dart';
 import 'diagnostics/app_log.dart';
 import 'plex/models/plex_author.dart';
 import 'plex/models/plex_book.dart';
@@ -64,10 +66,31 @@ final selectedLibraryKeyProvider = StateProvider<String?>((ref) {
   return SettingsStore.selectedLibraryKey;
 });
 
+/// Connectivity transitions — flight mode on or off, Wi-Fi dropping to mobile.
+///
+/// Only the fact that something changed is used; the value is ignored. Watching
+/// it is what lets a screen that fell back to local books recover on its own
+/// when the radios return.
+final connectivityProvider = StreamProvider<List<ConnectivityResult>>(
+  (ref) => Connectivity().onConnectivityChanged,
+);
+
+// There is deliberately no "are we offline?" helper here, and nothing waits on
+// one. `checkConnectivity` answers "is an interface up", which is not the same
+// question: with Wi-Fi and cellular both off, an idle VPN tunnel still reports
+// a connected, validated, INTERNET-capable network, so the app cheerfully spent
+// a full connect timeout finding out otherwise. Captive portals and routers
+// with no WAN read the same way. Nothing on the launch path may depend on
+// guessing this — Home paints from local records and the library arrives when
+// it arrives.
+
 /// Active library key: uses the user's override when set, otherwise
 /// auto-selects the first music library on the connected server.
 final activeLibraryKeyProvider = FutureProvider<String?>((ref) async {
   ref.watch(activeServerUriProvider);
+  // Re-runs when the radios come back, so landing reloads the library without
+  // the listener having to find a "Try again" button.
+  ref.watch(connectivityProvider);
 
   final client = ref.read(plexClientProvider);
 
@@ -106,16 +129,22 @@ final activeLibraryKeyProvider = FutureProvider<String?>((ref) async {
   } on DioException catch (e) {
     if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.connectionError) {
-      // Saved URI unreachable — clear it and re-discover. Probes every
-      // connection in parallel and takes the best one that answers, by
-      // priority (HTTPS on the LAN ahead of plaintext, plaintext ahead of
-      // relay), not the first to reply. This is the path that runs when you
-      // leave the house on a LAN-saved URI, so it is also the one that decides
-      // whether the token travels encrypted for the rest of the trip.
+      // Saved URI unreachable — re-discover. Probes every connection in
+      // parallel and takes the best one that answers, by priority (HTTPS on the
+      // LAN ahead of plaintext, plaintext ahead of relay), not the first to
+      // reply. This is the path that runs when you leave the house on a
+      // LAN-saved URI, so it is also the one that decides whether the token
+      // travels encrypted for the rest of the trip.
+      //
+      // The old address is *not* dropped first. "The server moved" and "this
+      // phone can't reach anything" look identical from here, and clearing up
+      // front resolved that ambiguity in the wrong direction: an offline launch
+      // discarded a perfectly good address, and getting it back needs plex.tv —
+      // the thing that was already unreachable. A successful discovery
+      // overwrites it anyway, so there is nothing to gain by clearing early and
+      // a working configuration to lose.
       AppLog.log('server',
           'saved URI unreachable (${e.type.name}) — re-discovering');
-      await client.clearServerUri();
-      ref.read(activeServerUriProvider.notifier).state = null;
       if (!await discover()) return null;
       // Bypass cached librariesProvider — fetch directly with the new URI.
       final libraries = await ref.read(plexApiProvider).fetchLibraries();
@@ -226,6 +255,28 @@ final continueListeningProvider =
     });
 });
 
+/// What Home shows when the library can't be reached: the books the phone can
+/// already describe and, for the downloaded ones, play.
+///
+/// Synchronous and local — no request, so it cannot be the thing that hangs on
+/// the launch that motivated it. Watches the same revision providers the
+/// online sections do, so finishing a book offline drops it out of the strip.
+final offlineBooksProvider =
+    Provider<({List<PlexBook> inProgress, List<PlexBook> downloaded})>((ref) {
+  ref.watch(bookmarkRevisionProvider);
+  ref.watch(completionRevisionProvider);
+  final inProgressKeys = localInProgressKeys();
+  final shown = inProgressKeys.toSet();
+  return (
+    inProgress: localBooks(inProgressKeys),
+    // A downloaded book that's in progress belongs under "Continue Listening",
+    // not in both strips — the shelf is what's on the phone and *not* already
+    // offered above.
+    downloaded:
+        localBooks(localDownloadedKeys().where((k) => !shown.contains(k))),
+  );
+});
+
 final authorsProvider =
     FutureProvider.family<List<PlexAuthor>, String>((ref, sectionKey) async {
   ref.watch(activeServerUriProvider);
@@ -270,6 +321,26 @@ final tracksProvider =
     FutureProvider.family<List<PlexTrack>, String>((ref, bookRatingKey) async {
   // Re-run when the server URI changes (e.g. after auto-discovery completes).
   final serverUri = ref.watch(activeServerUriProvider);
+  ref.watch(connectivityProvider);
+
+  // A downloaded book needs nothing from the server, so with the radios off
+  // A fully downloaded book is answered from the cache without asking at all.
+  //
+  // This is a fact, not a guess about the network: every track is a file on
+  // this phone, the list was written from the server's own answer at download
+  // time, and the local files are keyed to exactly these track ids. Asking
+  // anyway cost a connect timeout before playback could start — the whole
+  // delay when tapping a downloaded book with the server out of reach — and
+  // "am I offline?" turned out not to be a question worth trusting an answer
+  // to. Partly-downloaded books still go to the server: their remaining tracks
+  // have to stream.
+  final cached = TrackCacheStore.load(bookRatingKey);
+  if (cached != null &&
+      cached.isNotEmpty &&
+      BookDownloadStore.downloadedCount(bookRatingKey) == cached.length) {
+    return cached;
+  }
+
   try {
     if (serverUri == null) {
       // Discovery is still running; wait for it to set a server before fetching.
@@ -364,15 +435,13 @@ final customCollectionBooksProvider =
     ..sort((a, b) => keyIndex[a.ratingKey]!.compareTo(keyIndex[b.ratingKey]!));
 });
 
-/// The next up-to-[limit] unstarted, library-resolvable books after the last
-/// book the user has touched in [keys] — THE "up next" rule, shared by both
-/// providers below so their idea of "next in the series" can't drift (they
-/// were two hand-written copies of this scan). Empty when the collection was
-/// never started. A key the library can't resolve (re-imported book, other
-/// server) is skipped rather than counted.
+/// The next up-to-3 unstarted, library-resolvable books after the last
+/// book the user has touched in [keys] — THE "up next" rule. Empty when the
+/// collection was never started. A key the library can't resolve (re-imported
+/// book, other server) is skipped rather than counted.
 List<PlexBook> _upcomingInCollection(
-    List<String> keys, Map<String, PlexBook> bookByKey,
-    {required int limit}) {
+    List<String> keys, Map<String, PlexBook> bookByKey) {
+  const limit = 3;
   var lastTouched = -1;
   for (var i = 0; i < keys.length; i++) {
     if (BookmarkStore.load(keys[i]) != null ||
@@ -397,32 +466,9 @@ List<PlexBook> _upcomingInCollection(
   return upcoming;
 }
 
-/// Next unstarted book in each custom collection where the user has already
-/// started or completed at least one book. Returns one (collection, book) pair
-/// per qualifying collection, in collection-name order.
-final upNextInSeriesProvider =
-    FutureProvider.family<List<(CustomCollection, PlexBook)>, String>(
-        (ref, sectionKey) async {
-  ref.watch(customCollectionRevisionProvider);
-  ref.watch(completionRevisionProvider);
-  ref.watch(bookmarkRevisionProvider);
-
-  final collections = CustomCollectionStore.getAll();
-  if (collections.isEmpty) return [];
-
-  final allBooks = await ref.watch(booksProvider(sectionKey).future);
-  final bookByKey = {for (final b in allBooks) b.ratingKey: b};
-  return [
-    for (final col in collections)
-      if (_upcomingInCollection(col.bookRatingKeys, bookByKey, limit: 1)
-          case [final next, ...])
-        (col, next),
-  ];
-});
-
-/// Like [upNextInSeriesProvider] but returns the next up-to-3 unstarted books
-/// per qualifying collection (the upcoming queue), so the home screen can show
-/// one row per series. Ordered by collection name.
+/// The next up-to-3 unstarted books per custom collection where the user has
+/// already started or completed at least one book (the upcoming queue), so the
+/// home screen can show one row per series. Ordered by collection name.
 final upNextSeriesQueuesProvider =
     FutureProvider.family<List<(CustomCollection, List<PlexBook>)>, String>(
         (ref, sectionKey) async {
@@ -437,7 +483,7 @@ final upNextSeriesQueuesProvider =
   final bookByKey = {for (final b in allBooks) b.ratingKey: b};
   return [
     for (final col in collections)
-      if (_upcomingInCollection(col.bookRatingKeys, bookByKey, limit: 3)
+      if (_upcomingInCollection(col.bookRatingKeys, bookByKey)
           case final upcoming when upcoming.isNotEmpty)
         (col, upcoming),
   ];

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
 import '../../shared/widgets/book_cover_image.dart';
+import '../../shared/widgets/confirm_dialog.dart';
 import '../../core/storage/custom_collection_store.dart';
 import '../../core/theme/saga_theme.dart';
 import 'collection_detail_screen.dart';
@@ -134,40 +135,11 @@ class _CollectionsContent extends ConsumerWidget {
     required String confirmLabel,
     String? initial,
   }) async {
-    final controller = TextEditingController(text: initial);
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: SagaColors.surface,
-        title: Text(title, style: TextStyle(color: SagaColors.fg)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: TextStyle(color: SagaColors.fg),
-          decoration: InputDecoration(
-            hintText: 'Collection name',
-            hintStyle: TextStyle(color: SagaColors.fgSubtle),
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: TextStyle(color: SagaColors.fgMuted)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child:
-                Text(confirmLabel, style: TextStyle(color: SagaColors.accent)),
-          ),
-        ],
-      ),
+      builder: (_) => _CollectionNameDialog(
+          title: title, confirmLabel: confirmLabel, initial: initial),
     );
-    // The dialog is gone by the time this future completes, so the controller
-    // has no listeners left and nothing further needs it. Dispose is the
-    // contract for anything that can be listened to; every dialog-scoped
-    // controller in the app is released on this same line.
-    controller.dispose();
     return (name == null || name.isEmpty) ? null : name;
   }
 
@@ -192,31 +164,75 @@ class _CollectionsContent extends ConsumerWidget {
 
   Future<void> _deleteCollection(
       BuildContext context, WidgetRef ref, CustomCollection col) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: SagaColors.surface,
-        title: Text('Delete "${col.name}"?',
-            style: TextStyle(color: SagaColors.fg)),
-        content: Text('This will remove the collection but not your books.',
-            style: TextStyle(color: SagaColors.fgMuted)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: TextStyle(color: SagaColors.fgMuted)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child:
-                const Text('Delete', style: TextStyle(color: Colors.redAccent)),
-          ),
-        ],
-      ),
+    final confirmed = await confirmDialog(
+      context,
+      title: 'Delete "${col.name}"?',
+      message: 'This will remove the collection but not your books.',
+      confirmLabel: 'Delete',
+      confirmColor: Colors.redAccent,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await CustomCollectionStore.delete(col.id);
       ref.read(customCollectionRevisionProvider.notifier).state++;
     }
+  }
+}
+
+/// Stateful so the dialog's own State owns the controller. It was disposed on
+/// the line after `await showDialog(...)` — pop time — while the exit
+/// animation still had a live, autofocused `TextField` bound to it, and an
+/// IME event in that window used a disposed controller (a debug assert; the
+/// old comment here claimed the dialog "is gone" by then, which restated the
+/// bug as if it were safe). `dispose()` runs when the route is torn out of
+/// the overlay — after the animation, the first moment the field is gone.
+class _CollectionNameDialog extends StatefulWidget {
+  final String title;
+  final String confirmLabel;
+  final String? initial;
+
+  const _CollectionNameDialog(
+      {required this.title, required this.confirmLabel, this.initial});
+
+  @override
+  State<_CollectionNameDialog> createState() => _CollectionNameDialogState();
+}
+
+class _CollectionNameDialogState extends State<_CollectionNameDialog> {
+  late final _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: SagaColors.surface,
+      title: Text(widget.title, style: TextStyle(color: SagaColors.fg)),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        style: TextStyle(color: SagaColors.fg),
+        decoration: InputDecoration(
+          hintText: 'Collection name',
+          hintStyle: TextStyle(color: SagaColors.fgSubtle),
+        ),
+        onSubmitted: (v) => Navigator.pop(context, v.trim()),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Cancel', style: TextStyle(color: SagaColors.fgMuted)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _controller.text.trim()),
+          child: Text(widget.confirmLabel,
+              style: TextStyle(color: SagaColors.accentText)),
+        ),
+      ],
+    );
   }
 }
 

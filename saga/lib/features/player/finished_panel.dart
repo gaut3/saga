@@ -64,7 +64,7 @@ class FinishedPanel extends ConsumerWidget {
           Text(
             'FINISHED',
             style: TextStyle(
-              color: SagaColors.accent,
+              color: SagaColors.accentText,
               fontSize: 13,
               fontWeight: FontWeight.w800,
               letterSpacing: 3,

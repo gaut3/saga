@@ -1,6 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'server_scope.dart';
+import 'user_box.dart';
 
 const _boxName = 'downloads';
 
@@ -8,13 +9,7 @@ class DownloadStore {
   static late Box _box;
 
   static Future<void> init(List<int> encKey) async {
-    final cipher = HiveAesCipher(encKey);
-    try {
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    } on HiveError {
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox(_boxName, encryptionCipher: cipher);
-    }
+    _box = await openCacheBox(_boxName, encKey);
   }
 
   static Future<void> save(String trackRatingKey, String localPath) async {

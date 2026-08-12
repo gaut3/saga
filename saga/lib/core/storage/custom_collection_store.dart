@@ -164,8 +164,4 @@ class CustomCollectionStore {
     if (col == null) return;
     await _box.put(collectionId, col.copyWith(thumbPath: thumbPath).toMap());
   }
-
-  static bool contains(String collectionId, String bookRatingKey) {
-    return get(collectionId)?.bookRatingKeys.contains(bookRatingKey) ?? false;
-  }
 }

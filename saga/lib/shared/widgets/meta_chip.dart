@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../core/plex/models/plex_book.dart';
 import '../../core/theme/saga_theme.dart';
+import '../../core/utils/format.dart';
 
 /// A small icon + label pill for a single piece of book metadata (year,
 /// duration, chapter count, studio…).
@@ -31,3 +33,22 @@ class MetaChip extends StatelessWidget {
     );
   }
 }
+
+/// The facts both chip rows agree on: year · length · chapters · studio ·
+/// first two genres. The detail screen and the player's flipped cover each
+/// append their own extras after these; the shared list is what keeps the
+/// facts themselves from drifting.
+List<Widget> bookMetaChips(PlexBook book,
+        {required int? lengthMs, required int? chapterCount}) =>
+    [
+      if (book.year != null)
+        MetaChip(Icons.calendar_today_outlined, '${book.year}'),
+      if (lengthMs != null)
+        MetaChip(Icons.schedule_outlined, fmtDurationMs(lengthMs)),
+      if (chapterCount != null)
+        MetaChip(Icons.format_list_numbered_outlined,
+            chapterCount == 1 ? '1 chapter' : '$chapterCount chapters'),
+      if (book.studio != null) MetaChip(Icons.business_outlined, book.studio!),
+      for (final g in book.genres.take(2))
+        MetaChip(Icons.local_offer_outlined, g),
+    ];

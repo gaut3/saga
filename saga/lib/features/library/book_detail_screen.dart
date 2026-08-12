@@ -9,6 +9,7 @@ import '../../core/plex/models/plex_track.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/providers.dart';
 import '../../shared/widgets/book_cover_image.dart';
+import '../../shared/widgets/confirm_dialog.dart';
 import '../../shared/widgets/meta_chip.dart';
 import 'effective_chapter_count.dart';
 import '../../core/storage/bookmark_store.dart';
@@ -154,7 +155,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                         ),
                       ],
                     )
-                  : const _CoverPlaceholder(),
+                  : const CoverPlaceholder(),
             ),
           ),
           SliverToBoxAdapter(
@@ -167,7 +168,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                     Text(
                       book.authorName!,
                       style: TextStyle(
-                          color: SagaColors.accent,
+                          color: SagaColors.accentText,
                           fontSize: 15,
                           fontWeight: FontWeight.w500),
                     ),
@@ -187,24 +188,8 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                     spacing: 8,
                     runSpacing: 4,
                     children: [
-                      if (book.year != null)
-                        MetaChip(Icons.calendar_today_outlined,
-                            '${book.year}'),
-                      if (bookLengthMs != null)
-                        MetaChip(Icons.schedule_outlined,
-                            fmtDurationMs(bookLengthMs)),
-                      if (chapterCount != null)
-                        MetaChip(
-                          Icons.format_list_numbered_outlined,
-                          chapterCount == 1
-                              ? '1 chapter'
-                              : '$chapterCount chapters',
-                        ),
-                      if (book.studio != null)
-                        MetaChip(
-                            Icons.business_outlined, book.studio!),
-                      for (final g in book.genres.take(2))
-                        MetaChip(Icons.local_offer_outlined, g),
+                      ...bookMetaChips(book,
+                          lengthMs: bookLengthMs, chapterCount: chapterCount),
                       if (CompletedBooksStore.completionCount(
                               book.ratingKey) >
                           0)
@@ -496,32 +481,15 @@ class _DownloadBookButton extends ConsumerWidget {
 
     if (allDone) {
       Future<void> confirmDelete() async {
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: SagaColors.surface,
-            title: Text('Delete offline copy?',
-                style: TextStyle(color: SagaColors.fg)),
-            content: Text(
-              'Remove the downloaded audio from your device. '
+        final confirmed = await confirmDialog(
+          context,
+          title: 'Delete offline copy?',
+          message: 'Remove the downloaded audio from your device. '
               'You can download it again any time.',
-              style: TextStyle(color: SagaColors.fgSubtle),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text('Cancel',
-                    style: TextStyle(color: SagaColors.fgMuted)),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Delete',
-                    style: TextStyle(color: Color(0xFFC25A3A))),
-              ),
-            ],
-          ),
+          confirmLabel: 'Delete',
+          confirmColor: Colors.redAccent,
         );
-        if (confirmed == true && context.mounted) {
+        if (confirmed && context.mounted) {
           await ref
               .read(downloadNotifierProvider.notifier)
               .deleteBook(book.ratingKey, tracks);
@@ -583,20 +551,6 @@ class _DownloadBookButton extends ConsumerWidget {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
-      ),
-    );
-  }
-}
-
-class _CoverPlaceholder extends StatelessWidget {
-  const _CoverPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: SagaColors.surface,
-      child: Center(
-        child: Icon(Icons.book, size: 80, color: SagaColors.fgSubtle),
       ),
     );
   }
@@ -688,7 +642,7 @@ class _ExpandableSummaryState extends State<_ExpandableSummary> {
                 const SizedBox(height: 4),
                 Text(
                   _expanded ? 'Show less' : 'Show more',
-                  style: TextStyle(color: SagaColors.accent, fontSize: 12),
+                  style: TextStyle(color: SagaColors.accentText, fontSize: 12),
                 ),
               ],
             ],
@@ -754,7 +708,7 @@ class _ChapterListSliver extends ConsumerWidget {
             title: Text(chapter.title,
                 style: TextStyle(
                     color: active
-                        ? SagaColors.accent
+                        ? SagaColors.accentText
                         : SagaColors.fg,
                     fontSize: 14)),
             subtitle: Text(fmtDuration(chapter.start),
@@ -796,7 +750,7 @@ class _ChapterListSliver extends ConsumerWidget {
             title: Text(track.title,
                 style: TextStyle(
                     color: isCurrent
-                        ? SagaColors.accent
+                        ? SagaColors.accentText
                         : SagaColors.fg,
                     fontSize: 14)),
             subtitle: Text(
@@ -822,6 +776,7 @@ class _ChapterListSliver extends ConsumerWidget {
                         color: isDownloaded
                             ? SagaColors.accent
                             : SagaColors.fgSubtle),
+                    tooltip: isDownloaded ? 'Downloaded' : 'Download',
                     onPressed: isDownloaded
                         ? null
                         : () => ref

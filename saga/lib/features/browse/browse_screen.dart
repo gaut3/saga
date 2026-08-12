@@ -19,6 +19,7 @@ import '../library/book_detail_screen.dart';
 import '../player/player_provider.dart';
 import '../../core/utils/format.dart';
 import '../../shared/widgets/saga_error_view.dart';
+import '../../shared/widgets/saga_search_field.dart';
 import '../../shared/widgets/saga_sheet.dart';
 import '../../shared/widgets/saga_toast.dart';
 
@@ -124,14 +125,14 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
           ),
           title: Text(label,
               style: TextStyle(
-                  color: active ? SagaColors.accent : SagaColors.fg,
+                  color: active ? SagaColors.accentText : SagaColors.fg,
                   fontSize: 14,
                   fontWeight:
                       active ? FontWeight.w600 : FontWeight.normal)),
           trailing: active && desc != null
               ? Text(isAsc ? ascLabel : descLabel,
                   style:
-                      TextStyle(color: SagaColors.accent, fontSize: 12.5))
+                      TextStyle(color: SagaColors.accentText, fontSize: 12.5))
               : null,
           onTap: () {
             // Tapping the active option flips its direction; an inactive one
@@ -276,7 +277,7 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                 .read(narratorIndexProvider(widget.libraryKey).notifier)
                 .build(force: true),
             child: Text('Retry',
-                style: TextStyle(color: SagaColors.accent, fontSize: 12.5)),
+                style: TextStyle(color: SagaColors.accentText, fontSize: 12.5)),
           ),
         ],
       ));
@@ -294,7 +295,7 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
           TextButton(
             onPressed: _ensureNarratorIndex,
             child: Text('Search narrators too',
-                style: TextStyle(color: SagaColors.accent, fontSize: 12.5)),
+                style: TextStyle(color: SagaColors.accentText, fontSize: 12.5)),
           ),
         ],
       ));
@@ -597,7 +598,7 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                       TextButton(
                         onPressed: _cancelSelect,
                         child: Text('Cancel',
-                            style: TextStyle(color: SagaColors.accent)),
+                            style: TextStyle(color: SagaColors.accentText)),
                       ),
                     ]
                   : null,
@@ -610,37 +611,16 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                           Padding(
                             padding:
                                 const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                            child: TextField(
+                            child: SagaSearchField(
                               controller: _searchController,
-                              style:
-                                  TextStyle(color: SagaColors.fg),
-                              decoration: InputDecoration(
-                                // Names narrator even before the index exists:
-                                // the prompt under the field offers to build it
-                                // the moment a search is typed, so the hint is
-                                // what makes the feature findable at all.
-                                hintText:
-                                    'Search by title, author or narrator…',
-                                hintStyle: TextStyle(
-                                    color: SagaColors.fgSubtle),
-                                prefixIcon: Icon(Icons.search,
-                                    color: SagaColors.fgSubtle),
-                                suffixIcon: _query.isNotEmpty
-                                    ? IconButton(
-                                        icon: Icon(Icons.clear,
-                                            color: SagaColors.fgSubtle),
-                                        onPressed: _clearSearch,
-                                      )
-                                    : null,
-                                filled: true,
-                                fillColor: SagaColors.surface,
-                                border: OutlineInputBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: EdgeInsets.zero,
-                              ),
+                              // Names narrator even before the index exists:
+                              // the prompt under the field offers to build it
+                              // the moment a search is typed, so the hint is
+                              // what makes the feature findable at all.
+                              hintText:
+                                  'Search by title, author or narrator…',
+                              showClear: _query.isNotEmpty,
+                              onClear: _clearSearch,
                               onChanged: _onSearch,
                             ),
                           ),
@@ -671,9 +651,10 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                               ),
                               // Same pill treatment as the chips so it reads
                               // as part of the control row, not loose
-                              // furniture. Outer 44dp box keeps the touch
-                              // target at the accessibility floor; the visible
-                              // circle matches the chips' height.
+                              // furniture. Outer 48dp box keeps the touch
+                              // target at Android's floor (44 is the iOS
+                              // number); the visible circle matches the
+                              // chips' height.
                               GestureDetector(
                                 behavior: HitTestBehavior.opaque,
                                 onTap: () =>
@@ -684,8 +665,8 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                                       ? 'Switch to grid view'
                                       : 'Switch to list view',
                                   child: Container(
-                                    width: 44,
-                                    height: 44,
+                                    width: 48,
+                                    height: 48,
                                     alignment: Alignment.center,
                                     margin:
                                         const EdgeInsets.only(right: 8),
@@ -801,7 +782,8 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                 return SliverPadding(
                   padding: EdgeInsets.fromLTRB(16, 8, 16, gridBottom),
                   sliver: SliverGrid(
-                    gridDelegate: bookGridDelegate(),
+                    gridDelegate: bookGridDelegate(
+                        textScaler: MediaQuery.textScalerOf(context)),
                     delegate: SliverChildBuilderDelegate(
                       (context, i) {
                         final book = filtered[i];
@@ -836,72 +818,65 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
             child: Row(
               children: [
                 Expanded(
-                  child: Material(
-                    color: SagaColors.surface,
-                    borderRadius: BorderRadius.circular(30),
-                    elevation: 8,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(30),
-                      onTap: _downloadSelected,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.download_rounded,
-                                color: SagaColors.accent),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Download',
-                              style: TextStyle(
-                                color: SagaColors.fg,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                  child: _ActionPill(
+                    icon: Icons.download_rounded,
+                    label: 'Download',
+                    onTap: _downloadSelected,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Material(
-                    color: SagaColors.surface,
-                    borderRadius: BorderRadius.circular(30),
-                    elevation: 8,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(30),
-                      onTap: () => _addSelectedToCollection(context),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.folder_outlined,
-                                color: SagaColors.accent),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Collect',
-                              style: TextStyle(
-                                color: SagaColors.fg,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                  child: _ActionPill(
+                    icon: Icons.folder_outlined,
+                    label: 'Collect',
+                    onTap: () => _addSelectedToCollection(context),
                   ),
                 ),
               ],
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Selection-bar action: icon + label on an elevated surface pill.
+class _ActionPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _ActionPill(
+      {required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: SagaColors.surface,
+      borderRadius: BorderRadius.circular(30),
+      elevation: 8,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(30),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: SagaColors.accent),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: SagaColors.fg,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

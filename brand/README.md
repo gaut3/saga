@@ -41,13 +41,16 @@ This is deferred, not forgotten. **Decide the palette before mass-exporting prod
 icons** — picking one after the fact means regenerating every launcher density, every
 notification asset, and every screenshot on the landing page.
 
-### Terra theme — contrast rule
-Terracotta (`#C25A3A`) is a mid-tone, so neither cream nor ink clears WCAG AA (4.5:1)
-against it for normal text — solid cream is only ~3.7:1 (AA-large only). **Secondary
-text on Terra must sit on `--saga-surface` (`#9E4128`), not `--saga-bg`**, where cream
-clears ~5.4:1. The `fg-muted` / `fg-subtle` tiers were raised (0.78→0.88, 0.55→0.72) so
-they hold up on that surface (~4.6:1 / ~3.6:1); on the bright `bg` directly, only
-large/bold text meets AA. Don't use low-opacity cream as the contrast mechanism on Terra.
+Exception: the **ember** exports were redrawn with the app/AA values (spines `#F4EAD8`,
+amber `#E0A050`, ground `#8E3A22`) when the theme was renamed — the old export palette
+predates the retune, and its ink accent fails the 3:1 floor on the new ground.
+
+### Ember (formerly Terra) — contrast
+Superseded 2026-08-10 by the AA retune in `05-contrast/`: the `#C25A3A` ground was
+unfixable for text, so grounds darkened to `#8E3A22`/`#7A301B`, ink-as-accent was
+retired for amber, and every text tier now clears AA on `bg` (the on-surface rule is
+retired). `#C25A3A` lives on as the non-text hero color. Values and ratios:
+`05-contrast/README.md`.
 
 ---
 
@@ -59,9 +62,9 @@ Drawn from the **static logo pose** in `02-mark` (bars at x = 41 / 73 / 105 / 13
 ```
 assets/
 └── svg/
-    ├── mark/         saga-mark-{ink,cream,terra,onyx}.svg (transparent) + -bg.svg (app-icon-ready)
-    ├── wordmark/     saga-wordmark-{ink,cream,terra}.svg  (Manrope 600 + accent triangle)
-    ├── lockup/       saga-lockup-{ink,cream,terra}.svg    (mark + wordmark)
+    ├── mark/         saga-mark-{ink,cream,ember,onyx}.svg (transparent) + -bg.svg (app-icon-ready)
+    ├── wordmark/     saga-wordmark-{ink,cream,ember}.svg  (Manrope 600 + accent triangle)
+    ├── lockup/       saga-lockup-{ink,cream,ember}.svg    (mark + wordmark)
     └── monochrome/   saga-mono-{white,black}.svg          (flat silhouette, no accent)
 ```
 

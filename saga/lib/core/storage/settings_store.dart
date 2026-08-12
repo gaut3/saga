@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'server_scope.dart';
@@ -111,6 +109,19 @@ class SettingsStore {
   static Future<void> setAutoPlayNextBook(bool v) =>
       _box.put('autoPlayNextBook', v);
 
+  // Skip long silences in narration (ExoPlayer's silence-skipping processor).
+  static bool get skipSilence =>
+      _box.get('skipSilence', defaultValue: false) as bool;
+
+  static Future<void> setSkipSilence(bool v) => _box.put('skipSilence', v);
+
+  // Volume boost in whole dB (LoudnessEnhancer). 0 = off.
+  static int get volumeBoostDb =>
+      (_box.get('volumeBoostDb', defaultValue: 0) as num).toInt();
+
+  static Future<void> setVolumeBoostDb(int db) =>
+      _box.put('volumeBoostDb', db);
+
   // Restrict downloads to Wi-Fi / unmetered connections.
   static bool get downloadWifiOnly =>
       _box.get('downloadWifiOnly', defaultValue: false) as bool;
@@ -194,15 +205,4 @@ class SettingsStore {
 
   static Future<void> setUpNextNudgeDismissed(bool v) =>
       _box.put('upNextNudgeDismissed', v);
-
-  static List<String>? getCollectionOrder(String collectionRatingKey) {
-    final raw = _box.get('col_order_$collectionRatingKey') as String?;
-    if (raw == null) return null;
-    return (jsonDecode(raw) as List<dynamic>).cast<String>();
-  }
-
-  static Future<void> setCollectionOrder(
-      String collectionRatingKey, List<String> order) {
-    return _box.put('col_order_$collectionRatingKey', jsonEncode(order));
-  }
 }

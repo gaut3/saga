@@ -72,9 +72,6 @@ class PlaybackLogStore {
       .map((k) => ServerScope.unprefixed(_logPrefix, k.toString()))
       .whereType<String>();
 
-  static void clearLog(String bookRatingKey) =>
-      _box.delete(ServerScope.prefixed(_logPrefix, bookRatingKey));
-
   static Future<void> clearAll() => _box.clear();
 
   /// Full `log_<key>` → [event maps] map for backup (the session history shown

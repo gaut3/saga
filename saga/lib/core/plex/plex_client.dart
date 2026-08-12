@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 
 import '../diagnostics/app_log.dart';
 import '../storage/artwork_cache.dart';
+import '../storage/book_metadata_store.dart';
 import '../storage/download_store.dart';
 import '../storage/server_scope.dart';
 import 'models/plex_track.dart';
@@ -35,6 +37,15 @@ class PlexClient {
     required FlutterSecureStorage storage,
   })  : _dio = dio,
         _storage = storage;
+
+  /// Test-only: a client with an injected [dio] and no platform channels.
+  /// The storage is never touched by the methods under test.
+  @visibleForTesting
+  PlexClient.forTest({required Dio dio, String? serverUri, String? token})
+      : _dio = dio,
+        _storage = const FlutterSecureStorage(),
+        _serverUri = serverUri,
+        _token = token;
 
   static Future<PlexClient> init() async {
     const storage = FlutterSecureStorage();
@@ -125,11 +136,9 @@ class PlexClient {
   }
 
   String get clientId => _clientId!;
-  String? get token => _token;
   String? get serverUri => _serverUri;
   String? get machineIdentifier => _machineIdentifier;
   bool get isAuthenticated => _token != null;
-  bool get hasServer => _serverUri != null;
 
   Future<void> saveToken(String token) async {
     _handlingUnauthorized = false; // new token — reset intercept guard
@@ -185,6 +194,15 @@ class PlexClient {
     // Listening progress is deliberately kept: signing back in must not cost
     // anyone their place.
     await purgeCachedArtwork();
+
+    // Same reasoning, different cache: the metadata box holds a title-and-
+    // author record for every book ever opened. Books with a position or a
+    // download keep theirs — those are what sign-out promises to keep, and
+    // their records are what names them on the offline shelves.
+    final pruned = await BookMetadataStore.pruneOrphans();
+    if (pruned > 0) {
+      AppLog.log('storage', 'sign-out pruned $pruned cached book records');
+    }
   }
 
   /// Drops every locally cached cover: the image cache and the artwork cache.
