@@ -18,9 +18,11 @@
 - Book-level progress bar and seek across the full book (multi-file aware), or scrub within the current chapter instead
 - Time remaining at your actual playback speed; tap to switch to the book's total length
 - Variable speed playback (0.75×–3×) with per-book speed memory and configurable default
+- Skip silence — quiet stretches in the narration go by faster, audio untouched (off by default)
+- Volume boost (+3/+6/+9 dB) for quiet narrators, applied on the phone after decoding — works on any book without touching your server's files (off by default)
 - Background playback with lock-screen and notification controls (rewind / play-pause / fast-forward)
 - Configurable skip interval (15 / 30 / 45 / 60 s) applied to notification and in-app controls
-- Sleep timer — fixed duration or end-of-current-chapter
+- Sleep timer — fixed duration or end-of-current-chapter, easing the volume down over the last fifteen seconds instead of cutting off mid-word
 - Smart rewind on resume — proportional seek-back after a pause, capped at 60 s
 - Auto-play the next book in a collection, with a cancellable countdown (off by default)
 - Tap the cover on the player to look through it at the book's details

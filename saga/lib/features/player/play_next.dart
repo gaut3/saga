@@ -25,7 +25,7 @@ Future<bool> playNextBook({
   try {
     final tracks = await loadTracks(book.ratingKey);
     if (tracks.isEmpty) return false;
-    return startBook(
+    return await startBook(
       service: service,
       bookRatingKey: book.ratingKey,
       tracks: tracks,
