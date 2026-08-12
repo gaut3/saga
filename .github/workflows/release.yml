@@ -20,7 +20,7 @@ jobs:
       # SHA-pinned — see the note in ci.yml. This job matters most: it decodes
       # the signing keystore to disk and holds its passwords in the environment
       # for every step that follows, in one shared runner.
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
@@ -78,7 +78,7 @@ jobs:
           cat *.sha256
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: saga/dist/*.apk
 
@@ -86,7 +86,7 @@ jobs:
         run: awk '/^## /{n++; next} n==1' ../CHANGELOG.md > ../RELEASE_NOTES.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           body_path: RELEASE_NOTES.md
           make_latest: true
