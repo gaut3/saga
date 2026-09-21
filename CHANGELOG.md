@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [1.1.2] - 2026-08-14
+## [1.1.2] - 2026-09-21
 
 A hardening release: no new features, one deep pass over the failure modes a stable app still has. A four-way audit of the codebase (async safety, malformed data, arithmetic edge cases, races) turned up the fixes below; none of them were crashes anyone had reported, because most of them fail silently — which is exactly why they got a release to themselves.
 
