@@ -10,11 +10,14 @@ class PlexTag {
   const PlexTag({required this.id, required this.title});
 
   factory PlexTag.fromJson(Map<String, dynamic> json) {
-    // key looks like "/library/sections/1/style/123" — last segment is the ID
-    final key = json['key'] as String? ?? '';
-    final id = key.split('/').where((s) => s.isNotEmpty).last;
+    // key looks like "/library/sections/1/style/123" — last segment is the ID.
+    // One Directory without a key (exactly the case the `?? ''` above was
+    // written for) used to throw on `.last` of an empty iterable here, and
+    // that one entry killed the whole tag listing — narrator index included.
+    final key = json['key']?.toString() ?? '';
+    final segments = key.split('/').where((s) => s.isNotEmpty);
     return PlexTag(
-      id: id,
+      id: segments.isEmpty ? '' : segments.last,
       title: json['title'] as String? ?? '',
     );
   }

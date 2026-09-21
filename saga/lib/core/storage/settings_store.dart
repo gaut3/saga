@@ -174,6 +174,29 @@ class SettingsStore {
   static Future<void> setBookSpeed(String bookRatingKey, double speed) =>
       _box.put('speed_${ServerScope.key(bookRatingKey)}', speed);
 
+  /// Whether the book has an explicitly saved speed (as opposed to
+  /// [getBookSpeed]'s silent fall-through to [defaultSpeed]).
+  static bool hasBookSpeed(String bookRatingKey) =>
+      _box.containsKey('speed_${ServerScope.key(bookRatingKey)}');
+
+  /// Back to riding [defaultSpeed].
+  static Future<void> removeBookSpeed(String bookRatingKey) =>
+      _box.delete('speed_${ServerScope.key(bookRatingKey)}');
+
+  /// Serialized [CastHandoff] for the session currently casting, so a
+  /// relaunch mid-cast can keep tracking the session the Cast SDK
+  /// auto-resumes. Null when nothing is casting; pass null to clear.
+  static String? get activeCastHandoff =>
+      _box.get('activeCastHandoff') as String?;
+
+  static Future<void> setActiveCastHandoff(String? serialized) async {
+    if (serialized == null) {
+      await _box.delete('activeCastHandoff');
+    } else {
+      await _box.put('activeCastHandoff', serialized);
+    }
+  }
+
   static String? get selectedLibraryKey =>
       _box.get('selectedLibraryKey') as String?;
 

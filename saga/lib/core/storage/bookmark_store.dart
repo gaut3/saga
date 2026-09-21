@@ -31,14 +31,23 @@ class BookPosition {
         'savedAt': savedAt.toIso8601String(),
       };
 
-  factory BookPosition.fromMap(Map<dynamic, dynamic> map) => BookPosition(
-        trackRatingKey: map['trackRatingKey'] as String,
-        positionMs: map['positionMs'] as int,
-        absolutePositionMs:
-            map['absolutePositionMs'] as int? ?? map['positionMs'] as int,
-        totalDurationMs: map['totalDurationMs'] as int?,
-        savedAt: DateTime.parse(map['savedAt'] as String),
-      );
+  factory BookPosition.fromMap(Map<dynamic, dynamic> map) {
+    // Backups are user-editable JSON, so this is a trust boundary: num casts
+    // (a hand-edited 1.5e9 decodes as double), and negatives clamped to 0 —
+    // a negative position makes ExoPlayer's initial seek fail, after which
+    // the book silently refuses to play until the value is overwritten.
+    final positionMs = (map['positionMs'] as num).toInt();
+    final absoluteMs =
+        (map['absolutePositionMs'] as num?)?.toInt() ?? positionMs;
+    final totalMs = (map['totalDurationMs'] as num?)?.toInt();
+    return BookPosition(
+      trackRatingKey: map['trackRatingKey'] as String,
+      positionMs: positionMs < 0 ? 0 : positionMs,
+      absolutePositionMs: absoluteMs < 0 ? 0 : absoluteMs,
+      totalDurationMs: (totalMs != null && totalMs > 0) ? totalMs : null,
+      savedAt: DateTime.parse(map['savedAt'] as String),
+    );
+  }
 }
 
 class BookmarkStore {

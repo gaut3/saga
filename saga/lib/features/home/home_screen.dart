@@ -10,6 +10,7 @@ import '../../core/stats/streak.dart';
 import '../../core/storage/settings_store.dart';
 import '../../shared/widgets/book_card.dart';
 import '../../shared/widgets/book_cover_image.dart';
+import '../../shared/widgets/offline_note.dart';
 import '../../shared/widgets/saga_error_view.dart';
 import '../../shared/widgets/saga_toast.dart';
 import '../../core/storage/bookmark_store.dart';
@@ -161,7 +162,7 @@ class _HomeContent extends ConsumerWidget {
 
         if (key == null && !resolving)
           SliverToBoxAdapter(
-            child: _OfflineNote(onSelectServer: onSelectServer),
+            child: OfflineNote(onSelectServer: onSelectServer),
           ),
 
         if (recentAsync == null)
@@ -253,50 +254,6 @@ class _HomeAppBar extends ConsumerWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// The one line that explains why the rest of the library isn't here.
-///
-/// At the bottom, not the top: what the listener came for is playable, and a
-/// banner over it would make a working app look broken. A book that isn't
-/// downloaded will say so itself when tapped.
-class _OfflineNote extends ConsumerWidget {
-  final VoidCallback onSelectServer;
-  const _OfflineNote({required this.onSelectServer});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(sagaThemeVariantProvider);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Your server isn't reachable — showing what's on this phone.",
-            style: TextStyle(color: SagaColors.fgMuted, fontSize: 13),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              TextButton(
-                onPressed: () => ref.invalidate(activeLibraryKeyProvider),
-                style: TextButton.styleFrom(
-                    foregroundColor: SagaColors.accentText),
-                child: const Text('Try again'),
-              ),
-              TextButton(
-                onPressed: onSelectServer,
-                style: TextButton.styleFrom(
-                    foregroundColor: SagaColors.accentText),
-                child: const Text('Select server'),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

@@ -25,10 +25,19 @@ class PlexServerDiscovery {
     );
 
     final resources = response.data ?? [];
-    return resources
-        .where((r) => (r['provides'] as String? ?? '').contains('server'))
-        .map((r) => PlexServer.fromJson(r as Map<String, dynamic>))
-        .toList();
+    // Per-entry tolerance: one malformed resource (e.g. a server record
+    // without a clientIdentifier) used to empty the whole server list.
+    final servers = <PlexServer>[];
+    for (final r in resources) {
+      if (r is! Map<String, dynamic>) continue;
+      if (!(r['provides'] as String? ?? '').contains('server')) continue;
+      try {
+        servers.add(PlexServer.fromJson(r));
+      } catch (e) {
+        AppLog.log('server', 'skipped an unparseable server entry: $e');
+      }
+    }
+    return servers;
   }
 
   /// Probes every connection in parallel and returns the **best** reachable

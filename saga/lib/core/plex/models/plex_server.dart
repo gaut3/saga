@@ -13,7 +13,9 @@ class PlexConnection {
 
   factory PlexConnection.fromJson(Map<String, dynamic> json) {
     return PlexConnection(
-      uri: json['uri'] as String,
+      // Tolerant: one connection without a uri must not kill the server list;
+      // PlexServer.fromJson filters the empty ones out.
+      uri: json['uri']?.toString() ?? '',
       local: json['local'] == true || json['local'] == 1,
       relay: json['relay'] == true || json['relay'] == 1,
       https: (json['protocol'] as String? ?? '') == 'https',
@@ -42,13 +44,18 @@ class PlexServer {
 
   factory PlexServer.fromJson(Map<String, dynamic> json) {
     final rawConnections = json['connections'] as List<dynamic>? ?? [];
-    final connections = rawConnections
-        .map((c) => PlexConnection.fromJson(c as Map<String, dynamic>))
-        .toList()
+    final connections = [
+      for (final c in rawConnections)
+        if (c is Map<String, dynamic>) PlexConnection.fromJson(c)
+    ].where((c) => c.uri.isNotEmpty).toList()
       ..sort((a, b) => a.priority.compareTo(b.priority));
 
     return PlexServer(
-      name: json['name'] as String,
+      name: json['name'] as String? ?? 'Plex server',
+      // Deliberately still a hard cast: the machine identifier keys every
+      // per-book store (ServerScope) — a defaulted value would scope data
+      // under garbage. The throw is per-server: fetchServers drops this
+      // entry and keeps the rest of the list.
       machineIdentifier: json['clientIdentifier'] as String,
       connections: connections,
     );

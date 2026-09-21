@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../shared/widgets/saga_error_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
+import '../../shared/widgets/offline_note.dart';
 import '../../shared/widgets/book_cover_image.dart';
 import '../../shared/widgets/confirm_dialog.dart';
 import '../../core/storage/custom_collection_store.dart';
@@ -21,31 +21,24 @@ class CollectionsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: SagaColors.bg,
-      body: libraryKeyAsync.when(
-        loading: () =>
-            Center(child: CircularProgressIndicator(color: SagaColors.accent)),
-        error: (e, _) => SagaErrorView(
-          message: 'Could not load your library',
-          error: e,
-          onRetry: () => ref.invalidate(activeLibraryKeyProvider),
-        ),
-        data: (key) {
-          if (key == null) {
-            return Center(
-              child: Text('No library found',
-                  style: TextStyle(color: SagaColors.fgMuted)),
-            );
-          }
-          return _CollectionsContent(libraryKey: key);
-        },
+      // No gate: collections are app-made, local data, so the screen renders
+      // with or without the server. The library key only sharpens book
+      // resolution — when it's missing, entries resolve from the phone's own
+      // records (see customCollectionBooksProvider) and the note says why
+      // some books may sit out.
+      body: _CollectionsContent(
+        libraryKey: libraryKeyAsync.valueOrNull,
+        offline:
+            libraryKeyAsync.valueOrNull == null && !libraryKeyAsync.isLoading,
       ),
     );
   }
 }
 
 class _CollectionsContent extends ConsumerWidget {
-  final String libraryKey;
-  const _CollectionsContent({required this.libraryKey});
+  final String? libraryKey;
+  final bool offline;
+  const _CollectionsContent({required this.libraryKey, required this.offline});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -80,6 +73,13 @@ class _CollectionsContent extends ConsumerWidget {
             ),
           ],
         ),
+        if (offline)
+          const SliverToBoxAdapter(
+            child: OfflineNote(
+              message: "Your server isn't reachable — showing what this "
+                  'phone knows about your collections.',
+            ),
+          ),
         if (collections.isEmpty)
           SliverFillRemaining(
             child: Center(
@@ -143,11 +143,19 @@ class _CollectionsContent extends ConsumerWidget {
     return (name == null || name.isEmpty) ? null : name;
   }
 
+  // All three below: `context.mounted` before the ref use. This widget is
+  // built inside libraryKeyAsync.when(), which re-runs on every connectivity
+  // flip — losing the server while a dialog is up swaps in the error view and
+  // disposes this widget's ref, and a ConsumerWidget has no `mounted` of its
+  // own. Same class of bug collection_detail's _removeBook documents; the
+  // store write still lands either way.
+
   Future<void> _showCreateDialog(BuildContext context, WidgetRef ref) async {
     final name = await _promptCollectionName(context,
         title: 'New collection', confirmLabel: 'Create');
     if (name != null) {
       await CustomCollectionStore.create(name);
+      if (!context.mounted) return;
       ref.read(customCollectionRevisionProvider.notifier).state++;
     }
   }
@@ -158,6 +166,7 @@ class _CollectionsContent extends ConsumerWidget {
         title: 'Rename', confirmLabel: 'Save', initial: col.name);
     if (name != null) {
       await CustomCollectionStore.rename(col.id, name);
+      if (!context.mounted) return;
       ref.read(customCollectionRevisionProvider.notifier).state++;
     }
   }
@@ -173,6 +182,7 @@ class _CollectionsContent extends ConsumerWidget {
     );
     if (confirmed) {
       await CustomCollectionStore.delete(col.id);
+      if (!context.mounted) return;
       ref.read(customCollectionRevisionProvider.notifier).state++;
     }
   }
@@ -238,7 +248,7 @@ class _CollectionNameDialogState extends State<_CollectionNameDialog> {
 
 class _CollectionTile extends StatelessWidget {
   final CustomCollection collection;
-  final String libraryKey;
+  final String? libraryKey;
   final VoidCallback onDelete;
   final VoidCallback onRename;
 

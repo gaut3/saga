@@ -26,6 +26,10 @@ import 'player_service.dart';
 /// that already hold the list pass `() async => tracks`. Callers with a more
 /// specific failure to report (a bookmark whose file is gone) should check
 /// and say it *before* calling.
+// One launch at a time: a double-tap on a book card pushed two PlayerScreens
+// (back from one revealed the other) and raced two startBooks.
+bool _launchInFlight = false;
+
 Future<bool> openPlayerAndStart({
   required BuildContext context,
   required AudioPlayerService service,
@@ -33,6 +37,30 @@ Future<bool> openPlayerAndStart({
   required Future<List<PlexTrack>> Function() loadTracks,
   required BookStartPoint from,
   LaunchPlayback playback = LaunchPlayback.start,
+}) async {
+  if (_launchInFlight) return false;
+  _launchInFlight = true;
+  try {
+    return await _openPlayerAndStart(
+      context: context,
+      service: service,
+      bookRatingKey: bookRatingKey,
+      loadTracks: loadTracks,
+      from: from,
+      playback: playback,
+    );
+  } finally {
+    _launchInFlight = false;
+  }
+}
+
+Future<bool> _openPlayerAndStart({
+  required BuildContext context,
+  required AudioPlayerService service,
+  required String bookRatingKey,
+  required Future<List<PlexTrack>> Function() loadTracks,
+  required BookStartPoint from,
+  required LaunchPlayback playback,
 }) async {
   final navigator = Navigator.of(context, rootNavigator: true);
   final route = MaterialPageRoute<void>(builder: (_) => const PlayerScreen());

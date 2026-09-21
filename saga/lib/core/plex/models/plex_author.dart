@@ -12,11 +12,13 @@ class PlexAuthor {
   });
 
   factory PlexAuthor.fromJson(Map<String, dynamic> json) {
+    // Tolerant like PlexTrack.fromJson: one partially-indexed artist must not
+    // empty the whole author list.
     return PlexAuthor(
       ratingKey: json['ratingKey'].toString(),
-      title: json['title'] as String,
+      title: json['title'] as String? ?? '',
       thumbPath: json['thumb'] as String?,
-      bookCount: json['childCount'] as int? ?? 0,
+      bookCount: (json['childCount'] as num?)?.toInt() ?? 0,
     );
   }
 }

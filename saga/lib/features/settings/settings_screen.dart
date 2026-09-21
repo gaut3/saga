@@ -183,9 +183,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     await SettingsStore.setDefaultSpeed(v);
                     if (!mounted) return;
                     setState(() => _defaultSpeed = v);
-                    // Apply immediately if a player is active; the player UI
-                    // follows the service's own speed state from here.
-                    ref.read(playerServiceProvider).setSpeed(v);
+                    // Apply immediately if a player is active — but only to a
+                    // book riding the default. A book with its own saved speed
+                    // keeps it: applying the new default anyway audibly
+                    // changed the live session while the stored per-book
+                    // speed survived, so the next load snapped back.
+                    final player = ref.read(playerServiceProvider);
+                    final bookKey = player.currentBookRatingKey;
+                    if (bookKey == null ||
+                        !SettingsStore.hasBookSpeed(bookKey)) {
+                      player.setSpeed(v);
+                    }
                   },
                 ),
                 _SegmentedTile(
@@ -1748,7 +1756,7 @@ class _StorageTileState extends ConsumerState<_StorageTile> {
                             .deleteBookByKeys(
                                 book.bookRatingKey, book.trackKeys);
                         if (ctx.mounted) Navigator.pop(ctx);
-                        _refresh();
+                        if (mounted) _refresh();
                       },
                     ),
                   );

@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/cast/cast_service.dart';
 import '../../core/plex/plex_client.dart';
+import '../../core/storage/settings_store.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_sheet.dart';
 import '../../shared/widgets/saga_toast.dart';
+import 'player_provider.dart';
 import 'player_service.dart';
 
 void showCastSheet(BuildContext context,
@@ -86,6 +88,21 @@ class _CastSheetState extends ConsumerState<_CastSheet> {
       return;
     }
     final positionMs = service.player.position.inMilliseconds;
+    // Capture what is being handed over *now*: the session can outlive this
+    // sheet, the player screen, even this process, and the position it
+    // reports back is meaningless without the book and track it belongs to.
+    final bookKey = service.currentBookRatingKey;
+    if (bookKey != null) {
+      final handoff = CastHandoff(
+        bookRatingKey: bookKey,
+        trackRatingKey: track.ratingKey,
+        trackStartMs: service.absolutePositionMs - positionMs,
+        totalDurationMs:
+            service.totalBookDurationMs > 0 ? service.totalBookDurationMs : null,
+      );
+      _cast.beginSession(handoff);
+      await SettingsStore.setActiveCastHandoff(handoff.serialize());
+    }
     await service.pause();
     await _cast.loadMedia(
       url: media.streamUrl,
@@ -97,16 +114,12 @@ class _CastSheetState extends ConsumerState<_CastSheet> {
     );
   }
 
-  /// Pulls the playback position back from the Cast device, ends the session,
-  /// and seeks the (paused) local player there so resuming continues
-  /// seamlessly from where the cast left off.
+  /// Ends the session. The position writeback happens in [CastService]'s
+  /// session-end handler (wired in [castServiceProvider]) — one shared path
+  /// with the unexpected-drop case, instead of a copy that only ran when the
+  /// user pressed this button with the sheet still open.
   Future<void> _disconnect() async {
-    final posMs = await _cast.getCastPosition();
     await _cast.stopCasting();
-    if (posMs > 0) {
-      await widget.service.player.seek(Duration(milliseconds: posMs));
-      await widget.service.savePosition();
-    }
     if (mounted) Navigator.pop(context);
   }
 

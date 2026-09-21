@@ -39,6 +39,11 @@ class _MainShellState extends ConsumerState<MainShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Construct the cast service now, not at first cast-sheet open: its
+    // native-call handler must exist for the position writeback to hear a
+    // session ending — including one the Cast SDK auto-resumed after an app
+    // restart, when the sheet may never be opened at all.
+    ref.read(castServiceProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Opt-in, default off: one anonymous GET to GitHub per launch. Never
       // blocks startup; the result is cached in the provider for Settings.
@@ -389,7 +394,11 @@ class _NavProgressPainter extends CustomPainter {
       const Radius.circular(30 - inset),
     );
     final path = Path()..addRRect(rrect);
-    final metric = path.computeMetrics().first;
+    // A degenerate rect (pill smaller than the stroke) yields no contour, and
+    // `.first` on empty metrics would throw on every frame of a download.
+    final it = path.computeMetrics().iterator;
+    if (!it.moveNext()) return;
+    final metric = it.current;
     final drawn = metric.extractPath(
         0, metric.length * progress.clamp(0.0, 1.0));
     canvas.drawPath(

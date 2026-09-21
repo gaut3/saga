@@ -1,3 +1,4 @@
+import '../diagnostics/app_log.dart';
 import 'models/plex_author.dart';
 import 'models/plex_book.dart';
 import 'models/plex_tag.dart';
@@ -18,10 +19,27 @@ class PlexApi {
   }) async {
     final response = await _client.get<Map<String, dynamic>>(path,
         queryParameters: queryParameters);
-    final items = response.data?['MediaContainer']?[containerKey]
-            as List<dynamic>? ??
-        [];
-    return items.map((i) => fromJson(i as Map<String, dynamic>)).toList();
+    final container = response.data?['MediaContainer'];
+    final items = container is Map ? container[containerKey] : null;
+    if (items is! List) return [];
+    // Per-item tolerance: Plex servers vary wildly by version, and one
+    // malformed entry used to cost the whole list — "one weird library
+    // section = no libraries" is the wrong ratio. Dropped entries are logged,
+    // never silently truncated.
+    final out = <T>[];
+    var skipped = 0;
+    for (final i in items) {
+      try {
+        out.add(fromJson(
+            i is Map<String, dynamic> ? i : Map<String, dynamic>.from(i as Map)));
+      } catch (_) {
+        skipped++;
+      }
+    }
+    if (skipped > 0) {
+      AppLog.log('plex', 'skipped $skipped unparseable entries from $path');
+    }
+    return out;
   }
 
   Future<List<PlexLibrary>> fetchLibraries() async {
@@ -48,9 +66,22 @@ class PlexApi {
       );
       final container =
           response.data?['MediaContainer'] as Map<String, dynamic>?;
-      final page = (container?['Metadata'] as List<dynamic>? ?? [])
-          .map((i) => PlexBook.fromJson(i as Map<String, dynamic>))
-          .toList();
+      // Same per-item tolerance as _fetchList — this is the whole library.
+      final page = <PlexBook>[];
+      var skipped = 0;
+      for (final i in (container?['Metadata'] as List<dynamic>? ?? [])) {
+        try {
+          page.add(PlexBook.fromJson(i is Map<String, dynamic>
+              ? i
+              : Map<String, dynamic>.from(i as Map)));
+        } catch (_) {
+          skipped++;
+        }
+      }
+      if (skipped > 0) {
+        AppLog.log(
+            'plex', 'skipped $skipped unparseable books in section $sectionKey');
+      }
       results.addAll(page);
       final total = (container?['totalSize'] as num?)?.toInt() ??
           (container?['size'] as num?)?.toInt() ??

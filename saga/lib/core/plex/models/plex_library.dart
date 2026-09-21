@@ -10,10 +10,12 @@ class PlexLibrary {
   });
 
   factory PlexLibrary.fromJson(Map<String, dynamic> json) {
+    // Tolerant like PlexTrack.fromJson: Plex servers vary by version, and a
+    // hard cast here turned one odd section into "no libraries at all".
     return PlexLibrary(
       key: json['key'].toString(),
-      title: json['title'] as String,
-      type: json['type'] as String,
+      title: json['title'] as String? ?? '',
+      type: json['type'] as String? ?? '',
     );
   }
 

@@ -117,7 +117,9 @@ class ProgressBackup {
     if (picked.path != null) {
       content = await File(picked.path!).readAsString();
     } else if (picked.bytes != null) {
-      content = utf8.decode(picked.bytes!);
+      // allowMalformed: a non-UTF-8 file should fail as "not a valid backup"
+      // (the jsonDecode below), not as an encoding exception.
+      content = utf8.decode(picked.bytes!, allowMalformed: true);
     } else {
       throw StateError('File picker returned a file with no readable path or bytes.');
     }
@@ -163,6 +165,13 @@ class ProgressBackup {
     final listenDays = (json['listenDays'] as Map<String, dynamic>?) ?? {};
     final playbackLog = (json['playbackLog'] as Map<String, dynamic>?) ?? {};
 
+    _requireImportableShapes(
+      history: history,
+      completedDetailed: completedDetailed,
+      listenDays: listenDays,
+      playbackLog: playbackLog,
+    );
+
     return ProgressBackupData(
       positions: positions,
       completed: completed,
@@ -174,6 +183,64 @@ class ProgressBackup {
       playbackLog: playbackLog,
       serverMachineIdentifier: serverMachineIdentifier,
     );
+  }
+
+  /// Shape-checks the four raw sections that [restore] hands to the stores'
+  /// importAll methods verbatim. Those decoders run *after* positions and
+  /// completions have already been written, so a shape error there used to
+  /// abandon a half-written restore — stores overwritten, "Import failed"
+  /// shown, no rollback. A throw here instead costs nothing: parsing happens
+  /// before the first write. Null section values are allowed exactly where
+  /// the importers tolerate them.
+  static void _requireImportableShapes({
+    required Map<String, dynamic> history,
+    required Map<String, dynamic> completedDetailed,
+    required Map<String, dynamic> listenDays,
+    required Map<String, dynamic> playbackLog,
+  }) {
+    for (final e in history.entries) {
+      if (e.key.startsWith('t_') && e.value is! num) {
+        throw FormatException('listeningHistory "${e.key}" is not a number');
+      }
+      if (e.key.startsWith('d_') && e.value != null) {
+        final list = e.value;
+        if (list is! List ||
+            list.any((m) =>
+                m is! Map ||
+                m['rk'] is! String ||
+                (m['t'] != null && m['t'] is! String) ||
+                (m['p'] != null && m['p'] is! String))) {
+          throw FormatException(
+              'listeningHistory "${e.key}" is not a completed-book list');
+        }
+      }
+    }
+    for (final e in completedDetailed.entries) {
+      final v = e.value;
+      if (v != null && (v is! List || v.any((t) => t is! num))) {
+        throw FormatException(
+            'completedDetailed "${e.key}" is not a timestamp list');
+      }
+    }
+    for (final e in listenDays.entries) {
+      final v = e.value;
+      if (v == null) continue;
+      if (v is! Map) {
+        throw FormatException('listenDays "${e.key}" is not a cycle map');
+      }
+      final s = v['s'];
+      final d = v['d'];
+      if ((s != null && s is! String) ||
+          (d != null && (d is! List || d.any((x) => x is! String)))) {
+        throw FormatException('listenDays "${e.key}" is malformed');
+      }
+    }
+    for (final e in playbackLog.entries) {
+      final v = e.value;
+      if (v != null && (v is! List || v.any((m) => m is! Map || m['ts'] is! int))) {
+        throw FormatException('playbackLog "${e.key}" is malformed');
+      }
+    }
   }
 
   /// Returns positions in [data] where the locally stored position is newer

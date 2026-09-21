@@ -65,8 +65,10 @@ class PlexTrack {
       bookTitle: json['parentTitle'] as String?,
       authorName: json['grandparentTitle'] as String?,
       thumbPath: json['parentThumb'] as String?,
-      durationMs: json['duration'] as int? ?? 0,
-      index: json['index'] as int? ?? 0,
+      // num, not int: some servers emit durations as floats, and PlexBook
+      // already reads this same field the tolerant way.
+      durationMs: (json['duration'] as num?)?.toInt() ?? 0,
+      index: (json['index'] as num?)?.toInt() ?? 0,
       partKey: part?['key'] as String? ?? '',
       partFile: part?['file'] as String?,
     );

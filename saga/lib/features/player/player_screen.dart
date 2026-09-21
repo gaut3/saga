@@ -663,8 +663,10 @@ class _FadedSummary extends StatelessWidget {
         final scaler = MediaQuery.textScalerOf(context);
         final lineHeight =
             scaler.scale(style.fontSize!) * (style.height ?? 1.0);
+        // Clamp before flooring: floor() on a non-finite double throws, and
+        // an unbounded-height parent would make maxHeight infinite.
         final maxLines =
-            (constraints.maxHeight / lineHeight).floor().clamp(1, 999);
+            (constraints.maxHeight / lineHeight).clamp(1.0, 999.0).floor();
         // Measured against the real width — see textOverflows' doc.
         final overflows = textOverflows(
           text: summary,
@@ -889,8 +891,13 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
                   final thumbX = edge +
                       displayValue * (constraints.maxWidth - 2 * edge);
                   const labelW = 62.0;
-                  final labelLeft =
-                      (thumbX - labelW / 2).clamp(0.0, constraints.maxWidth - labelW);
+                  // The upper bound goes negative on a window narrower than
+                  // the label (freeform / split screen), and clamp throws on
+                  // an inverted range — a red screen over the whole player.
+                  final labelLeft = (thumbX - labelW / 2).clamp(
+                      0.0,
+                      (constraints.maxWidth - labelW)
+                          .clamp(0.0, double.infinity));
                   return Stack(
                     clipBehavior: Clip.none,
                     children: [
@@ -1135,6 +1142,7 @@ class _BottomActions extends ConsumerWidget {
             _SleepTimerButton(
               service: service,
               timerEnd: timerEnd,
+              remaining: () => ref.read(sleepTimerProvider.notifier).remaining,
               onTap: () {
                 final isActive = timerEnd != null;
                 final defaultMinutes = SettingsStore.defaultSleepTimerMinutes;
@@ -1216,11 +1224,13 @@ class _BottomActions extends ConsumerWidget {
 class _SleepTimerButton extends StatefulWidget {
   final AudioPlayerService service;
   final DateTime? timerEnd;
+  final Duration? Function() remaining;
   final VoidCallback onTap;
 
   const _SleepTimerButton({
     required this.service,
     required this.timerEnd,
+    required this.remaining,
     required this.onTap,
   });
 
@@ -1259,10 +1269,14 @@ class _SleepTimerButtonState extends State<_SleepTimerButton> {
   }
 
   String _label() {
-    final end = widget.timerEnd;
-    if (end == null) return 'Sleep';
-    final r = end.difference(DateTime.now());
-    if (r.isNegative) return 'Sleep';
+    if (widget.timerEnd == null) return 'Sleep';
+    // Ask the notifier, not the end time: while playback is paused the
+    // countdown is frozen (remaining holds still) but the end DateTime goes
+    // stale — computing from it kept the label falling on wall-clock through
+    // a pause, and read 'Sleep' over a timer that was armed all along once
+    // the clock passed the old end.
+    final r = widget.remaining();
+    if (r == null) return 'Sleep';
     final totalMin = r.inMinutes;
     if (totalMin < 1) return '< 1m';
     if (totalMin < 60) return '${totalMin}m';

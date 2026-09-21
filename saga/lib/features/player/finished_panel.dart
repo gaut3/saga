@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/plex/models/plex_book.dart';
 import '../../core/providers.dart';
+import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/completed_books_store.dart';
 import '../../core/storage/listen_days_store.dart';
 import '../../core/theme/saga_theme.dart';
@@ -10,6 +11,7 @@ import '../../core/utils/date_math.dart';
 import '../../core/utils/format.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_toast.dart';
+import 'book_launch.dart';
 import 'play_next.dart';
 import 'player_service.dart';
 
@@ -165,6 +167,18 @@ class _NextInSeriesButton extends ConsumerWidget {
     if (next == null) return const SizedBox.shrink();
     final col = next.$1;
     final book = next.$2;
+    // A next book with a real mid-book position (sampled long ago, found via
+    // search) is a fork only the listener can resolve: pick up where that
+    // left off, or start the series entry properly. Same two-button shape a
+    // future sync-conflict prompt will need. The countdown — which also runs
+    // unwatched — takes the resume, the only default that can't destroy a
+    // place; watched from here, both are one tap. A *completed* next book
+    // (a series being listened to anew) has no fork — only the end-of-book
+    // artifact — so it gets a single honest "Read again".
+    final saved = BookmarkStore.load(book.ratingKey);
+    final resumable = isResumablePosition(saved);
+    final readAgain =
+        !resumable && CompletedBooksStore.isCompleted(book.ratingKey);
     return Column(
       children: [
         Row(
@@ -196,12 +210,20 @@ class _NextInSeriesButton extends ConsumerWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () => _playNext(context, ref, book),
+                  // Null start point: playNextBook resolves it by the same
+                  // rule the labels below describe.
+                  onPressed: () => _playNext(context, ref, book, null),
                   icon: const Icon(Icons.skip_next_rounded, size: 20),
                   label: Text(
                     secondsLeft != null
                         ? 'Playing in ${secondsLeft}s — ${book.title}'
-                        : book.title,
+                        : resumable
+                            ? 'Resume from '
+                                '${fmtDuration(Duration(milliseconds: saved!.absolutePositionMs))}'
+                                ' — ${book.title}'
+                            : readAgain
+                                ? 'Read again — ${book.title}'
+                                : book.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -214,6 +236,25 @@ class _NextInSeriesButton extends ConsumerWidget {
                   ),
                 ),
               ),
+              if (resumable) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => _playNext(context, ref, book,
+                        const BookStartPoint.beginning()),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: SagaColors.fg,
+                      side: BorderSide(
+                          color: SagaColors.accent.withValues(alpha: 0.4)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Start over'),
+                  ),
+                ),
+              ],
               if (secondsLeft != null)
                 TextButton(
                   onPressed: service.cancelAutoAdvance,
@@ -228,12 +269,16 @@ class _NextInSeriesButton extends ConsumerWidget {
     );
   }
 
-  Future<void> _playNext(
-      BuildContext context, WidgetRef ref, PlexBook book) async {
+  Future<void> _playNext(BuildContext context, WidgetRef ref, PlexBook book,
+      BookStartPoint? from) async {
+    // A tap is the user's decision; the countdown must not race it into a
+    // second launch of the same book during the await gap below.
+    service.cancelAutoAdvance();
     final ok = await playNextBook(
       service: service,
       book: book,
       loadTracks: (key) => ref.read(tracksProvider(key).future),
+      from: from,
     );
     // Used to fail silently, which looked identical to a dead button.
     if (!ok && context.mounted) {

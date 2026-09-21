@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/book_progress.dart';
 import '../../core/diagnostics/app_log.dart';
+import '../../core/local_library.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/plex/narrator_index.dart';
 import '../../core/providers.dart';
@@ -14,6 +15,7 @@ import '../../core/storage/custom_collection_store.dart';
 import '../../core/storage/want_to_read_store.dart';
 import '../../shared/widgets/book_card.dart';
 import '../../shared/widgets/book_cover_image.dart';
+import '../../shared/widgets/library_gate.dart';
 import '../collections/collection_picker_sheet.dart';
 import '../library/book_detail_screen.dart';
 import '../player/player_provider.dart';
@@ -41,28 +43,59 @@ class BrowseScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(sagaThemeVariantProvider);
-    final libraryKeyAsync = ref.watch(activeLibraryKeyProvider);
 
     return Scaffold(
       backgroundColor: SagaColors.bg,
-      body: libraryKeyAsync.when(
-        loading: () => Center(
-            child: CircularProgressIndicator(color: SagaColors.accent)),
-        error: (e, _) => SagaErrorView(
-          message: 'Could not load your library',
-          error: e,
-          onRetry: () => ref.invalidate(activeLibraryKeyProvider),
-        ),
-        data: (key) {
-          if (key == null) {
-            return Center(
-              child: Text('No library found',
-                  style: TextStyle(color: SagaColors.fgMuted)),
-            );
+      body: LibraryGate(
+        title: 'Browse',
+        online: (key) => _BrowseContent(libraryKey: key),
+        // Offline Browse is what is *playable*: ALL downloaded books, read
+        // straight from the local stores. Not offlineBooksProvider.downloaded
+        // — that list is shaped for Home, where a downloaded book already
+        // shown under Continue Listening is excluded, so a download you'd
+        // started vanished from this grid entirely (2026-08-14 flight test).
+        // In-progress streaming books still stay out — covers that can't
+        // play would make an offline grid lie about being usable.
+        offlineSlivers: (context) {
+          final books = localBooks(localDownloadedKeys());
+          if (books.isEmpty) {
+            return const [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16, 24, 16, 16),
+                  child: _OfflineEmptyHint(),
+                ),
+              ),
+            ];
           }
-          return _BrowseContent(libraryKey: key);
+          return [
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                  16, 8, 16, MediaQuery.paddingOf(context).bottom + 16),
+              sliver: SliverGrid(
+                gridDelegate: bookGridDelegate(
+                    textScaler: MediaQuery.textScalerOf(context)),
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) => BookCard(book: books[i]),
+                  childCount: books.length,
+                ),
+              ),
+            ),
+          ];
         },
       ),
+    );
+  }
+}
+
+class _OfflineEmptyHint extends StatelessWidget {
+  const _OfflineEmptyHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Nothing downloaded yet — books you download show here.',
+      style: TextStyle(color: SagaColors.fgSubtle, fontSize: 13),
     );
   }
 }

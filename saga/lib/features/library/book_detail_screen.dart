@@ -49,6 +49,10 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
 
   Future<void> _toggleWantToRead() async {
     await WantToReadStore.toggle(widget.book.ratingKey);
+    // Tap-then-back: the awaited write outlives the screen, and setState/ref
+    // on the disposed State is a release-mode throw (swallowed by the zone,
+    // so it just looked like nothing happened).
+    if (!mounted) return;
     setState(() => _isWanted = WantToReadStore.isWanted(widget.book.ratingKey));
     ref.read(wantToReadRevisionProvider.notifier).state++;
   }
@@ -61,6 +65,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     } else {
       await CompletedBooksStore.markCompleted(widget.book.ratingKey);
     }
+    if (!mounted) return; // tap-then-back, as above
     ref.read(completionRevisionProvider.notifier).state++;
   }
 
@@ -78,6 +83,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
           await CustomCollectionStore.addBook(col.id, widget.book.ratingKey,
               coverThumbPath: widget.book.thumbPath);
         }
+        if (!mounted) return; // sheet outlives a popped screen, as above
         ref.read(customCollectionRevisionProvider.notifier).state++;
       },
     );

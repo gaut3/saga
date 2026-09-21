@@ -76,6 +76,15 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   // load has superseded it across an await gap, so a stale failure can't
   // clobber the new book's state (which would silently drop position saves).
   int _loadGeneration = 0;
+  // True from loadBook's identity swap until its finally: the fields name the
+  // incoming book while the platform player still holds the outgoing one, so
+  // any position save in that window would file A's position under B's key.
+  bool _loadInProgress = false;
+  // True while loadBook has muted the player to hide the old audio during a
+  // playWhenReady load. An explicit flag, not a `volume == 0` sniff — the
+  // sleep fade (floor 0.05) and the interruption duck (0.5) also write the
+  // volume, and a sniff either misses our mute or clobbers theirs.
+  bool _mutedForLoad = false;
   int _lastChapterIndex = -1; // for chapter-aware notification title (single M4B)
   bool _completedThisSession = false; // guards the per-listen completion count
   int _previousAbsolutePositionMs = -1; // -1 = no saved position for undo
@@ -334,7 +343,15 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   }) async {
     if (tracks.isEmpty) throw ArgumentError('Cannot load a book with no tracks');
 
+    // Save the outgoing book's place before the identity fields flip to the
+    // new one — the periodic timer's last save can be up to 10 s stale, and
+    // once the swap happens no save for the old book is possible.
+    if (_bookRatingKey != null && _bookRatingKey != bookRatingKey) {
+      await _saveAndReportPosition(state: 'paused');
+    }
+
     final gen = ++_loadGeneration;
+    _loadInProgress = true;
     _bookRatingKey = bookRatingKey;
     _tracks = tracks;
     _pausedAt = null; // new book — don't rewind on first play
@@ -356,12 +373,35 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     if (applyResumeRewind && resumePositionMs > 0) {
       final bookmark = BookmarkStore.load(bookRatingKey);
       if (bookmark != null) {
-        final awaySeconds =
-            DateTime.now().difference(bookmark.savedAt).inSeconds;
-        final rewindMs = _resumeRewindMs(awaySeconds);
-        resumePositionMs =
-            (resumePositionMs - rewindMs).clamp(0, resumePositionMs);
+        if (playWhenReady) {
+          final awaySeconds =
+              DateTime.now().difference(bookmark.savedAt).inSeconds;
+          final rewindMs = _resumeRewindMs(awaySeconds);
+          resumePositionMs =
+              (resumePositionMs - rewindMs).clamp(0, resumePositionMs);
+        } else {
+          // Load-only launch (Home's hero card opening the player to look at
+          // it): never move the position — merely viewing used to rewind here
+          // and the next lifecycle save persisted it, walking the bookmark up
+          // to 60 s back per look. Seed _pausedAt with the bookmark's age
+          // instead, so a play that follows applies the same curve (the
+          // in-session branch in [play]) at the moment listening resumes.
+          _pausedAt = bookmark.savedAt;
+        }
       }
+    }
+
+    // Restored positions come from stores and backups, not only the player:
+    // clamp into the start track's playable range. A negative value makes
+    // ExoPlayer's initial seek fail (the book silently refuses to play); a
+    // value at/past the track end trips completion detection on load.
+    final startTrackDurMs = tracks[startTrackIndex].durationMs;
+    if (startTrackDurMs > 0) {
+      resumePositionMs = resumePositionMs
+          .clamp(0, (startTrackDurMs - _endGuardMs).clamp(0, startTrackDurMs))
+          .toInt();
+    } else if (resumePositionMs < 0) {
+      resumePositionMs = 0;
     }
 
     final sources = tracks.map((t) {
@@ -402,6 +442,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
           // doesn't audibly resume the old audio during the load. Restored in
           // the finally below.
           await _player.setVolume(0);
+          _mutedForLoad = true;
         }
         unawaited(_player.play());
       }
@@ -417,8 +458,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     } catch (e) {
       AppLog.log('playback', 'setAudioSource failed for book $bookRatingKey: $e');
       // Withdraw the play intent: a failed load must not leave a playing=true
-      // foreground service with no audio source.
-      if (playWhenReady) unawaited(_player.pause());
+      // foreground service with no audio source. Generation-checked like the
+      // state clear below — a *stale* load's failure arriving while a newer
+      // book loads must not pause the book the user just started.
+      if (playWhenReady && gen == _loadGeneration) unawaited(_player.pause());
       // Only clear state if no newer load has taken over: a failed stale load
       // (e.g. interrupted because the user tapped another book) must not wipe
       // the new book's key/tracks — that would silently drop its saves.
@@ -429,8 +472,14 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       rethrow;
     } finally {
       // Unmute on every exit path (success, failure, superseded) — a stray
-      // zero volume would make all playback silent with no visible cause.
-      if (_player.volume == 0) await _player.setVolume(1);
+      // mute would make all playback silent with no visible cause.
+      if (_mutedForLoad) {
+        _mutedForLoad = false;
+        await _player.setVolume(1);
+      }
+      // Gen-guarded: a superseded load's finally must not reopen the save
+      // window while the newer load is still mid-swap.
+      if (gen == _loadGeneration) _loadInProgress = false;
     }
     if (gen != _loadGeneration) return; // superseded by a newer load
   }
@@ -496,24 +545,75 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     }
   }
 
-  /// Re-sends the current [mediaItem] to the platform media session.
+  /// [_restoreLastSession]'s warm-process sibling: the session was stopped
+  /// (media-button stop, natural end — [stop] keeps the book loaded) but the
+  /// Dart side survived. Reloads the *current* book through [startBook] so
+  /// the smart rewind and the book's saved speed come from the one shared
+  /// path, exactly as the dead-process restore does.
+  Future<bool> _reloadStoppedSession() async {
+    if (_restoringSession) return false; // absorb double-taps mid-restore
+    _restoringSession = true;
+    try {
+      final bookKey = _bookRatingKey;
+      if (bookKey == null || _tracks.isEmpty) return false;
+      // Play on a book that finished this session means "replay this" — the
+      // promise [play]'s comment has always made. Resuming would land on the
+      // end-of-book bookmark (clamped one second short), play that second,
+      // and count a second completion — every press adding one. Checked via
+      // _completedThisSession too, so a panel dismissed with X replays the
+      // same way instead of falling back to the last-second loop.
+      final replay =
+          justFinishedBook.value == bookKey || _completedThisSession;
+      final started = await startBook(
+        service: this,
+        bookRatingKey: bookKey,
+        tracks: List.of(_tracks),
+        from: replay
+            ? const BookStartPoint.beginning()
+            : const BookStartPoint.resume(),
+        // The [play] that called this finishes the job.
+        playback: LaunchPlayback.intentOnly,
+      );
+      if (started) {
+        AppLog.log('playback', 'reloaded stopped session: book $bookKey');
+      }
+      return started;
+    } catch (e) {
+      AppLog.log('playback', 'stopped-session reload failed: $e');
+      return false;
+    } finally {
+      _restoringSession = false;
+    }
+  }
+
+  /// Re-sends the current [mediaItem] *and* playback state to the platform
+  /// media session.
   ///
-  /// audio_service pushes metadata to Android's MediaSession only when
-  /// `mediaItem` *emits*. But the Java service — and the MediaSessionCompat it
+  /// audio_service pushes to Android's MediaSession only when the Dart-side
+  /// subjects *emit*. But the Java service — and the MediaSessionCompat it
   /// owns — can be destroyed and recreated inside a Dart process that survives
-  /// it: the Flutter engine is cached, so this handler and its BehaviorSubject
+  /// it: the Flutter engine is cached, so this handler and its BehaviorSubjects
   /// live on with the book still in them. The rebuilt session starts with null
-  /// metadata and nothing re-sends it, so the lock screen shows Android's
-  /// "Saga is running" placeholder over a book that is audibly playing, with a
-  /// real position and working transport controls. `playbackState` never shows
-  /// this because playbackEventStream re-emits continuously; metadata is the
-  /// one thing that only travels on change.
+  /// metadata and a default "paused" state, and nothing re-sends either:
+  /// - null metadata → the lock screen shows Android's "Saga is running"
+  ///   placeholder over a book that is audibly playing (the 1.1.0 bug).
+  /// - stale "paused" state → worse: Android resolves media buttons *against
+  ///   the session's state*, so every bluetooth press and lock-screen button
+  ///   becomes a play command that no-ops on the already-playing player, and
+  ///   nothing on the phone can pause the book except the app itself
+  ///   (2026-08-14 incident). The 1.1.0 fix assumed playbackEventStream
+  ///   re-emits often enough to cover state — true while streaming, where
+  ///   buffer updates keep firing, but a downloaded book mid-track can go
+  ///   quiet for a whole chapter.
   ///
-  /// Idempotent and cheap — artwork is already cached by the time this matters
-  /// — so call it from any path that can follow a service restart.
+  /// Idempotent and cheap — artwork is LRU-cached in the Java layer — so call
+  /// it from any path that can follow a service restart: play, pause, app
+  /// resume, and the 10 s progress timer (which is what heals a rebuilt
+  /// session with no user action at all).
   void republishNowPlaying() {
     final current = mediaItem.value;
     if (current != null) mediaItem.add(current);
+    _broadcastState(_player.playbackEvent);
   }
 
   @override
@@ -529,6 +629,16 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // the notification stuck on a lying pause icon.
     if (_bookRatingKey == null || _tracks.isEmpty) {
       if (!await _restoreLastSession()) return;
+    } else if (_player.processingState == ProcessingState.idle &&
+        !_loadInProgress) {
+      // Warm-process resume: the session was stopped but the process — and
+      // the book in this handler — survived, so the restore above is skipped
+      // while the platform player sits torn down (idle). Falling through to
+      // _player.play() resumed hours later with no smart rewind (the branch
+      // below is gated on `ready`) and without re-applying the book's speed,
+      // while the dead-process path got both. Same fix as every launch-path
+      // bug before it: funnel through the one shared path.
+      if (!await _reloadStoppedSession()) return;
     }
     // The media session may have been rebuilt since the last mediaItem
     // emission. A play arriving from the notification, a media button or the
@@ -574,6 +684,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _pausedAt = DateTime.now();
     _logEvent('pause');
     await _player.pause();
+    // A rebuilt session whose stale state reads "playing" resolves every press
+    // to pause — a platform-side no-op that emits nothing. Re-send the truth
+    // so the session's buttons flip back to a working direction.
+    republishNowPlaying();
     await _saveAndReportPosition(state: 'paused');
   }
 
@@ -629,12 +743,29 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     }
   }
 
+  /// Explicit seeks never land on the very end of a file: exactly `duration`
+  /// is end-of-media, which trips completion detection — e.g. a stale cached
+  /// chapter table pointing past a re-encoded, now-shorter file would mark
+  /// the book finished from a chapter tap. Clamped [_endGuardMs] short; the
+  /// last second is played, never skipped.
+  static const _endGuardMs = 1000;
+
+  Duration _clampToTrack(Duration position) {
+    if (position.isNegative) return Duration.zero;
+    final durMs = _player.duration?.inMilliseconds ?? 0;
+    if (durMs <= 0) return position;
+    final maxMs = (durMs - _endGuardMs).clamp(0, durMs).toInt();
+    return position.inMilliseconds > maxMs
+        ? Duration(milliseconds: maxMs)
+        : position;
+  }
+
   @override
   Future<void> seek(Duration position) async {
     cancelAutoAdvance(); // scrubbing back means "I'm not done with this book"
     _previousAbsolutePositionMs = absolutePositionMs;
     canUndoSeekNotifier.value = true;
-    await _player.seek(position);
+    await _player.seek(_clampToTrack(position));
   }
 
   @override
@@ -652,7 +783,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       // detection and marks the book finished. Same bug the sleep timer's
       // end-of-chapter target had.
       if (idx + 1 >= chapters.length) return;
-      await _player.seek(chapters[idx + 1].start);
+      await _player.seek(_clampToTrack(chapters[idx + 1].start));
     } else {
       await _player.seekToNext();
     }
@@ -926,11 +1057,22 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> seekAbsolute(Duration absolutePosition) async {
+    // Clamp 1 s short of the end: landing exactly on the total is
+    // end-of-media to ExoPlayer, so a +30 s press with 20 s left would trip
+    // completion detection (finished panel, session torn down) mid-sentence.
+    // Finishing a book happens by playing its last second, never by seeking.
+    final totalMs = totalBookDurationMs;
+    var targetMs = absolutePosition.inMilliseconds;
+    if (totalMs > 0) {
+      targetMs =
+          targetMs.clamp(0, (totalMs - _endGuardMs).clamp(0, totalMs)).toInt();
+    }
+    final target = trackFromAbsolute(_trackDurationsMs, targetMs);
+    if (target == null) return;
+    // Arm undo only for a seek that actually happens — arming before the
+    // null return lit the Undo button against a position never left.
     _previousAbsolutePositionMs = absolutePositionMs;
     canUndoSeekNotifier.value = true;
-    final target =
-        trackFromAbsolute(_trackDurationsMs, absolutePosition.inMilliseconds);
-    if (target == null) return;
     await _player.seek(Duration(milliseconds: target.positionMs),
         index: target.index);
   }
@@ -979,13 +1121,22 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       if (!_player.playing || _player.processingState != ProcessingState.ready) {
         return;
       }
+      // Heals a platform session rebuilt mid-listen (see republishNowPlaying)
+      // within one tick, before the user ever hits a dead button.
+      republishNowPlaying();
       _saveAndReportPosition(state: 'playing');
     });
   }
 
   Future<void> _saveAndReportPosition({required String state}) async {
+    // Mid-load the identity fields already name the incoming book while the
+    // player still reports the outgoing one — a save here would file A's
+    // position under B's key and destroy B's place. Skip; the next periodic
+    // tick lands after the load, and loadBook itself saves the outgoing book.
+    if (_loadInProgress) return;
     final track = _currentTrack;
-    if (track == null || _bookRatingKey == null) return;
+    final bookKey = _bookRatingKey;
+    if (track == null || bookKey == null) return;
 
     final now = DateTime.now();
     if (_trackingFrom != null) {
@@ -1008,9 +1159,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       if (_lastListenDay != dayKey) {
         _lastListenDay = dayKey;
         ListenDaysStore.markListenedToday(
-          _bookRatingKey!,
+          bookKey,
           lastCompletedAt:
-              CompletedBooksStore.completionDates(_bookRatingKey!).lastOrNull,
+              CompletedBooksStore.completionDates(bookKey).lastOrNull,
         );
       }
     }
@@ -1021,7 +1172,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // Awaited so the write is durable before this future completes — the
     // lifecycle save path (app backgrounded/killed) depends on it.
     await BookmarkStore.save(
-      _bookRatingKey!,
+      bookKey,
       BookPosition(
         trackRatingKey: track.ratingKey,
         positionMs: positionMs,
@@ -1044,21 +1195,21 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     }, onError: (_) async {
       // Server unreachable — persist the latest position for this book so it
       // survives a kill and syncs to Plex's "Continue" on the next success or
-      // app foreground. Last-write-wins: one pending entry per book.
-      final bookKey = _bookRatingKey;
-      if (bookKey != null) {
-        await TimelineQueueStore.enqueue(
-          bookKey,
-          PendingTimeline(
-            ratingKey: track.ratingKey,
-            key: track.key,
-            positionMs: positionMs,
-            durationMs: track.durationMs,
-            state: state,
-            savedAt: DateTime.now(),
-          ),
-        );
-      }
+      // app foreground. Last-write-wins: one pending entry per book. Uses the
+      // book key captured when the position was, NOT re-read here: the error
+      // lands seconds later, and a book switch in between filed A's pending
+      // update under B's key.
+      await TimelineQueueStore.enqueue(
+        bookKey,
+        PendingTimeline(
+          ratingKey: track.ratingKey,
+          key: track.key,
+          positionMs: positionMs,
+          durationMs: track.durationMs,
+          state: state,
+          savedAt: DateTime.now(),
+        ),
+      );
     });
   }
 

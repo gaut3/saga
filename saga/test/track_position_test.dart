@@ -67,8 +67,12 @@ void main() {
           trackFromAbsolute(withZero, 600001), (index: 2, positionMs: 1));
     });
 
-    test('single zero-duration track resolves to it', () {
-      expect(trackFromAbsolute(const [0], 5000), (index: 0, positionMs: 0));
+    test('zero total returns null (no seek)', () {
+      // Plex omits `duration` on unanalyzed tracks. With a zero total every
+      // target used to clamp to 0, so +30 s restarted the book from 0:00;
+      // null makes skips/scrubs honest no-ops instead.
+      expect(trackFromAbsolute(const [0], 5000), isNull);
+      expect(trackFromAbsolute(const [0, 0, 0], 5000), isNull);
     });
 
     test('empty track list returns null (no seek)', () {

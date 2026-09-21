@@ -236,8 +236,10 @@ class _MonthTabState extends ConsumerState<HistoryMonthTab> {
               const SizedBox(height: 8),
               LayoutBuilder(builder: (_, constraints) {
                 const spacing = 4.0;
-                final cellW =
-                    (constraints.maxWidth - 6 * spacing) / 7;
+                // Floor at 0: a freeform window narrower than the spacing
+                // makes this negative, and a negative SizedBox height asserts.
+                final cellW = ((constraints.maxWidth - 6 * spacing) / 7)
+                    .clamp(0.0, double.infinity);
                 final rows = (gridCount / 7).ceil();
                 final gridH =
                     rows * cellW + (rows - 1) * spacing;

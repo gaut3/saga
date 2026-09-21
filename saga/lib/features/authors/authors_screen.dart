@@ -8,6 +8,7 @@ import '../../core/plex/models/plex_author.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/providers.dart';
 import '../../shared/widgets/book_card.dart';
+import '../../shared/widgets/library_gate.dart';
 
 class AuthorsScreen extends ConsumerWidget {
   const AuthorsScreen({super.key});
@@ -15,27 +16,18 @@ class AuthorsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(sagaThemeVariantProvider);
-    final libraryKeyAsync = ref.watch(activeLibraryKeyProvider);
 
     return Scaffold(
       backgroundColor: SagaColors.bg,
-      body: libraryKeyAsync.when(
-        loading: () =>
-            Center(child: CircularProgressIndicator(color: SagaColors.accent)),
-        error: (e, _) => SagaErrorView(
-          message: 'Could not load your library',
-          error: e,
-          onRetry: () => ref.invalidate(activeLibraryKeyProvider),
-        ),
-        data: (key) {
-          if (key == null) {
-            return Center(
-              child: Text('No library found',
-                  style: TextStyle(color: SagaColors.fgMuted)),
-            );
-          }
-          return _AuthorsContent(libraryKey: key);
-        },
+      // No offline slivers: the author list is read from the server's
+      // library, and local records can't reconstruct it honestly (a book
+      // downloaded straight from a list may not even name its author). The
+      // note says so instead of a spinner pretending otherwise.
+      body: LibraryGate(
+        title: 'Authors',
+        online: (key) => _AuthorsContent(libraryKey: key),
+        offlineMessage:
+            "Your server isn't reachable — authors are read from its library.",
       ),
     );
   }

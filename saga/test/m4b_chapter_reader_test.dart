@@ -47,6 +47,20 @@ Uint8List m4bWithChpl(List<int> chpl) {
   return Uint8List.fromList([...ftyp, ...moov]);
 }
 
+/// Byte offset of the first occurrence of a fourcc, for patching fixtures.
+int fourccIndex(Uint8List data, String fourcc) {
+  final t = ascii.encode(fourcc);
+  for (var i = 0; i + 4 <= data.length; i++) {
+    if (data[i] == t[0] &&
+        data[i + 1] == t[1] &&
+        data[i + 2] == t[2] &&
+        data[i + 3] == t[3]) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 List<int> _u32(int v) =>
     [(v >> 24) & 0xFF, (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF];
 
@@ -548,6 +562,44 @@ void main() {
       await M4bChapterReader.parseBuffer(data, notes: notes);
       expect(notes.join(), isNot(contains('gathered from')),
           reason: 'the contiguous case must not regress into many reads');
+    });
+
+    test('a corrupt stsz sample size cannot trigger a whole-file read',
+        () async {
+      // A half-written download or hostile file can claim any sample size in
+      // stsz; handed straight to a read, that used to be the rest of the file
+      // in one allocation (an OOM kill on a real book).
+      final data = m4bWithChapterTrack(
+        const [(0, 'A'), (1000, 'B'), (2000, 'C')],
+        interleaveGap: scattered,
+      );
+      final at = fourccIndex(data, 'stsz');
+      expect(at, greaterThan(0));
+      // stsz payload: version/flags u32, then the uniform sample_size u32 —
+      // claim ~2 GB per sample.
+      data.setRange(at + 8, at + 12, const [0x7F, 0xFF, 0x00, 0x00]);
+
+      var totalRead = 0;
+      var largestRead = 0;
+      Future<Uint8List?> counting(int start, int length) async {
+        if (start < 0 || start >= data.length || length <= 0) return null;
+        final end = start + length;
+        final chunk = Uint8List.sublistView(
+            data, start, end > data.length ? data.length : end);
+        totalRead += chunk.length;
+        if (chunk.length > largestRead) largestRead = chunk.length;
+        return chunk;
+      }
+
+      final chapters =
+          await M4bChapterReader.parseWithReader(counting, data.length);
+      // Timing still parses; the poisoned samples are dropped from the title
+      // reads, so the names degrade to the honest fallback.
+      expect(chapters.map((c) => c.title).toList(),
+          ['Chapter 1', 'Chapter 2', 'Chapter 3']);
+      expect(largestRead, lessThan(64 * 1024),
+          reason: 'a claimed 2 GB sample must never reach a read '
+              '(largest was $largestRead over $totalRead total)');
     });
   });
 

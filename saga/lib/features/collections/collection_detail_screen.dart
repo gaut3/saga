@@ -15,7 +15,10 @@ import '../../shared/widgets/saga_sheet.dart';
 
 class CollectionDetailScreen extends ConsumerStatefulWidget {
   final CustomCollection collection;
-  final String libraryKey;
+
+  /// Null when the library hasn't resolved (offline): book resolution then
+  /// falls back to local records inside [customCollectionBooksProvider].
+  final String? libraryKey;
 
   const CollectionDetailScreen({
     super.key,
@@ -33,6 +36,11 @@ class _CollectionDetailScreenState
   String _query = '';
   final _searchController = TextEditingController();
 
+  /// Empty section key = no resolved library; the provider reads that as
+  /// "resolve from local records" rather than asking the server.
+  String get _booksParam =>
+      '${widget.libraryKey ?? ''}|${widget.collection.id}';
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -40,8 +48,7 @@ class _CollectionDetailScreenState
   }
 
   void _showSetCoverSheet(BuildContext context) {
-    final booksAsync = ref.read(customCollectionBooksProvider(
-        '${widget.libraryKey}|${widget.collection.id}'));
+    final booksAsync = ref.read(customCollectionBooksProvider(_booksParam));
     final books = booksAsync.valueOrNull ?? [];
     // A fetch still in flight is not an empty collection — telling the owner
     // of ten books to "add books first" because the server was slow is a lie.
@@ -148,8 +155,7 @@ class _CollectionDetailScreenState
     // Pushed on a tab stack — rebuilds come from nowhere else on a theme
     // switch, so watch it here.
     ref.watch(sagaThemeVariantProvider);
-    final booksAsync = ref.watch(customCollectionBooksProvider(
-        '${widget.libraryKey}|${widget.collection.id}'));
+    final booksAsync = ref.watch(customCollectionBooksProvider(_booksParam));
 
     return Scaffold(
       backgroundColor: SagaColors.bg,
@@ -177,8 +183,8 @@ class _CollectionDetailScreenState
         error: (e, _) => SagaErrorView(
           message: 'Could not load this collection',
           error: e,
-          onRetry: () => ref.invalidate(customCollectionBooksProvider(
-              '${widget.libraryKey}|${widget.collection.id}')),
+          onRetry: () =>
+              ref.invalidate(customCollectionBooksProvider(_booksParam)),
         ),
         data: (rawBooks) {
           final q = _query.toLowerCase();
@@ -205,6 +211,29 @@ class _CollectionDetailScreenState
                   onChanged: (v) => setState(() => _query = v.trim()),
                 ),
               ),
+              // Entries local records couldn't name, counted only while the
+              // library is unresolved — a silent shortfall would make an
+              // 8-book collection quietly read as 3. Online, a shortfall is
+              // the long-standing re-imported/other-server skip, unchanged.
+              if (ref.watch(activeLibraryKeyProvider).valueOrNull == null &&
+                  widget.collection.bookRatingKeys.length > rawBooks.length)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Builder(builder: (_) {
+                      final n = widget.collection.bookRatingKeys.length -
+                          rawBooks.length;
+                      return Text(
+                        n == 1
+                            ? '1 book needs the server to show here.'
+                            : '$n books need the server to show here.',
+                        style: TextStyle(
+                            color: SagaColors.fgMuted, fontSize: 13),
+                      );
+                    }),
+                  ),
+                ),
               Expanded(
                 child: books.isEmpty
                     ? Center(

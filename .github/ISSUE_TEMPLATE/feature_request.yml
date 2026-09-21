@@ -1,0 +1,15 @@
+name: Feature request
+description: Suggest something Saga should do
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like Saga to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What problem does it solve for you?
+      description: How you listen and where the current app falls short. This shapes the design more than the feature name does.

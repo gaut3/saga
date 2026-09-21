@@ -219,7 +219,9 @@ class _HeatmapCard extends StatelessWidget {
           const SizedBox(height: 14),
           LayoutBuilder(builder: (context, constraints) {
             final w = constraints.maxWidth;
-            final cellW = (w - (_cols - 1) * _gap) / _cols;
+            // Floor at 0 — same negative-width guard as the month grid.
+            final cellW =
+                ((w - (_cols - 1) * _gap) / _cols).clamp(0.0, double.infinity);
             final cellH = (cellW * _rows + (_rows - 1) * _gap) / _rows;
 
             return Row(

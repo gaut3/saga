@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/diagnostics/app_log.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../shared/widgets/saga_error_view.dart';
@@ -105,48 +106,60 @@ class _ServerSelectionScreenState extends ConsumerState<ServerSelectionScreen> {
     if (_selecting) return;
     setState(() => _selecting = true);
 
-    final discovery = ref.read(plexServerDiscoveryProvider);
+    // Everything here can throw (storage writes, keystore, the network), and
+    // this dialog is not dismissable — without the catch below, a failure
+    // froze the app behind the spinner with `_selecting` latched, so even the
+    // list underneath was dead. Force-quit was the only exit.
+    var dialogOpen = false;
+    try {
+      final discovery = ref.read(plexServerDiscoveryProvider);
 
-    // Position saves file under the *current* server's storage scope every ten
-    // seconds, and selectServer re-points that scope. A book left playing
-    // across the switch would file the rest of its session under the new
-    // server's same-numbered book — stop cleanly (place saved) first.
-    if (server.machineIdentifier !=
-        ref.read(plexClientProvider).machineIdentifier) {
-      await ref.read(playerServiceProvider).stopAndClear();
-    }
-    if (!context.mounted) {
-      if (mounted) setState(() => _selecting = false);
-      return;
-    }
+      // Position saves file under the *current* server's storage scope every
+      // ten seconds, and selectServer re-points that scope. A book left
+      // playing across the switch would file the rest of its session under
+      // the new server's same-numbered book — stop cleanly (place saved)
+      // first.
+      if (server.machineIdentifier !=
+          ref.read(plexClientProvider).machineIdentifier) {
+        await ref.read(playerServiceProvider).stopAndClear();
+      }
+      if (!context.mounted) return;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => Center(
-        child: CircularProgressIndicator(color: SagaColors.accent),
-      ),
-    );
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => Center(
+          child: CircularProgressIndicator(color: SagaColors.accent),
+        ),
+      );
+      dialogOpen = true;
 
-    await discovery.selectServer(server);
+      await discovery.selectServer(server);
 
-    if (!context.mounted) {
-      if (mounted) setState(() => _selecting = false);
-      return;
-    }
+      if (!context.mounted) return;
 
-    ref.read(activeServerUriProvider.notifier).state =
-        ref.read(plexClientProvider).serverUri;
-    Navigator.of(context).pop(); // close loading dialog
-    if (!widget.isSetup) Navigator.of(context).pop(); // back to settings
+      ref.read(activeServerUriProvider.notifier).state =
+          ref.read(plexClientProvider).serverUri;
+      Navigator.of(context).pop(); // close loading dialog
+      dialogOpen = false;
+      if (!widget.isSetup) Navigator.of(context).pop(); // back to settings
 
-    if (ref.read(plexClientProvider).serverUri == null) {
+      if (ref.read(plexClientProvider).serverUri == null) {
+        if (context.mounted) {
+          showSagaToast(
+              context, 'Could not reach server. Check your connection.',
+              isError: true, duration: const Duration(seconds: 4));
+        }
+      }
+    } catch (e) {
+      AppLog.log('server', 'server switch failed: $e');
       if (context.mounted) {
-        showSagaToast(context, 'Could not reach server. Check your connection.',
+        if (dialogOpen) Navigator.of(context).pop(); // close loading dialog
+        showSagaToast(context, 'Could not switch server — try again.',
             isError: true, duration: const Duration(seconds: 4));
       }
+    } finally {
+      if (mounted) setState(() => _selecting = false);
     }
-
-    if (mounted) setState(() => _selecting = false);
   }
 }

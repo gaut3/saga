@@ -8,11 +8,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/audio/m4b_chapter_reader.dart';
+import '../../core/cast/cast_service.dart';
 import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/providers.dart';
 import '../../core/storage/artwork_cache.dart';
 import '../../core/storage/book_download_store.dart';
+import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/download_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/storage/track_cache_store.dart';
@@ -66,6 +68,79 @@ void setPlayerServiceInstance(AudioPlayerService s) {
   _serviceInstance = s;
 }
 
+/// Lives here rather than beside [CastService]: the position writeback needs
+/// the player service and the stores, and it must belong to something that
+/// outlives the cast sheet — the sheet is usually long closed when a TV is
+/// switched off or the session drops, and the writeback used to live only
+/// under its Disconnect button, freezing the local bookmark at the moment
+/// casting started.
+///
+/// Read once at startup (main shell) so the native-call handler exists even
+/// when the sheet was never opened this process — the Cast SDK auto-resumes a
+/// live session across an app restart, and its callbacks were silently
+/// dropped until the sheet was reopened.
+final castServiceProvider = Provider<CastService>((ref) {
+  final service = CastService();
+  final player = ref.read(playerServiceProvider);
+
+  // Writes the cast position straight to the bookmark, keyed by the handoff
+  // identity — never by whatever the local player holds now. Runs on every
+  // 10 s poll tick, so an app killed mid-cast loses at most 10 s.
+  Future<void> writeBack(CastHandoff h, int posMs) async {
+    if (posMs <= 0) return;
+    await BookmarkStore.save(
+      h.bookRatingKey,
+      BookPosition(
+        trackRatingKey: h.trackRatingKey,
+        positionMs: posMs,
+        absolutePositionMs: h.trackStartMs + posMs,
+        totalDurationMs: h.totalDurationMs,
+        savedAt: DateTime.now(),
+      ),
+    );
+    ref.read(bookmarkRevisionProvider.notifier).state++;
+  }
+
+  service.onPositionUpdate = writeBack;
+  service.onSessionEnded = (h, posMs) async {
+    try {
+      await writeBack(h, posMs);
+      // Move the paused local player too, but only when it still holds the
+      // cast book and track — if another book was started meanwhile (or the
+      // pill was swiped away), the bookmark write above is the whole
+      // handback. Raw seek: no undo arming, no session-log skip event.
+      if (posMs > 0 &&
+          player.currentBookRatingKey == h.bookRatingKey &&
+          player.currentTrackInfo?.ratingKey == h.trackRatingKey) {
+        await player.player.seek(Duration(milliseconds: posMs));
+      }
+      AppLog.log('cast', 'session ended — position handed back');
+    } catch (e) {
+      AppLog.log('cast', 'position writeback failed: $e');
+    } finally {
+      await SettingsStore.setActiveCastHandoff(null);
+    }
+  };
+
+  // A relaunch mid-cast: pick the persisted handoff back up and ask native
+  // whether the SDK resumed the session. If it didn't, the handoff is stale —
+  // the poll already saved everything up to the kill.
+  final stored = SettingsStore.activeCastHandoff;
+  if (stored != null) {
+    final h = CastHandoff.tryParse(stored);
+    if (h != null) {
+      service.beginSession(h);
+      unawaited(service.syncSessionState().then((connected) async {
+        if (!connected) await SettingsStore.setActiveCastHandoff(null);
+      }));
+    } else {
+      unawaited(SettingsStore.setActiveCastHandoff(null));
+    }
+  }
+  ref.onDispose(service.dispose);
+  return service;
+});
+
 /// Seconds the finished panel counts down before the next book starts.
 const _kAutoAdvanceSeconds = 5;
 
@@ -94,11 +169,16 @@ void _maybeAutoAdvance(Ref ref, AudioPlayerService service) {
           await ref.read(nextInSeriesProvider('$libraryKey|$bookKey').future);
       if (next == null) return;
       // The user may have acted while the lookup was in flight: dismissed the
-      // finished panel, started another book, or hit play to hear this one
-      // again. Any of those means don't arm anything.
+      // finished panel (its X clears justFinishedBook), started another book,
+      // or hit play to hear this one again (both routes go through loadBook,
+      // which clears it and cancels any armed advance). Deliberately no
+      // `playing` check here: just_audio keeps playing=true through completion
+      // until the concurrent stop() lands, and a cache-warm lookup reliably
+      // won that race — the old check read the completion transient as "user
+      // pressed play" and silently killed exactly the countdowns the user was
+      // watching (warm caches and a watched screen arrive together).
       if (service.justFinishedBook.value != bookKey) return;
       if (service.currentBookRatingKey != bookKey) return;
-      if (service.playbackState.value.playing) return;
 
       service.scheduleAutoAdvance(_kAutoAdvanceSeconds, () async {
         AppLog.log('playback', 'auto-advancing to ${next.$2.ratingKey}');
@@ -200,6 +280,31 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
           'reconciled $purged download entries with missing files');
       _loadExisting();
     }
+    // Sweep .part temp files left by a process death mid-download — hundreds
+    // of MB per event, invisible to every store-driven view. Only while the
+    // queue is idle: a live download owns its .part.
+    if (_active == 0 && _queue.isEmpty) {
+      try {
+        final base = await getApplicationDocumentsDirectory();
+        final root = Directory('${base.path}/downloads');
+        if (root.existsSync()) {
+          var swept = 0;
+          await for (final f in root.list(recursive: true)) {
+            if (f is File && f.path.endsWith('.part')) {
+              try {
+                await f.delete();
+                swept++;
+              } catch (_) {}
+            }
+          }
+          if (swept > 0) {
+            AppLog.log('download', 'swept $swept orphaned partial downloads');
+          }
+        }
+      } catch (_) {
+        // Sweeping is housekeeping — never let it fail the reconcile.
+      }
+    }
     return purged;
   }
 
@@ -223,19 +328,34 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
   /// book (the per-chapter download button used to do exactly that).
   Future<void> downloadTrack(PlexTrack track, String bookRatingKey,
       List<PlexTrack> bookTracks) async {
-    if (TrackCacheStore.trackCount(bookRatingKey) != bookTracks.length) {
-      await TrackCacheStore.save(bookRatingKey, bookTracks);
-    }
+    // Dedupe and mark queued BEFORE the first await: the track-cache write
+    // below suspends, and on a book's first download every entrant reached
+    // it before the guards — a double-tap (or detail + bulk on the same
+    // book) then wrote the same file from two dio calls at once, and the
+    // interleaved result was recorded as a completed download.
     final key = track.ratingKey;
     if (state.completed.contains(key)) return;
     if (state.progress.containsKey(key)) return; // queued or downloading
     if (_queue.any((j) => j.track.ratingKey == key)) return;
 
-    // 0.0 marks it as queued so the UI shows a pending spinner immediately.
+    // 0.0 marks it as queued so the UI shows a pending spinner immediately —
+    // and makes a concurrent caller hit the progress guard above.
     state = state.copyWith(
       progress: {...state.progress, key: 0.0},
       failed: {...state.failed}..remove(key),
     );
+
+    try {
+      if (TrackCacheStore.trackCount(bookRatingKey) != bookTracks.length) {
+        await TrackCacheStore.save(bookRatingKey, bookTracks);
+      }
+    } catch (e) {
+      // Without this the early progress mark above would sit as a spinner
+      // that nothing ever clears.
+      AppLog.log('download', 'track cache save failed for $bookRatingKey: $e');
+      _markFailed(key);
+      return;
+    }
     _queue.add((track: track, bookRatingKey: bookRatingKey));
     _pump();
   }
@@ -293,9 +413,14 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
         connectTimeout: const Duration(seconds: 30),
         receiveTimeout: const Duration(seconds: 60),
       ));
+      // Download to a temp name, rename into place only on a clean return:
+      // the final name is never a half-file, and a process death mid-download
+      // (low-memory kill, force-stop) leaves a .part that reconcile() sweeps —
+      // instead of an invisible orphan no store-driven view could reclaim.
+      final partPath = '$filePath.part';
       await dio.download(
         url,
-        filePath,
+        partPath,
         options: Options(headers: client.authHeaders),
         onReceiveProgress: (received, total) {
           if (total > 0) {
@@ -305,6 +430,7 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
           }
         },
       );
+      await File(partPath).rename(filePath);
 
       await DownloadStore.save(key, filePath);
       BookDownloadStore.recordDownload(bookRatingKey, key);
@@ -332,9 +458,11 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
       // gated on DownloadStore metadata) but would sit invisibly on disk —
       // the storage manager only lists completed downloads.
       if (filePath != null) {
-        try {
-          await File(filePath).delete();
-        } catch (_) {}
+        for (final p in [filePath, '$filePath.part']) {
+          try {
+            await File(p).delete();
+          } catch (_) {}
+        }
       }
       _markFailed(key);
     } finally {
@@ -437,10 +565,20 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
   // zero would trip loadBook's stray-mute restore if a book loaded mid-fade.
   static const _fadeWindow = Duration(seconds: 15);
 
+  // How long a finished book's frozen countdown waits for playback to resume
+  // (auto-advance: lookup + 5 s countdown + load) before ending for real.
+  static const _completionGrace = Duration(seconds: 30);
+
   Timer? _timer;
   Timer? _fadeTicker;
+  Timer? _graceTimer;
   bool _faded = false;
+  // The window the fade actually spans: `min(countdown, _fadeWindow)`, so an
+  // end-of-chapter countdown shorter than 15 s ramps smoothly from full
+  // volume instead of jumping to a mid-fade level on its first tick.
+  Duration _fadeBase = _fadeWindow;
   StreamSubscription<_PlaybackPhase>? _playbackSub;
+  StreamSubscription<MediaItem?>? _mediaSub;
   final AudioPlayerService _service;
 
   // Set while playback is paused mid-countdown: the frozen time remaining, so
@@ -507,30 +645,48 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
   }
 
   /// (Re)starts the countdown for [remaining], scheduling the pause.
-  void _arm(Duration remaining) {
+  ///
+  /// [freshFadeBase] is false when reclaiming a frozen countdown (pause,
+  /// completion handoff): the fade must span the window it was *armed* with.
+  /// Recomputing it from the frozen remaining made the first tick after a
+  /// mid-fade resume read `r ≈ base` — a jump back to full volume, then a
+  /// second full fade, where 1.1.1 promised the fade picks up where it left
+  /// off.
+  void _arm(Duration remaining, {bool freshFadeBase = true}) {
     _timer?.cancel();
+    _graceTimer?.cancel(); // resumed playback reclaims a completion-frozen timer
+    _graceTimer = null;
     _pausedRemaining = null;
+    if (freshFadeBase) {
+      _fadeBase = remaining < _fadeWindow ? remaining : _fadeWindow;
+    }
     state = DateTime.now().add(remaining);
     _timer = Timer(remaining, () async {
       // Volume is restored only after the pause, so the fade's tail never
       // jumps back to full volume while still audible.
       _cancelAll(restoreVolume: false);
-      await _service.pause();
-      _restoreVolume();
+      try {
+        await _service.pause();
+      } finally {
+        // Restore even when the pause throws (Doze, recycled service) — a
+        // throw here used to strand playback at the 5% fade floor, with the
+        // book inaudible and no visible cause.
+        _restoreVolume();
+      }
     });
     _fadeTicker ??=
         Timer.periodic(const Duration(milliseconds: 500), (_) => _fadeTick());
   }
 
-  /// Eases volume down over the countdown's final [_fadeWindow]. Runs for the
-  /// timer's whole life but is a no-op until the window; while paused
-  /// mid-countdown `remaining` is frozen, so it just re-sets the same volume.
+  /// Eases volume down over the countdown's final [_fadeBase]. Runs while
+  /// the countdown is live (cancelled while frozen mid-pause) and is a no-op
+  /// until the fade window begins.
   void _fadeTick() {
     final r = remaining;
-    if (r == null || r > _fadeWindow) return;
+    if (r == null || r > _fadeBase) return;
     _faded = true;
-    _service.player
-        .setVolume((r.inMilliseconds / _fadeWindow.inMilliseconds).clamp(0.05, 1.0));
+    _service.player.setVolume(
+        (r.inMilliseconds / _fadeBase.inMilliseconds).clamp(0.05, 1.0));
   }
 
   void _restoreVolume() {
@@ -551,14 +707,35 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
         .distinct()
         .listen((phase) {
       if (state == null) return; // no active timer
-      // Playback is over (book finished, or the service stopped): there is no
-      // listening time left for the countdown to measure. Without this the
-      // timer froze as if merely paused, so the player kept showing an armed
-      // sleep timer after the book ended — and re-armed it against whatever
-      // was played next.
-      if (phase.processing == AudioProcessingState.completed ||
-          phase.processing == AudioProcessingState.idle) {
-        _cancelAll();
+      // `idle` is deliberately NOT an end signal here: every loadBook
+      // broadcasts one transient idle (setAudioSource emits it synchronously
+      // at its top), so cancelling on idle silently killed an armed timer on
+      // chapter taps and stream-error auto-reloads — and the book then played
+      // all night. The user-stop case is covered by the mediaItem
+      // subscription below.
+      if (phase.processing == AudioProcessingState.completed) {
+        // The book finished. If auto-advance (or the user, straight off the
+        // finished panel) rolls into another book, the countdown must survive
+        // into it — pausing whatever is playing at bedtime is the feature's
+        // whole job, and completion is exactly where it used to die: the
+        // cancel here always beat the advance, whose lookup and 5 s countdown
+        // are still ahead (first 1.1.2 dogfood night). But cancelling is
+        // still needed eventually — armed forever, the timer ambushed a
+        // listen hours later. Can't tell the two apart synchronously, so:
+        // freeze like a pause, let resumed playback reclaim the countdown
+        // (the playing branch below), and end it if silence outlasts the
+        // grace — nothing followed the finish.
+        if (_pausedRemaining == null) {
+          _pausedRemaining = remaining;
+          _timer?.cancel();
+          _timer = null;
+          _fadeTicker?.cancel();
+          _fadeTicker = null;
+        }
+        _graceTimer?.cancel();
+        _graceTimer = Timer(_completionGrace, () {
+          if (state != null) _cancelAll();
+        });
         return;
       }
       final playing = phase.playing;
@@ -566,16 +743,36 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
         _pausedRemaining = remaining; // freeze
         _timer?.cancel();
         _timer = null;
+        // Nothing to fade while frozen — don't tick at 2 Hz for hours.
+        _fadeTicker?.cancel();
+        _fadeTicker = null;
       } else if (playing && _pausedRemaining != null) {
         final r = _pausedRemaining!;
         if (r > Duration.zero) {
-          _arm(r); // resume (clears _pausedRemaining)
+          // Resume (clears _pausedRemaining); the fade base survives so a
+          // mid-fade pause picks the ramp back up at the level it left.
+          _arm(r, freshFadeBase: false);
         } else {
+          // The countdown hit zero in the same instant playback paused (a
+          // Doze-delayed timer callback). Treat this resume as the expiry —
+          // the frozen timer used to just evaporate here, leaving the moon
+          // button claiming a timer that would never fire.
           _pausedRemaining = null;
+          _cancelAll(restoreVolume: false);
+          unawaited(_service.pause().whenComplete(_restoreVolume));
         }
       }
     }, onError: (Object e, StackTrace st) {
       AppLog.log('sleep-timer', 'playback watch error: $e');
+    });
+    // The user stopped the session (swipe-away → stopAndClear): broadcast as
+    // a null mediaItem, which — unlike the processing state — can never be
+    // confused with a load in flight (loadBook publishes the new book's
+    // mediaItem before its transient idle).
+    _mediaSub?.cancel();
+    _mediaSub = _service.mediaItem.listen((item) {
+      if (state == null) return;
+      if (item == null) _cancelAll();
     });
   }
 
@@ -584,8 +781,12 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
     _timer = null;
     _fadeTicker?.cancel();
     _fadeTicker = null;
+    _graceTimer?.cancel();
+    _graceTimer = null;
     _playbackSub?.cancel();
     _playbackSub = null;
+    _mediaSub?.cancel();
+    _mediaSub = null;
     _pausedRemaining = null;
     state = null;
     if (restoreVolume) _restoreVolume();

@@ -41,11 +41,15 @@ class PlexAuth {
       options: Options(headers: {'Accept': 'application/json'}),
     );
 
-    final data = response.data!;
-    return PlexPinResult(
-      id: data['id'] as int,
-      code: data['code'] as String,
-    );
+    // A captive portal or proxy can answer for plex.tv with anything — fail
+    // with something the sign-in screen can show, not a raw null-check throw.
+    final data = response.data;
+    final id = (data?['id'] as num?)?.toInt();
+    final code = data?['code']?.toString();
+    if (id == null || code == null || code.isEmpty) {
+      throw const FormatException('plex.tv returned an unusable PIN response');
+    }
+    return PlexPinResult(id: id, code: code);
   }
 
   Future<void> openAuthUrl(PlexPinResult pin) async {
@@ -94,6 +98,10 @@ class PlexAuth {
         }
       } on DioException {
         // transient — keep polling
+      } catch (_) {
+        // A malformed response (captive portal, proxy) is transient too: the
+        // deadline bounds the loop. Only DioException used to be caught, so
+        // one odd body ended the whole sign-in poll.
       }
     }
 

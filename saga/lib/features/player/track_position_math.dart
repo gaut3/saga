@@ -18,11 +18,15 @@ int absoluteFromTrack(
 /// position. Clamps to the total book duration. A position exactly on a
 /// track boundary (`ms == duration`) stays on the earlier track; the last
 /// track catches any remainder, so zero-duration tracks fall through
-/// cleanly. Returns null for an empty track list (no seek possible).
+/// cleanly. Returns null for an empty track list — and for a zero total
+/// (Plex omits `duration` on unanalyzed tracks): with no durations, every
+/// target would clamp to 0 and a skip would silently restart the book, so
+/// no seek is possible.
 ({int index, int positionMs})? trackFromAbsolute(
     List<int> trackDurationsMs, int absoluteMs) {
   if (trackDurationsMs.isEmpty) return null;
   final total = trackDurationsMs.fold<int>(0, (a, b) => a + b);
+  if (total <= 0) return null;
   var ms = absoluteMs.clamp(0, total);
   for (var i = 0; i < trackDurationsMs.length; i++) {
     final dur = trackDurationsMs[i];

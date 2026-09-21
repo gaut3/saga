@@ -452,8 +452,13 @@ class M4bChapterReader {
   ) async {
     final clusters = _clusterSamples(samples);
     if (clusters.isEmpty) {
-      notes.add('$where: chapter track samples have no readable extent');
-      return [];
+      // Every sample was unreadable — zero/absurd size or negative offset (a
+      // corrupt stsz can claim gigabytes per sample). The times themselves
+      // parsed fine, and numbered chapters beat no chapters: same rule as
+      // the read budget below.
+      notes.add('$where: chapter track samples have no readable extent — '
+          'numbering them instead');
+      return _numbered(samples);
     }
 
     // Titles with no bytes behind them still have their times, and correctly
@@ -505,9 +510,15 @@ class M4bChapterReader {
   /// as one span was not.
   static List<({int start, int end})> _clusterSamples(
       List<_ChapterSample> samples) {
+    // The size cap applies to every sample, not just merged clusters: `size`
+    // comes straight from stsz, and a corrupt or half-written file can claim
+    // 4 GB there — handed to a read, that used to be the rest of the file in
+    // one allocation (an OOM kill locally, a whole-book download streamed).
+    // A real chapter title is tens of bytes; dropping the sample just means
+    // its title falls back to "Chapter N".
     final ordered = [
       for (final s in samples)
-        if (s.size > 0 && s.offset >= 0) s
+        if (s.size > 0 && s.size <= _maxSampleSpan && s.offset >= 0) s
     ]..sort((a, b) => a.offset.compareTo(b.offset));
 
     final out = <({int start, int end})>[];
@@ -694,8 +705,15 @@ class M4bChapterReader {
           sendTimeout: const Duration(seconds: 10),
         ),
       );
-      if (resp.data == null) return null;
-      return Uint8List.fromList(resp.data!);
+      final data = resp.data;
+      if (data == null) return null;
+      // A server that ignores Range answers 200 with the whole file. The walk
+      // issues dozens of 16-byte reads, and dio buffers each response in full
+      // before we see it — against such a server that is the book in memory
+      // per read, so refuse anything that isn't partial content (or that
+      // over-answers a 206) rather than copying it once more below.
+      if (resp.statusCode != 206 || data.length > to - from) return null;
+      return Uint8List.fromList(data);
     } catch (_) {
       return null;
     }

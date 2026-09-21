@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in Saga isn't working right
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What went wrong, and what did you expect instead? Screenshots help a lot, you can drag them straight into this box.
+    validations:
+      required: true
+  - type: input
+    id: saga-version
+    attributes:
+      label: Saga version
+      description: Shown at the bottom of Settings.
+      placeholder: e.g. 1.1.2
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone and Android version
+      placeholder: e.g. Pixel 7, Android 15
+    validations:
+      required: true
+  - type: dropdown
+    id: playback-mode
+    attributes:
+      label: Was the book streamed or downloaded?
+      options:
+        - Streamed
+        - Downloaded
+        - Both / not sure
+        - Not about playback
+    validations:
+      required: true
+  - type: dropdown
+    id: book-layout
+    attributes:
+      label: How is the book stored on your server?
+      description: You can see this on the book's detail page, under Files.
+      options:
+        - One single file (m4b / m4a / mp3)
+        - Multiple files (one per chapter or part)
+        - Not sure
+        - Not about a specific book
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics log
+      description: In Saga, go to Settings, tap "Copy diagnostics", and paste here. Your server address and token are already redacted from it.
+      render: text

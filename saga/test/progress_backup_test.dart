@@ -217,4 +217,71 @@ void main() {
     expect(data, isNotNull);
     expect(data!.serverMachineIdentifier, isNull);
   });
+
+  group('malformed backups fail at parse, before any store is written', () {
+    // Each raw section used to be decoded inside restore(), *after* positions
+    // and completions were written — a shape error there abandoned a
+    // half-written restore with "Import failed" shown and no rollback.
+    String withSection(String section, String jsonValue) =>
+        '{"version": 4, "$section": $jsonValue}';
+
+    test('a string where listening time belongs throws', () {
+      expect(
+          () => ProgressBackup.parseBackupJson(withSection(
+              'listeningHistory', '{"t_2026-01-01": "ninety minutes"}')),
+          throwsFormatException);
+    });
+
+    test('a completed-day entry without a string rk throws', () {
+      expect(
+          () => ProgressBackup.parseBackupJson(
+              withSection('listeningHistory', '{"d_2026-01-01": [{"rk": 5}]}')),
+          throwsFormatException);
+    });
+
+    test('non-numeric completion timestamps throw', () {
+      expect(
+          () => ProgressBackup.parseBackupJson(
+              withSection('completedDetailed', '{"101": ["yesterday"]}')),
+          throwsFormatException);
+    });
+
+    test('a listen-days cycle with numeric days throws', () {
+      // {"d": [1,2,3]} survived the importer's null checks and threw lazily
+      // inside the Hive write, mid-merge.
+      expect(
+          () => ProgressBackup.parseBackupJson(withSection(
+              'listenDays', '{"101": {"s": "2026-01-01", "d": [1, 2, 3]}}')),
+          throwsFormatException);
+    });
+
+    test('a playback-log event without an int ts throws', () {
+      expect(
+          () => ProgressBackup.parseBackupJson(withSection(
+              'playbackLog', '{"log_101": [{"t": "play", "ts": "noon"}]}')),
+          throwsFormatException);
+    });
+
+    test('a well-formed v4 backup with all sections still parses', () async {
+      await seedStores();
+      final json = jsonEncode(ProgressBackup.buildBackupMap());
+      expect(ProgressBackup.parseBackupJson(json), isNotNull);
+    });
+  });
+
+  test('negative and float positions from a hand-edited backup are sanitized',
+      () {
+    final pos = BookPosition.fromMap(const {
+      'trackRatingKey': '1001',
+      'positionMs': -5000,
+      'absolutePositionMs': 1.5e3, // JSON floats decode as double
+      'totalDurationMs': -1,
+      'savedAt': '2026-06-10T21:30:00.000',
+    });
+    // A negative position makes ExoPlayer's initial seek fail — the book
+    // then silently refuses to play until the value is overwritten.
+    expect(pos.positionMs, 0);
+    expect(pos.absolutePositionMs, 1500);
+    expect(pos.totalDurationMs, isNull, reason: 'non-positive total dropped');
+  });
 }

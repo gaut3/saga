@@ -120,11 +120,17 @@ final activeLibraryKeyProvider = FutureProvider<String?>((ref) async {
     if (!await discover()) return null;
   }
 
+  // The override is a *choice among* libraries, not proof the server answers:
+  // returning it without the fetch below made this provider always "resolve"
+  // for anyone who had ever picked a library in Settings — so the offline
+  // tabs, whose entire signal is this key failing to resolve, never engaged
+  // for exactly the multi-library users who used the picker. The fetch is the
+  // reachability probe; the override only decides which key comes back.
   final override = ref.watch(selectedLibraryKeyProvider);
-  if (override != null) return override;
 
   try {
     final libraries = await ref.watch(librariesProvider.future);
+    if (override != null) return override;
     return libraries.firstOrNull?.key;
   } on DioException catch (e) {
     if (e.type == DioExceptionType.connectionTimeout ||
@@ -148,6 +154,7 @@ final activeLibraryKeyProvider = FutureProvider<String?>((ref) async {
       if (!await discover()) return null;
       // Bypass cached librariesProvider — fetch directly with the new URI.
       final libraries = await ref.read(plexApiProvider).fetchLibraries();
+      if (override != null) return override;
       return libraries.firstOrNull?.key;
     }
     rethrow;
@@ -427,7 +434,22 @@ final customCollectionBooksProvider =
   final collectionId = param.substring(sep + 1);
   final col = CustomCollectionStore.get(collectionId);
   if (col == null || col.bookRatingKeys.isEmpty) return [];
-  final allBooks = await ref.watch(booksProvider(sectionKey).future);
+  // An app-made collection must not vanish with the connection: when the
+  // library can't be fetched — or there is no resolved library to ask, the
+  // empty section key of an offline launch — entries resolve through the
+  // phone's own records (downloaded or previously opened books) instead.
+  // Entries the phone knows nothing about drop out here; the detail screen
+  // counts the gap so the shortfall is named, not silent.
+  List<PlexBook> allBooks;
+  if (sectionKey.isEmpty) {
+    allBooks = localBooks(col.bookRatingKeys);
+  } else {
+    try {
+      allBooks = await ref.watch(booksProvider(sectionKey).future);
+    } catch (_) {
+      allBooks = localBooks(col.bookRatingKeys);
+    }
+  }
   final keyIndex = {for (var i = 0; i < col.bookRatingKeys.length; i++) col.bookRatingKeys[i]: i};
   return allBooks
       .where((b) => keyIndex.containsKey(b.ratingKey))
@@ -490,8 +512,14 @@ final upNextSeriesQueuesProvider =
 });
 
 /// The next book after [bookRatingKey] in the first custom collection that
-/// contains it — used by the finished panel's "Next in series".
-/// param format: "sectionKey|bookRatingKey".
+/// contains it — used by the finished panel's "Next in series" and the
+/// auto-advance. Deliberately skips nothing but the just-finished book
+/// itself: a started entry is resumed, a completed one is offered again (a
+/// series listened to anew must flow book to book like the first time) —
+/// where each one *starts* is [playNextBook]'s decision, keyed on the state
+/// of its bookmark. This is looser than the Up Next row's unstarted-only
+/// rule — that row is "what's new to start", this is "carry on through the
+/// series". param format: "sectionKey|bookRatingKey".
 final nextInSeriesProvider =
     FutureProvider.family<(CustomCollection, PlexBook)?, String>(
         (ref, param) async {
@@ -503,11 +531,15 @@ final nextInSeriesProvider =
 
   for (final col in CustomCollectionStore.getAll()) {
     final idx = col.bookRatingKeys.indexOf(bookKey);
-    if (idx < 0 || idx + 1 >= col.bookRatingKeys.length) continue;
-    final nextKey = col.bookRatingKeys[idx + 1];
-    final allBooks = await ref.watch(booksProvider(sectionKey).future);
-    final book = allBooks.where((b) => b.ratingKey == nextKey).firstOrNull;
-    if (book != null) return (col, book);
+    if (idx < 0) continue;
+    for (var i = idx + 1; i < col.bookRatingKeys.length; i++) {
+      final nextKey = col.bookRatingKeys[i];
+      // A book listed twice must not "advance" into itself.
+      if (nextKey == bookKey) continue;
+      final allBooks = await ref.watch(booksProvider(sectionKey).future);
+      final book = allBooks.where((b) => b.ratingKey == nextKey).firstOrNull;
+      if (book != null) return (col, book);
+    }
   }
   return null;
 });
