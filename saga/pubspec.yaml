@@ -25,7 +25,7 @@ dependencies:
   audio_session: ^0.1.22
 
   # Networking
-  dio: ^5.11.0
+  dio: ^5.11.1
   connectivity_plus: ^6.0.0
 
   # Local storage
@@ -41,7 +41,7 @@ dependencies:
   # named directly so sign-out can empty it — a transitive dep is not something
   # to call into on trust.
   cached_network_image: ^3.4.1
-  flutter_cache_manager: ^3.4.2
+  flutter_cache_manager: ^3.4.5
 
   # Utilities
   uuid: ^4.5.1
