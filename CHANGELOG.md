@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Find your place from your listening sessions — and hear it before you jump.** Every session now shows where in the book it started and ended, the chapter it ended in, and how long you listened, not just the time of day. Tap the mark on a session to hear about thirty seconds around where it ended; tap it again, or another session, to stop. A preview never moves your saved place. Only **Resume** does, which starts the book right there. This is for the night you fall asleep listening: check the last few sessions until you hear something you remember, then resume from that one. Sessions are in the player as before, on each book's page (next to Chapters), and under each book in History's Day tab, where they replace the old separate "Started" and "Paused" lines. Suggested by [@cscott0108](https://github.com/cscott0108) ([#16](https://github.com/gaut3/saga/issues/16)).
+
+### Fixed
+- **The notification, lock screen and bluetooth controls should no longer go dead after Saga has been open a long time.** If Android rebuilt Saga's playback service while the app stayed open, the new service lost its connection to the player. The notification still showed the right book and followed what you did in the app, but pressing its buttons did nothing until Saga was force-stopped. The fault is in the audio library Saga uses, and its latest release still has it, so Saga now carries a small fix of its own that reconnects a rebuilt service. The rebuild is up to Android and can't be triggered on demand, so the fix hasn't been seen at work yet. If the controls ever stop responding again, please open an issue.
+- **A session that ends by stopping now has an end.** Finishing a book, swiping the player away, swiping Saga out of recent apps or a stop button on headphones all ended a session without recording where. That last stretch showed no length under Sessions and wasn't counted in History's per-book times. It's recorded now, so it can be previewed and resumed too.
+- **The 13-week heatmap on History's Total tab has square cells.** They were drawn a few pixels taller than wide; they now match the month calendar.
+
+---
+
 ## [1.1.2] - 2026-09-21
 
 A hardening release: no new features, one deep pass over the failure modes a stable app still has. A four-way audit of the codebase (async safety, malformed data, arithmetic edge cases, races) turned up the fixes below; none of them were crashes anyone had reported, because most of them fail silently — which is exactly why they got a release to themselves.

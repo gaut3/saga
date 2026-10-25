@@ -6,19 +6,16 @@ import '../../core/stats/listening_sessions.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/listening_history_store.dart';
 import '../../core/storage/playback_log_store.dart';
-import '../../core/storage/track_cache_store.dart';
-import '../player/track_position_math.dart';
 import '../../shared/widgets/week_bars.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../shared/widgets/book_cover_image.dart';
 import '../../core/book_progress.dart';
-import '../../core/diagnostics/app_log.dart';
-import '../../shared/widgets/saga_toast.dart';
-import '../player/book_launch.dart';
-import '../player/open_player.dart';
 import 'history_data.dart';
 import 'history_shared.dart';
 import '../player/player_provider.dart';
+import '../player/session_place.dart';
+import '../player/session_preview.dart';
+import '../player/session_row.dart';
 import '../../core/utils/date_math.dart';
 import '../../core/utils/format.dart';
 
@@ -525,7 +522,7 @@ class _DayBookEntryState extends ConsumerState<_DayBookEntry> {
         if (e.type == 'play' || e.type == 'pause') e
     ]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     if (chrono.isNotEmpty && total != null) {
-      final absMs = _absoluteEventPositionMs(widget.bookKey, chrono.last);
+      final absMs = placeOfEvent(widget.bookKey, chrono.last)?.absoluteMs;
       if (absMs != null) pct = (absMs / total).clamp(0.0, 1.0);
     }
     final bookPct = pct;
@@ -627,7 +624,7 @@ class _DayBookEntryState extends ConsumerState<_DayBookEntry> {
           curve: Curves.easeInOut,
           child: _expanded
               ? _BookSessionPanel(
-                  bookKey: widget.bookKey, events: widget.events, book: book)
+                  bookKey: widget.bookKey, events: widget.events)
               : const SizedBox.shrink(),
         ),
       ],
@@ -637,63 +634,49 @@ class _DayBookEntryState extends ConsumerState<_DayBookEntry> {
   }
 }
 
-/// Book-absolute offset of a log event, or null when it can't be resolved.
-///
-/// An [AudioLogEvent] records a position inside one file, plus which file.
-/// Placing it in the whole book needs that file's own offset: from the cached
-/// track list when there is one, else from the saved position — which knows
-/// exactly one file's offset (its own: absolute minus track-relative), so it
-/// only helps when the event is on the same file.
-int? _absoluteEventPositionMs(String bookKey, AudioLogEvent e) {
-  final tracks = TrackCacheStore.load(bookKey);
-  if (tracks != null) {
-    final idx = tracks.indexWhere((t) => t.ratingKey == e.trackRatingKey);
-    if (idx >= 0) {
-      return absoluteFromTrack(
-          [for (final t in tracks) t.durationMs], idx, e.positionMs);
-    }
-  }
-  final saved = BookmarkStore.load(bookKey);
-  if (saved != null && saved.trackRatingKey == e.trackRatingKey) {
-    return saved.absolutePositionMs - saved.positionMs + e.positionMs;
-  }
-  return null;
-}
-
 // ── Book session panel (expanded book log) ────────────────────────────────────
 
-class _BookSessionPanel extends ConsumerWidget {
+/// The day's sessions for one book, as [SessionRow]s — preview and resume
+/// included, the same row as the player's Sessions sheet.
+class _BookSessionPanel extends StatefulWidget {
   final String bookKey;
   final List<AudioLogEvent> events;
-  final PlexBook? book;
 
-  const _BookSessionPanel(
-      {required this.bookKey, required this.events, required this.book});
+  const _BookSessionPanel({required this.bookKey, required this.events});
 
   /// Lookup key for a logged event. Pairing runs over the *full* log while
-  /// the rows render one day's slice, and `getLog` builds fresh instances on
+  /// the panel shows one day's slice, and `getLog` builds fresh instances on
   /// every call — so identity can't join the two; timestamp+track can.
   static String _eventKey(AudioLogEvent e) =>
       '${e.timestamp.millisecondsSinceEpoch}_${e.trackRatingKey}';
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final chrono = events
-        .where((e) => e.type == 'play' || e.type == 'pause')
-        .toList()
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  State<_BookSessionPanel> createState() => _BookSessionPanelState();
+}
 
-    // Durations from the shared pairing rule, over the whole log rather than
-    // this day's bucket: a session that crosses midnight has its pause in the
-    // next day's slice, and pairing the day alone left its play row without
-    // a "listened" label.
-    final sessions = pairListeningSessions(PlaybackLogStore.getLog(bookKey));
-    final durationLabels = <String, String>{
-      for (final s in sessions)
-        if (s.duration != null && s.duration!.inMinutes > 0)
-          _eventKey(s.play): '${s.duration!.inMinutes}m listened',
+class _BookSessionPanelState extends State<_BookSessionPanel> {
+  @override
+  void dispose() {
+    // Collapsing the panel (or leaving the tab) ends its preview.
+    SessionPreview.instance.stop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Paired over the whole log, not this day's bucket: a session that
+    // crosses midnight has its pause in the next day's slice, and pairing the
+    // day alone left it without an end. A session belongs to the day it
+    // started.
+    final dayPlays = {
+      for (final e in widget.events)
+        if (e.type == 'play') _BookSessionPanel._eventKey(e)
     };
-    final playCount = chrono.where((e) => e.type == 'play').length;
+    final sessions = [
+      for (final s
+          in pairListeningSessions(PlaybackLogStore.getLog(widget.bookKey)))
+        if (dayPlays.contains(_BookSessionPanel._eventKey(s.play))) s
+    ]..sort((a, b) => b.play.timestamp.compareTo(a.play.timestamp));
 
     return Container(
       margin: const EdgeInsets.only(top: 4, bottom: 4),
@@ -706,111 +689,13 @@ class _BookSessionPanel extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '$playCount session${playCount == 1 ? '' : 's'}',
+            '${sessions.length} session${sessions.length == 1 ? '' : 's'}',
             style: TextStyle(color: SagaColors.fgMuted, fontSize: 12.5),
           ),
-          ...List.generate(chrono.length, (i) => chrono.length - 1 - i).map((i) {
-            final e = chrono[i];
-            final isPlay = e.type == 'play';
-            final dur = isPlay ? durationLabels[_eventKey(e)] : null;
-            return InkWell(
-              onTap: isPlay ? () => _jumpTo(context, ref, e) : null,
-              borderRadius: BorderRadius.circular(6),
-              child: Padding(
-                padding: const EdgeInsets.only(top: 9),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: isPlay
-                            ? SagaColors.accent.withValues(alpha: 0.15)
-                            : SagaColors.surface,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        isPlay ? Icons.play_arrow : Icons.pause,
-                        color:
-                            isPlay ? SagaColors.accent : SagaColors.fgSubtle,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            isPlay ? 'Started' : 'Paused',
-                            style: TextStyle(
-                              color: SagaColors.fg,
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          if (dur != null)
-                            Text(
-                              dur,
-                              style: TextStyle(
-                                  color: SagaColors.fgSubtle, fontSize: 12.5),
-                            ),
-                        ],
-                      ),
-                    ),
-                    Text(
-                      fmtTime(e.timestamp),
-                      style:
-                          TextStyle(color: SagaColors.fgSubtle, fontSize: 13),
-                    ),
-                    if (isPlay) ...[
-                      const SizedBox(width: 4),
-                      Icon(Icons.chevron_right,
-                          color: SagaColors.fgSubtle, size: 14),
-                    ],
-                  ],
-                ),
-              ),
-            );
-          }),
+          for (final s in sessions)
+            SessionRow(bookKey: widget.bookKey, session: s, showDay: false),
         ],
       ),
     );
-  }
-
-  Future<void> _jumpTo(
-      BuildContext context, WidgetRef ref, AudioLogEvent event) async {
-    if (book == null) return;
-    // Each quiet exit says so — a tap that does nothing is indistinguishable
-    // from a dead button. Same wording as the All Bookmarks jump.
-    try {
-      final tracks =
-          await ref.read(tracksProvider(book!.ratingKey).future);
-      if (!context.mounted) return;
-      if (!tracks.any((t) => t.ratingKey == event.trackRatingKey)) {
-        showSagaToast(
-            context,
-            'The file this session points into is no longer '
-            'part of the book.',
-            isError: true);
-        return;
-      }
-      await openPlayerAndStart(
-        context: context,
-        service: ref.read(playerServiceProvider),
-        bookRatingKey: book!.ratingKey,
-        loadTracks: () async => tracks,
-        from: BookStartPoint.atTrack(event.trackRatingKey,
-            positionMs: event.positionMs),
-      );
-    } catch (e) {
-      AppLog.log('playback', 'history session jump failed: $e');
-      if (context.mounted) {
-        showSagaToast(context,
-            'Couldn\'t load this book — is the server reachable?',
-            isError: true);
-      }
-    }
   }
 }

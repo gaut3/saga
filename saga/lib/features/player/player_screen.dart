@@ -202,7 +202,9 @@ class _TopPills extends ConsumerWidget {
               icon: Icons.history_rounded,
               label: 'Sessions ($sessionCount)',
               onTap: () {
-                if (bookKey != null) showSessionsSheet(context, bookKey!);
+                if (bookKey != null) {
+                  showSessionsSheet(context, bookKey!, overPlayer: true);
+                }
               },
             ),
           ],

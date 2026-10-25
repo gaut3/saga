@@ -25,6 +25,7 @@ import 'book_launch.dart';
 import 'media_browse.dart';
 import 'resume_rewind.dart';
 import 'session_restore.dart';
+import 'track_audio_source.dart';
 import 'track_position_math.dart';
 
 class AudioPlayerService extends BaseAudioHandler with SeekHandler {
@@ -404,19 +405,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       resumePositionMs = 0;
     }
 
-    final sources = tracks.map((t) {
-      final localPath = PlexClient.localTrackPath(t);
-      if (localPath != null) {
-        return AudioSource.file(localPath, tag: t.ratingKey);
-      }
-      final streamUrl = PlexClient.instance.buildStreamUrl(t.partKey);
-      if (streamUrl == null) throw StateError('No Plex server configured');
-      return AudioSource.uri(
-        Uri.parse(streamUrl),
-        headers: PlexClient.instance.authHeaders,
-        tag: t.ratingKey,
-      );
-    }).toList();
+    final sources = tracks.map(audioSourceForTrack).toList();
 
     // Publish queue/notification metadata before the (potentially slow) network
     // load, so the media notification has real content the moment the service
@@ -699,6 +688,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // read as "stopping clears the sleep timer" while clearing nothing.
     _progressTimer?.cancel();
     _pausedAt = DateTime.now();
+    // Close the session in the playback log. Natural finish, media-button
+    // stop and swipe-away all end here, not in pause() — without this the
+    // final stretch had no end: no duration in Sessions, no History credit,
+    // and no position to return to. Only while playing (just_audio keeps
+    // `playing` true through `completed`, so a finish counts); a stop after
+    // a pause would log a second, unpaired pause.
+    if (_player.playing) _logEvent('pause');
     await _saveAndReportPosition(state: 'stopped');
     await _player.stop();
     await super.stop();

@@ -14,12 +14,14 @@ import '../../shared/widgets/meta_chip.dart';
 import 'effective_chapter_count.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/completed_books_store.dart';
+import '../../core/storage/playback_log_store.dart';
 import '../../core/storage/custom_collection_store.dart';
 import '../../core/storage/want_to_read_store.dart';
 import '../collections/collection_picker_sheet.dart';
 import '../player/book_launch.dart';
 import '../player/open_player.dart';
 import '../player/player_provider.dart';
+import '../player/sessions_sheet.dart';
 import '../player/track_position_math.dart';
 import '../../core/utils/format.dart';
 import '../../core/utils/text_measure.dart';
@@ -110,6 +112,9 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     final book = enrichedBook(ref, widget.book);
     final tracksAsync = ref.watch(tracksProvider(book.ratingKey));
     final savedPosition = BookmarkStore.load(book.ratingKey);
+    final sessionCount = PlaybackLogStore.getLog(book.ratingKey)
+        .where((e) => e.type == 'play')
+        .length;
     // Falls back to the length recorded in the saved position when Plex hasn't
     // reported one. This screen used to read Plex's field alone, so a book Home
     // was drawing a progress bar for showed neither a length nor a bar here.
@@ -397,14 +402,32 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: Text(
-                'Chapters',
-                style: TextStyle(
-                  color: SagaColors.fgMuted,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+              padding: EdgeInsets.fromLTRB(16, 8, 8, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Chapters',
+                      style: TextStyle(
+                        color: SagaColors.fgMuted,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  // Same count as the player's Sessions pill. Here too so a
+                  // session can be found and resumed without starting the
+                  // book first (GitHub #16).
+                  if (sessionCount > 0)
+                    TextButton.icon(
+                      onPressed: () =>
+                          showSessionsSheet(context, book.ratingKey),
+                      style: TextButton.styleFrom(
+                          foregroundColor: SagaColors.accentText),
+                      icon: const Icon(Icons.history_rounded, size: 18),
+                      label: Text('Sessions ($sessionCount)'),
+                    ),
+                ],
               ),
             ),
           ),
