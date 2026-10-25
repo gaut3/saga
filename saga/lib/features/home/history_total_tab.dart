@@ -220,9 +220,9 @@ class _HeatmapCard extends StatelessWidget {
           LayoutBuilder(builder: (context, constraints) {
             final w = constraints.maxWidth;
             // Floor at 0 — same negative-width guard as the month grid.
-            final cellW =
+            // Square cells, like the month grid.
+            final cell =
                 ((w - (_cols - 1) * _gap) / _cols).clamp(0.0, double.infinity);
-            final cellH = (cellW * _rows + (_rows - 1) * _gap) / _rows;
 
             return Row(
               children: List.generate(_cols, (col) {
@@ -246,8 +246,8 @@ class _HeatmapCard extends StatelessWidget {
                                   ? '${historyMonthAbbr(date.month)} ${date.day}: ${ms ~/ 60000} min'
                                   : '${historyMonthAbbr(date.month)} ${date.day}: no activity',
                           child: Container(
-                            width: cellW,
-                            height: cellH,
+                            width: cell,
+                            height: cell,
                             decoration: BoxDecoration(
                               color: isFuture
                                   ? Colors.transparent
