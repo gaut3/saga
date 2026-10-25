@@ -54,9 +54,16 @@ dependencies:
 # Vendored fork of just_audio: its Android pipeline is patched with a Media3
 # TeeAudioProcessor that taps the decoded PCM for the real-loudness visualizer
 # (no RECORD_AUDIO permission). Re-vendor + re-apply the patch on just_audio bumps.
+#
+# Vendored audio_service 0.18.19: patched so a playback service Android rebuilds
+# inside a live engine re-links to the Dart handler (without it, notification /
+# lock-screen / bluetooth controls go dead until process death). Re-vendor +
+# `git apply third_party/audio_service.patch` on audio_service bumps.
 dependency_overrides:
   just_audio:
     path: third_party/just_audio
+  audio_service:
+    path: third_party/audio_service
 
 dev_dependencies:
   flutter_test:

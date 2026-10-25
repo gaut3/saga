@@ -1,0 +1,36 @@
+diff --git a/android/src/main/java/com/ryanheise/audioservice/AudioService.java b/android/src/main/java/com/ryanheise/audioservice/AudioService.java
+index a4afa37..7c2d37f 100644
+--- a/android/src/main/java/com/ryanheise/audioservice/AudioService.java
++++ b/android/src/main/java/com/ryanheise/audioservice/AudioService.java
+@@ -344,6 +344,15 @@ public class AudioService extends MediaBrowserServiceCompat {
+ 
+         flutterEngine = AudioServicePlugin.getFlutterEngine(this);
+         System.out.println("flutterEngine warmed up");
++        // SAGA PATCH: re-link a rebuilt service to the Dart handler. onDestroy
++        // nulls the static listener, but init() only re-runs when the engine
++        // re-attaches — so a service rebuilt inside a surviving engine came
++        // back with listener == null and dropped every notification, lock
++        // screen and bluetooth command. A new engine still re-inits itself.
++        if (listener == null) {
++            listener = AudioServicePlugin.liveHandlerInterface();
++            if (listener != null) System.out.println("audio_service: re-linked handler to rebuilt service");
++        }
+     }
+ 
+     @Override
+diff --git a/android/src/main/java/com/ryanheise/audioservice/AudioServicePlugin.java b/android/src/main/java/com/ryanheise/audioservice/AudioServicePlugin.java
+index b776a84..5df6c59 100644
+--- a/android/src/main/java/com/ryanheise/audioservice/AudioServicePlugin.java
++++ b/android/src/main/java/com/ryanheise/audioservice/AudioServicePlugin.java
+@@ -143,6 +143,11 @@ public class AudioServicePlugin implements FlutterPlugin, ActivityAware {
+         bootTime = System.currentTimeMillis() - SystemClock.elapsedRealtime();
+     }
+ 
++    // SAGA PATCH: see AudioService.onCreate. Null when no engine hosts a handler.
++    static AudioService.ServiceListener liveHandlerInterface() {
++        return audioHandlerInterface;
++    }
++
+     static AudioHandlerInterface audioHandlerInterface() throws Exception {
+         if (audioHandlerInterface == null) throw new Exception("Background audio task not running");
+         return audioHandlerInterface;
