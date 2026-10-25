@@ -38,7 +38,6 @@ import androidx.media.app.NotificationCompat.MediaStyle;
 import androidx.media.utils.MediaConstants;
 
 import java.io.FileDescriptor;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -207,9 +206,9 @@ public class AudioService extends MediaBrowserServiceCompat {
                             return null;
                         }
                     }
-                } catch (FileNotFoundException ex) {
-                    return null;
                 } catch (IOException ex) {
+                    // SAGA PATCH: one clause — FileNotFoundException is an
+                    // IOException, and a separate catch for the rest was dead.
                     return null;
                 }
             }

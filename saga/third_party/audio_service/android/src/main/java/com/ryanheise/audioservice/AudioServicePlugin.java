@@ -917,7 +917,12 @@ public class AudioServicePlugin implements FlutterPlugin, ActivityAware {
                         for (int i = 0; i < compactActionIndices.length; i++)
                             compactActionIndices[i] = (Integer)compactActionIndexList.get(i);
                     }
-                    AudioService.instance.setState(
+                    // SAGA PATCH: no service (destroyed, not yet rebuilt) means
+                    // nothing to update; republishNowPlaying() re-sends state
+                    // to the next one. Was an NPE caught below and returned to
+                    // Dart as an error on every update in that window.
+                    final AudioService stateService = AudioService.instance;
+                    if (stateService != null) stateService.setState(
                             actions,
                             actionBits,
                             compactActionIndices,
@@ -942,14 +947,18 @@ public class AudioServicePlugin implements FlutterPlugin, ActivityAware {
                     final Integer volumeControlType = (Integer)playbackInfo.get("volumeControlType");
                     final Integer maxVolume = (Integer)playbackInfo.get("maxVolume");
                     final Integer volume = (Integer)playbackInfo.get("volume");
-                    AudioService.instance.setPlaybackInfo(playbackType, volumeControlType, maxVolume, volume);
+                    // SAGA PATCH: see setState.
+                    final AudioService infoService = AudioService.instance;
+                    if (infoService != null) infoService.setPlaybackInfo(playbackType, volumeControlType, maxVolume, volume);
                     result.success(null);
                     break;
                 }
                 case "notifyChildrenChanged": {
                     String parentMediaId = (String)args.get("parentMediaId");
                     Map<?, ?> options = (Map<?, ?>)args.get("options");
-                    AudioService.instance.notifyChildrenChanged(parentMediaId, mapToBundle(options));
+                    // SAGA PATCH: see setState.
+                    final AudioService browseService = AudioService.instance;
+                    if (browseService != null) browseService.notifyChildrenChanged(parentMediaId, mapToBundle(options));
                     result.success(null);
                     break;
                 }
@@ -1239,7 +1248,8 @@ public class AudioServicePlugin implements FlutterPlugin, ActivityAware {
 
     static Map<String, Object> mapOf(Object... args) {
         Map<String, Object> map = new HashMap<>();
-        for (int i = 0; i < args.length; i += 2) {
+        // SAGA PATCH: bounds-checked, as in the vendored just_audio.
+        for (int i = 0; i + 1 < args.length; i += 2) {
             map.put((String)args[i], args[i + 1]);
         }
         return map;

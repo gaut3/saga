@@ -24,4 +24,10 @@ public class MediaControl {
             return false;
         }
     }
+
+    // SAGA PATCH: equals without hashCode breaks any hash-based collection.
+    @Override
+    public int hashCode() {
+        return Objects.hash(icon, label, actionCode, customAction);
+    }
 }
