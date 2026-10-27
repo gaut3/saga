@@ -133,4 +133,30 @@ void main() {
       expect(log.single.timestamp, DateTime(2026, 6, 1));
     });
   });
+
+  group('lastPlayAt', () {
+    AudioLogEvent ev(String type, DateTime ts) => AudioLogEvent(
+        type: type, trackRatingKey: 't', positionMs: 0, timestamp: ts);
+
+    test('tracks the newest play, ignoring other events', () async {
+      PlaybackLogStore.log(
+          bookRatingKey: 'b', event: ev('play', DateTime(2026, 10, 1)));
+      expect(PlaybackLogStore.lastPlayAt('b'), DateTime(2026, 10, 1));
+      // Cached now — a later play must still show up.
+      PlaybackLogStore.log(
+          bookRatingKey: 'b', event: ev('play', DateTime(2026, 10, 5)));
+      PlaybackLogStore.log(
+          bookRatingKey: 'b', event: ev('pause', DateTime(2026, 10, 9)));
+      expect(PlaybackLogStore.lastPlayAt('b'), DateTime(2026, 10, 5));
+      expect(PlaybackLogStore.lastPlayAt('never'), isNull);
+    });
+
+    test('a clear drops the cached value', () async {
+      PlaybackLogStore.log(
+          bookRatingKey: 'b', event: ev('play', DateTime(2026, 10, 1)));
+      expect(PlaybackLogStore.lastPlayAt('b'), isNotNull);
+      await PlaybackLogStore.clearAll();
+      expect(PlaybackLogStore.lastPlayAt('b'), isNull);
+    });
+  });
 }

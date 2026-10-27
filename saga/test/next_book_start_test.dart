@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saga/core/storage/bookmark_store.dart';
-import 'package:saga/features/player/play_next.dart';
+import 'package:saga/core/book_progress.dart';
 
 BookPosition _pos(int absoluteMs, {int? totalMs}) => BookPosition(
       trackRatingKey: 't1',

@@ -3,9 +3,9 @@ import 'package:audio_service/audio_service.dart';
 import '../../core/local_library.dart';
 import '../../core/storage/artwork_cache.dart';
 import '../../core/storage/bookmark_store.dart';
-import '../../core/storage/completed_books_store.dart';
 import '../../core/storage/custom_collection_store.dart';
 import 'session_restore.dart';
+import '../../core/book_status.dart';
 
 /// The media IDs Android walks when it browses Saga — Android Auto's library,
 /// the assistant's "play X in Saga", and the lock screen's resumption card.
@@ -89,7 +89,7 @@ List<MediaItem> browseChildren(String parentMediaId) {
       // Android's media-resumption card asks for this and shows the first item
       // only, so there is nothing to gain by returning more.
       final key = mostRecentBookRatingKey(BookmarkStore.allPositions(),
-          completed: CompletedBooksStore.allCompleted());
+          completed: finishedBookKeys());
       final item = key == null ? null : bookItem(key);
       return item == null ? const [] : [item];
 

@@ -27,7 +27,7 @@
 - Auto-play the next book in a collection, with a cancellable countdown (off by default)
 - Tap the cover on the player to look through it at the book's details
 - Always-visible mini player; swipe it away to dismiss, long-press for options
-- Chromecast support via native Cast SDK
+- Chromecast support via native Cast SDK — your place is handed back when casting ends. Not yet while casting: the sleep timer, listening stats, and moving on to the next file of a multi-file book
 - Headphone unplug auto-pause; auto-resume after calls and brief interruptions (on by default, and never over another app's media)
 - Android Auto — Continue listening, Downloaded, and your collections in the order you dragged them; built from what's already on the phone, so a downloaded book plays in the car with no server involved. Asking for a book by name works too. The same browse tree backs the lock screen's media-resumption card
 

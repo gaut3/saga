@@ -20,6 +20,7 @@ import '../../core/storage/playback_log_store.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/utils/format.dart';
 import '../../core/utils/text_measure.dart';
+import '../../core/local_library.dart';
 import '../library/effective_chapter_count.dart';
 import '../../shared/widgets/book_cover_image.dart' show CoverPlaceholder;
 import '../../shared/widgets/meta_chip.dart';
@@ -69,6 +70,13 @@ class PlayerScreen extends ConsumerWidget {
               currentBook = books.firstWhere((b) => b.ratingKey == bookKey);
             }
           } catch (_) {}
+          // Offline (or a book outside the loaded library list) the list has
+          // no record, and the cover's "look through it" went dead for a
+          // downloaded book. The phone's own records name it, as on the
+          // offline tabs.
+          if (currentBook == null && bookKey != null) {
+            currentBook = localBook(bookKey);
+          }
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1178,8 +1186,14 @@ class _BottomActions extends ConsumerWidget {
       final m4bChapters = m4bParam != null
           ? ref.read(m4bChaptersProvider(m4bParam)).valueOrNull
           : null;
-      ref.read(sleepTimerProvider.notifier).setEndOfChapter(m4bChapters: m4bChapters);
-      showSagaToast(context, 'Sleep timer: end of chapter');
+      final armed = ref
+          .read(sleepTimerProvider.notifier)
+          .setEndOfChapter(m4bChapters: m4bChapters);
+      showSagaToast(
+          context,
+          armed
+              ? 'Sleep timer: end of chapter'
+              : kEndOfChapterUnknownMessage);
     } else {
       ref.read(sleepTimerProvider.notifier).set(Duration(minutes: minutes));
       showSagaToast(context, 'Sleep timer: $minutes min');

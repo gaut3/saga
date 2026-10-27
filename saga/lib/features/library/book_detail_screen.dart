@@ -26,6 +26,7 @@ import '../player/track_position_math.dart';
 import '../../core/utils/format.dart';
 import '../../core/utils/text_measure.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
+import '../../core/book_status.dart';
 
 class BookDetailScreen extends ConsumerStatefulWidget {
   final PlexBook book;
@@ -37,7 +38,7 @@ class BookDetailScreen extends ConsumerStatefulWidget {
 
 class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   // Deliberately no completed-state field: the player also writes completions
-  // (the 95% auto-complete) while this screen can sit alive in the tab stack,
+  // (a book playing to its end) while this screen can sit alive in the tab stack,
   // and a mirror captured at open time went stale — tapping the still-stale
   // "mark completed" appended a second completion for one listen. The build
   // reads the store, watching completionRevisionProvider for changes.
@@ -62,10 +63,14 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   Future<void> _toggleCompleted() async {
     // Read the store at tap time, not a field cached at screen open — see the
     // note on the state class.
-    if (CompletedBooksStore.isCompleted(widget.book.ratingKey)) {
+    if (isBookFinished(widget.book.ratingKey)) {
       await CompletedBooksStore.markIncomplete(widget.book.ratingKey);
     } else {
-      await CompletedBooksStore.markCompleted(widget.book.ratingKey);
+      await recordBookFinished(
+        ratingKey: widget.book.ratingKey,
+        title: widget.book.title,
+        thumbPath: widget.book.thumbPath,
+      );
     }
     if (!mounted) return; // tap-then-back, as above
     ref.read(completionRevisionProvider.notifier).state++;
@@ -105,7 +110,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     // Completed-state is read fresh each build (the player writes completions
     // too); watching the revision is what makes that read re-run.
     ref.watch(completionRevisionProvider);
-    final isCompleted = CompletedBooksStore.isCompleted(widget.book.ratingKey);
+    final isCompleted = isBookFinished(widget.book.ratingKey);
     // The library listing is abbreviated — narrator and genre only exist on the
     // per-book record, fetched lazily the first time a book is opened. Until it
     // lands (or if it fails) this is the listing record unchanged.

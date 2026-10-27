@@ -119,6 +119,19 @@ void main() {
     expect(out, contains('FormatException'));
   });
 
+  test('a per-server access token quoted into an error is masked', () {
+    // plex.tv's resources list carries an accessToken for every server, and
+    // fetchServers logs a parse failure with the exception text.
+    AppLog.log(
+      'server',
+      'skipped an unparseable server entry: FormatException: '
+          '{"name":"Home","accessToken":"srvSECRET456","provides":"server"}',
+    );
+    final out = AppLog.dump();
+    expect(out, isNot(contains('srvSECRET456')));
+    expect(out, contains('accessToken'));
+  });
+
   test('a machine identifier is masked', () {
     AppLog.log('plex',
         'selected server machineIdentifier: 424e887bd5b345088ab6c9ca262a8937');

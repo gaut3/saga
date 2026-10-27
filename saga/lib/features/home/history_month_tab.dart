@@ -61,6 +61,12 @@ class _MonthTabState extends ConsumerState<HistoryMonthTab> {
     final calOffset = grid.leadingBlanks;
 
     final monthStart = DateTime(_month.year, _month.month, 1);
+    // The finish dots and "Finished" labels below are read straight from the
+    // completion store, so this tab has to watch for completions itself:
+    // marking a book finished while History stayed open left the calendar
+    // without its dot until the tab was rebuilt, while the Total tab — which
+    // watches the completion revision — already listed it.
+    ref.watch(completionRevisionProvider);
     final monthEnd = DateTime(_month.year, _month.month, daysInMonth);
     final dayData = ListeningHistoryStore.getRange(monthStart, monthEnd);
 

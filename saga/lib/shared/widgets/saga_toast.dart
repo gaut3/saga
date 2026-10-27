@@ -9,6 +9,10 @@ import '../../core/theme/saga_theme.dart';
 /// informational confirmations. Pass the calling widget's [BuildContext] —
 /// the toast is inserted into the root overlay so it appears above everything
 /// including the full-screen player.
+/// The app's root navigator, so code with no screen of its own (a provider
+/// reacting to playback) can still say something. Wired into `MaterialApp`.
+final rootNavigatorKey = GlobalKey<NavigatorState>();
+
 void showSagaToast(
   BuildContext context,
   String message, {

@@ -6,6 +6,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:saga/core/utils/format.dart';
 
 void main() {
+  group('fmtBookPositionMs', () {
+    test('keeps the hour under an hour, so it never reads as a clock', () {
+      // "48:49" beside "16:40–17:14" in a session row read as a time of day.
+      expect(fmtBookPositionMs(2929000), '0:48:49');
+      expect(fmtBookPositionMs(0), '0:00:00');
+    });
+
+    test('hours and beyond', () {
+      expect(fmtBookPositionMs(3600000), '1:00:00');
+      expect(fmtBookPositionMs(75735000), '21:02:15');
+    });
+
+    test('a negative position clamps to zero', () {
+      expect(fmtBookPositionMs(-5), '0:00:00');
+    });
+  });
+
   group('fmtListenedMs', () {
     test('under a minute reads as "<1m", never blank', () {
       expect(fmtListenedMs(0), '<1m');

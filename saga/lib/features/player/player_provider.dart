@@ -18,6 +18,7 @@ import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/download_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/storage/track_cache_store.dart';
+import '../../shared/widgets/saga_toast.dart';
 import 'book_launch.dart';
 import 'play_next.dart';
 import 'player_service.dart';
@@ -182,11 +183,25 @@ void _maybeAutoAdvance(Ref ref, AudioPlayerService service) {
 
       service.scheduleAutoAdvance(_kAutoAdvanceSeconds, () async {
         AppLog.log('playback', 'auto-advancing to ${next.$2.ratingKey}');
-        await playNextBook(
+        final ok = await playNextBook(
           service: service,
           book: next.$2,
           loadTracks: (key) => ref.read(tracksProvider(key).future),
         );
+        if (!ok) {
+          // The finished panel shows this where the countdown was — when it's
+          // still up. A failure inside the load itself dismisses the panel
+          // first (any load clears the finished state), so say it on the root
+          // overlay as well; otherwise the countdown just vanished.
+          service.autoAdvanceFailed.value = next.$2.ratingKey;
+          final ctx = rootNavigatorKey.currentContext;
+          if (ctx != null && ctx.mounted) {
+            showSagaToast(
+                ctx,
+                'Couldn\'t start the next book — is the server reachable?',
+                isError: true);
+          }
+        }
       });
     } catch (e) {
       AppLog.log('playback', 'auto-advance lookup failed: $e');
@@ -559,6 +574,11 @@ final nowPlayingKeyProvider = StreamProvider<String?>((ref) async* {
 
 typedef _PlaybackPhase = ({bool playing, AudioProcessingState processing});
 
+/// Said when [SleepTimerNotifier.setEndOfChapter] refuses — one wording for
+/// both places that set it.
+const kEndOfChapterUnknownMessage =
+    'Chapter length isn\'t known yet — try again in a moment.';
+
 class SleepTimerNotifier extends StateNotifier<DateTime?> {
   // Fade the last moments of the countdown instead of cutting mid-sentence.
   // Floor of 0.05 rather than 0: the pause lands before silence, and a true
@@ -579,6 +599,10 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
   Duration _fadeBase = _fadeWindow;
   StreamSubscription<_PlaybackPhase>? _playbackSub;
   StreamSubscription<MediaItem?>? _mediaSub;
+  // End-of-chapter mode: what the target was computed from, so a seek or
+  // speed change can recompute it. Null for a fixed-length timer.
+  ({String? bookKey, List<M4bChapter>? chapters})? _chapterMode;
+  List<StreamSubscription<Object?>> _retargetSubs = const [];
   final AudioPlayerService _service;
 
   // Set while playback is paused mid-countdown: the frozen time remaining, so
@@ -594,44 +618,112 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
     _watchPlayback();
   }
 
-  /// Pauses at the end of the current chapter/track.
+  /// Pauses at the end of the current chapter/track. Returns false — leaving
+  /// any running timer alone — when the end can't be known: neither the
+  /// player nor the track's metadata has a length. This used to arm an
+  /// arbitrary 60 s countdown instead, pausing mid-chapter.
+  ///
   /// For M4B single-file books pass [m4bChapters] so the timer fires at the
   /// next chapter boundary; for multi-track books leave it null and the timer
-  /// fires when the current track finishes. The remaining audio is divided by
-  /// the current playback speed so the timer fires at the boundary even at >1×.
-  void setEndOfChapter({List<M4bChapter>? m4bChapters}) {
+  /// fires when the current track finishes.
+  ///
+  /// The countdown follows the audio, not the clock it was set by: a seek
+  /// (scrubber, skip buttons, chapter tap, undo) or a speed change re-targets
+  /// it to the end of whichever chapter playback is now in. It used to be
+  /// computed once, so seeking back paused mid-chapter and speeding up let
+  /// half the next chapter play.
+  bool setEndOfChapter({List<M4bChapter>? m4bChapters}) {
+    final remaining = _endOfChapterRemaining(m4bChapters);
+    if (remaining == null) return false;
     _cancelAll();
+    if (remaining <= Duration.zero) {
+      _service.pause();
+      return true;
+    }
+    _service.logSleepTimer();
+    _chapterMode = (
+      bookKey: _service.currentBookRatingKey,
+      chapters: m4bChapters,
+    );
+    _arm(remaining);
+    _watchPlayback();
+    _watchRetarget();
+    return true;
+  }
 
-    final durationMs = _service.player.duration?.inMilliseconds;
+  /// Listening time to the end of the current chapter at the current speed,
+  /// or null when that end isn't known.
+  Duration? _endOfChapterRemaining(List<M4bChapter>? m4bChapters) {
+    // The player's duration, else the track's own from Plex metadata — a
+    // stream still buffering (or one that never reports a length) has none,
+    // and refusing outright left no way to set the timer at all.
+    final playerMs = _service.player.duration?.inMilliseconds;
+    final index = _service.player.currentIndex;
+    final tracks = _service.currentTracks;
+    final metaMs = index != null && index < tracks.length
+        ? tracks[index].durationMs
+        : null;
+    final durationMs = (playerMs != null && playerMs > 0)
+        ? playerMs
+        : (metaMs != null && metaMs > 0 ? metaMs : null);
     final positionMs = _service.player.position.inMilliseconds;
 
-    int targetMs;
+    int? targetMs;
     if (m4bChapters != null && m4bChapters.isNotEmpty) {
-      // Find the first chapter that starts after the current position. When the
-      // user is already in the last chapter no such chapter exists — fall through
-      // to the file-duration target so the timer stops at the end of the audio
-      // rather than firing immediately (the previous orElse: () => last bug).
-      final upcoming = m4bChapters
-          .where((c) => c.start.inMilliseconds > positionMs);
-      targetMs = upcoming.isNotEmpty
-          ? upcoming.first.start.inMilliseconds
-          : (durationMs ?? positionMs + 60000);
+      // The first chapter starting after the current position. In the last
+      // chapter there is none, and the target is the end of the file — not
+      // "fire immediately" (the old orElse: () => last bug).
+      final upcoming =
+          m4bChapters.where((c) => c.start.inMilliseconds > positionMs);
+      targetMs =
+          upcoming.isNotEmpty ? upcoming.first.start.inMilliseconds : durationMs;
     } else {
-      targetMs = durationMs ?? positionMs + 60000;
+      targetMs = durationMs;
     }
+    if (targetMs == null) return null;
 
     final audioRemainingMs = (targetMs - positionMs).clamp(0, 1 << 31);
     final speed = _service.player.speed;
-    final remainingMs =
-        (speed > 0 ? audioRemainingMs / speed : audioRemainingMs).round();
-    if (remainingMs <= 0) {
-      _service.pause();
+    return Duration(
+        milliseconds:
+            (speed > 0 ? audioRemainingMs / speed : audioRemainingMs).round());
+  }
+
+  /// Re-target an end-of-chapter countdown when the position or speed moves
+  /// under it. Jumps the listener made, once landed ([AudioPlayerService.jumps])
+  /// — not the automatic move to the next file, which *is* the chapter end in
+  /// a multi-file book: re-targeting on it could beat the timer and push the
+  /// pause a whole chapter on.
+  void _watchRetarget() {
+    for (final sub in _retargetSubs) {
+      sub.cancel();
+    }
+    _retargetSubs = [
+      _service.jumps.listen((_) => _retarget()),
+      // skip(1): the speed stream replays its current value on listen.
+      _service.player.speedStream.skip(1).listen((_) => _retarget()),
+    ];
+  }
+
+  void _retarget() {
+    final mode = _chapterMode;
+    if (mode == null || state == null) return;
+    // A different book is the completion handoff carrying the countdown into
+    // the next book; its chapters aren't the ones this was set against.
+    if (_service.currentBookRatingKey != mode.bookKey) return;
+    final r = _endOfChapterRemaining(mode.chapters);
+    if (r == null || r <= Duration.zero) return;
+    // Jumping back out of a fade must bring the volume back: _arm keeps the
+    // level, and the fade ticker only lowers it inside the new window — so it
+    // stayed at the faded level for the whole re-targeted chapter.
+    _restoreVolume();
+    if (_pausedRemaining != null) {
+      // Frozen (paused): resuming re-arms with this instead of the stale value.
+      _pausedRemaining = r;
+      _fadeBase = r < _fadeWindow ? r : _fadeWindow;
       return;
     }
-
-    _service.logSleepTimer();
-    _arm(Duration(milliseconds: remainingMs));
-    _watchPlayback();
+    _arm(r);
   }
 
   void cancel() => _cancelAll();
@@ -787,6 +879,11 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
     _playbackSub = null;
     _mediaSub?.cancel();
     _mediaSub = null;
+    for (final sub in _retargetSubs) {
+      sub.cancel();
+    }
+    _retargetSubs = const [];
+    _chapterMode = null;
     _pausedRemaining = null;
     state = null;
     if (restoreVolume) _restoreVolume();

@@ -10,6 +10,7 @@ import 'package:saga/core/storage/completed_books_store.dart';
 import 'package:saga/core/storage/server_scope.dart';
 import 'package:saga/core/storage/settings_store.dart';
 import 'package:saga/core/storage/track_cache_store.dart';
+import 'package:saga/core/storage/playback_log_store.dart';
 
 import 'helpers/hive_test_env.dart';
 
@@ -31,6 +32,7 @@ void main() {
     await BookmarkStore.init(testEncKey);
     await BookMetadataStore.init(testEncKey);
     await CompletedBooksStore.init(testEncKey);
+    await PlaybackLogStore.init(testEncKey);
     await TrackCacheStore.init(testEncKey);
     await BookDownloadStore.init(testEncKey);
   });
@@ -160,6 +162,7 @@ void main() {
     await BookmarkStore.init(testEncKey);
     await BookMetadataStore.init(testEncKey);
     await CompletedBooksStore.init(testEncKey);
+    await PlaybackLogStore.init(testEncKey);
     await TrackCacheStore.init(testEncKey);
     await BookDownloadStore.init(testEncKey);
 

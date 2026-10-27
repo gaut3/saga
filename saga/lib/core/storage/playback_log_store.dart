@@ -45,7 +45,13 @@ class PlaybackLogStore {
 
   static Future<void> init(List<int> encKey) async {
     _box = await openUserBox(_boxName, encKey);
+    _lastPlayCache.clear();
   }
+
+  /// Storage key → newest `play` timestamp (ms), or null for "none" — filled
+  /// lazily by [lastPlayAt], kept current by [log], and dropped wholesale by
+  /// every other write (prune, import, clear), which are rare.
+  static final Map<String, int?> _lastPlayCache = {};
 
   static void log({
     required String bookRatingKey,
@@ -55,7 +61,17 @@ class PlaybackLogStore {
     final list =
         (_box.get(key) as List?)?.cast<Map>().toList() ?? <Map>[];
     list.add(event.toMap());
-    if (list.length > _maxPerBook) list.removeAt(0);
+    if (list.length > _maxPerBook) {
+      list.removeAt(0);
+      // The dropped event may have been the newest play only if every play
+      // is gone; simplest to recompute on the next read.
+      _lastPlayCache.remove(key);
+    }
+    if (event.type == 'play' && _lastPlayCache.containsKey(key)) {
+      final ts = event.timestamp.millisecondsSinceEpoch;
+      final prev = _lastPlayCache[key];
+      if (prev == null || ts > prev) _lastPlayCache[key] = ts;
+    }
     _box.put(key, list);
   }
 
@@ -65,6 +81,27 @@ class PlaybackLogStore {
     return list.map(AudioLogEvent.fromMap).toList();
   }
 
+  /// When [bookRatingKey] was last *played* — the newest `play` event — or
+  /// null. Reads the raw maps without building events: it runs for every
+  /// finished book whenever Continue Listening recomputes.
+  static DateTime? lastPlayAt(String bookRatingKey) {
+    final key = ServerScope.prefixed(_logPrefix, bookRatingKey);
+    final int? newest;
+    if (_lastPlayCache.containsKey(key)) {
+      newest = _lastPlayCache[key];
+    } else {
+      int? scanned;
+      for (final m in (_box.get(key) as List?) ?? const []) {
+        if (m is Map && m['t'] == 'play' && m['ts'] is int) {
+          final ts = m['ts'] as int;
+          if (scanned == null || ts > scanned) scanned = ts;
+        }
+      }
+      _lastPlayCache[key] = newest = scanned;
+    }
+    return newest == null ? null : DateTime.fromMillisecondsSinceEpoch(newest);
+  }
+
   // Scoped by server — see server_scope.dart. `unprefixed` returns null for
   // another server's log, which is what keeps a shared server's sessions out
   // of this one's history.
@@ -72,7 +109,10 @@ class PlaybackLogStore {
       .map((k) => ServerScope.unprefixed(_logPrefix, k.toString()))
       .whereType<String>();
 
-  static Future<void> clearAll() => _box.clear();
+  static Future<void> clearAll() {
+    _lastPlayCache.clear();
+    return _box.clear();
+  }
 
   /// Full `log_<key>` → [event maps] map for backup (the session history shown
   /// in the day/week tabs, which is not re-fetchable from Plex).
@@ -99,6 +139,7 @@ class PlaybackLogStore {
     final cutoff = addDays(dayOnly(now ?? DateTime.now()), -_retentionDays)
         .millisecondsSinceEpoch;
     var removed = 0;
+    _lastPlayCache.clear();
     for (final key in _box.keys.toList()) {
       // Retention applies to every server's logs, not just the current one —
       // dead weight is dead weight regardless of which library wrote it.
@@ -122,6 +163,7 @@ class PlaybackLogStore {
   /// Merges backed-up logs per book: events are deduped by (timestamp, type,
   /// track), sorted oldest → newest, and capped to the newest [_maxPerBook].
   static Future<void> importAll(Map<String, dynamic> raw) async {
+    _lastPlayCache.clear();
     for (final entry in raw.entries) {
       if (!entry.key.startsWith(_logPrefix)) continue;
       // Backups carry the unscoped shape; restore lands on the current server.

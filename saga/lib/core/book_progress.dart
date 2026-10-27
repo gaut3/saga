@@ -45,3 +45,24 @@ double? bookProgressFraction(PlexBook book, BookPosition? saved) {
   if (total == null) return null;
   return (saved.absolutePositionMs / total).clamp(0.0, 1.0);
 }
+
+/// How close to the end a saved position must sit to count as the artifact a
+/// finish leaves behind rather than a place worth resuming.
+const _endOfBookMarginMs = 10000;
+
+/// Whether [saved] is a real mid-book place — not absent, not the end-of-book
+/// position a finish writes. The advance resumes only these: "resuming" an
+/// end-of-book bookmark replays the final second, completes again, and — with
+/// auto-play on — cascades an advance through every finished book after it.
+/// One rule, shared by `playNextBook`, the finished panel's buttons and
+/// [isFinishedNow] — what the panel offers, what the advance does and what
+/// counts as a re-read can't disagree.
+bool isResumablePosition(BookPosition? saved) {
+  if (saved == null) return false;
+  if (saved.absolutePositionMs <= 0) return false;
+  final total = saved.totalDurationMs;
+  // Unknown length: can't tell the end from the middle — resume, the choice
+  // that never discards a real place.
+  if (total == null || total <= 0) return true;
+  return total - saved.absolutePositionMs > _endOfBookMarginMs;
+}

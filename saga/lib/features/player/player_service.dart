@@ -27,6 +27,7 @@ import 'resume_rewind.dart';
 import 'session_restore.dart';
 import 'track_audio_source.dart';
 import 'track_position_math.dart';
+import '../../core/book_status.dart';
 
 class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// `useProxyForRequestHeaders: false` — headers go straight to ExoPlayer.
@@ -91,7 +92,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   int _previousAbsolutePositionMs = -1; // -1 = no saved position for undo
   final ValueNotifier<bool> canUndoSeekNotifier = ValueNotifier(false);
   String? _lastListenDay; // in-memory guard: mark a listen-day at most once/day
-  // Set to a book's key the instant it finishes (natural end / 95%); the player
+  // Set to a book's key the instant it finishes (plays to its end); the player
   // screen shows the finished panel while this matches the current book. Cleared
   // on the next loadBook.
   final ValueNotifier<String?> justFinishedBook = ValueNotifier<String?>(null);
@@ -101,6 +102,22 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// the finished panel renders the countdown and its Cancel from this.
   final ValueNotifier<int?> autoAdvanceCountdown = ValueNotifier<int?>(null);
   Timer? _autoAdvanceTimer;
+
+  /// The next book's key when an auto-advance fired and the book didn't
+  /// start, so the finished panel can say so where the countdown was — it
+  /// used to just vanish, indistinguishable from a cancel. Cleared by the
+  /// next countdown and by any load.
+  final ValueNotifier<String?> autoAdvanceFailed = ValueNotifier<String?>(null);
+
+  /// Fires once a jump the listener made has *landed* — seek, skip, undo,
+  /// queue jump, or the book reloaded at a new point (a chapter in a
+  /// multi-file book, a bookmark, a session's Resume). Not the automatic move
+  /// to the next file, and not a stream-error reload. just_audio's own seek
+  /// discontinuity fires before the platform seek, still on the old track,
+  /// and a reload emits none, so the end-of-chapter timer listens here.
+  Stream<void> get jumps => _jumps.stream;
+  final _jumps = StreamController<void>.broadcast();
+  void _jumped() => _jumps.add(null);
 
   /// Stops a pending auto-advance. Called by any user action that implies they
   /// want to stay put — play, pause, seek, dismissing the panel, loading
@@ -119,6 +136,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// simply elapses.
   void scheduleAutoAdvance(int seconds, Future<void> Function() start) {
     cancelAutoAdvance();
+    autoAdvanceFailed.value = null;
     autoAdvanceCountdown.value = seconds;
     _autoAdvanceTimer = Timer.periodic(const Duration(seconds: 1), (t) async {
       final left = (autoAdvanceCountdown.value ?? 0) - 1;
@@ -194,7 +212,25 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
     // Pause when headphones are unplugged (ACTION_AUDIO_BECOMING_NOISY).
     // audio_service does not handle this automatically.
-    AudioSession.instance.then((session) async {
+    unawaited(_setUpAudioSession());
+  }
+
+  // Held so a retry of [_setUpAudioSession] can't register a listener twice.
+  StreamSubscription<void>? _noisySub;
+  StreamSubscription<AudioInterruptionEvent>? _interruptionSub;
+  StreamSubscription<AudioDevicesChangedEvent>? _devicesSub;
+
+  /// Headphone-unplug pause, interruption handling, and route logging.
+  ///
+  /// This was one unguarded `.then`: if `AudioSession.instance` rejected, or a
+  /// throw landed between the registrations, the unplug pause and the
+  /// interruption handling silently never existed for the life of the process
+  /// — unplugging blared the book from the speaker, and calls played over it.
+  /// Now it's guarded, logged and retried once; the two listeners that protect
+  /// the listener register first, so a later throw can only cost the logging.
+  Future<void> _setUpAudioSession({bool isRetry = false}) async {
+    try {
+      final session = await AudioSession.instance;
       // Declare spoken-word content (contentType speech, focus gain,
       // pause-when-ducked enforced at the source). Without this,
       // audio_session falls back to a music profile on the first focus
@@ -204,41 +240,18 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       } catch (e) {
         AppLog.log('playback', 'audio session configure failed: $e');
       }
-      session.becomingNoisyEventStream.listen((_) {
+      _noisySub ??= session.becomingNoisyEventStream.listen((_) {
         // Recorded because this path used to stop a book silently: no entry in
         // the log, nothing in the UI, just a book that isn't playing any more.
         // It fires on headphone unplug, but also on some Bluetooth transitions
         // that have nothing to do with where the audio is going.
         AppLog.log('playback',
             'becoming noisy${_player.playing ? ' → pausing' : ' (not playing)'}');
-        if (_player.playing) pause();
+        if (_player.playing) _pauseFor('becoming noisy');
       }, onError: (Object e, StackTrace st) {
       // Should never fire — which is exactly why it's worth recording.
       AppLog.log('playback', 'listener error: $e');
     });
-
-      // Output route changes, by device *type* only. A device name is someone's
-      // car or their own name, and this log is meant to be pasteable into a
-      // public issue. Worth recording at all because a pause that follows a
-      // route change and one that doesn't look identical from the outside, and
-      // which it is decides where to look.
-      session.devicesChangedEventStream.listen((event) {
-        String types(Set<AudioDevice> devices) => devices
-            .where((d) => d.isOutput)
-            .map((d) => d.type.name)
-            .toSet()
-            .join(',');
-        final added = types(event.devicesAdded);
-        final removed = types(event.devicesRemoved);
-        if (added.isEmpty && removed.isEmpty) return;
-        AppLog.log(
-            'playback',
-            'audio route: ${added.isEmpty ? '' : '+$added '}'
-                '${removed.isEmpty ? '' : '-$removed '}'
-                '(playing: ${_player.playing})');
-      }, onError: (Object e, StackTrace st) {
-        AppLog.log('playback', 'listener error: $e');
-      });
 
       // Interruption policy for spoken word: ducking (lowering volume under a
       // nav prompt or notification) means missed words — unlike music, speech
@@ -248,7 +261,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       // lowering volume — pausing without resuming would be strictly worse.
       // Resume decisions live in [_maybeResumeAfterInterruption]; the system's
       // "resuming is appropriate" signal alone is NOT sufficient — see there.
-      session.interruptionEventStream.listen((event) {
+      _interruptionSub ??= session.interruptionEventStream.listen((event) {
         if (event.begin) {
           switch (event.type) {
             case AudioInterruptionType.duck:
@@ -277,7 +290,45 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       // Should never fire — which is exactly why it's worth recording.
       AppLog.log('playback', 'listener error: $e');
     });
-    });
+      // Output route changes, by device *type* only. A device name is someone's
+      // car or their own name, and this log is meant to be pasteable into a
+      // public issue. Worth recording at all because a pause that follows a
+      // route change and one that doesn't look identical from the outside, and
+      // which it is decides where to look.
+      _devicesSub ??= session.devicesChangedEventStream.listen((event) {
+        String types(Set<AudioDevice> devices) => devices
+            .where((d) => d.isOutput)
+            .map((d) => d.type.name)
+            .toSet()
+            .join(',');
+        final added = types(event.devicesAdded);
+        final removed = types(event.devicesRemoved);
+        if (added.isEmpty && removed.isEmpty) return;
+        AppLog.log(
+            'playback',
+            'audio route: ${added.isEmpty ? '' : '+$added '}'
+                '${removed.isEmpty ? '' : '-$removed '}'
+                '(playing: ${_player.playing})');
+      }, onError: (Object e, StackTrace st) {
+        AppLog.log('playback', 'listener error: $e');
+      });
+    } catch (e) {
+      AppLog.log('playback',
+          'audio session setup failed${isRetry ? ' again — giving up' : ''}: $e');
+      if (!isRetry) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        await _setUpAudioSession(isRetry: true);
+      }
+    }
+  }
+
+  /// A pause the platform asked for (unplug, interruption). Fire-and-forget at
+  /// the call sites, so a failure is logged here rather than surfacing as an
+  /// unhandled async error with nothing to say which pause it was.
+  void _pauseFor(String why) {
+    unawaited(pause().catchError((Object e) {
+      AppLog.log('playback', '$why: pause failed: $e');
+    }));
   }
 
   /// Telephony check: ringtone / in-call / in-communication audio mode means
@@ -303,7 +354,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       if (inCall) _interruptionCallLike = true;
     }));
     AppLog.log('playback', 'interruption begin ($type)');
-    pause();
+    _pauseFor('interruption ($type)');
   }
 
   /// The focus-regained event says resuming is *allowed* — not that it's
@@ -344,6 +395,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   }) async {
     if (tracks.isEmpty) throw ArgumentError('Cannot load a book with no tracks');
 
+    // A jump while playing (chapter, bookmark, History, a session's Resume)
+    // reloads through here and plays again: close the running session at
+    // the place being left, while the identity fields still describe it.
+    // Not on a stream-error reload: that continues the same listen, and the
+    // errored player's position (possibly 0) would be logged as its end.
+    if (!isAutoReload) _closeSession();
+
     // Save the outgoing book's place before the identity fields flip to the
     // new one — the periodic timer's last save can be up to 10 s stale, and
     // once the swap happens no save for the old book is possible.
@@ -359,6 +417,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _lastChapterIndex = -1; // recompute chapter title for the new book
     _completedThisSession = false; // a fresh listen can be counted again
     justFinishedBook.value = null; // any (re)load dismisses the finished panel
+    autoAdvanceFailed.value = null;
     cancelAutoAdvance(); // including the advance that may have caused this load
     _previousAbsolutePositionMs = -1;
     canUndoSeekNotifier.value = false;
@@ -471,6 +530,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       if (gen == _loadGeneration) _loadInProgress = false;
     }
     if (gen != _loadGeneration) return; // superseded by a newer load
+    if (!isAutoReload) _jumped();
   }
 
   void _prefetchArtwork(PlexTrack track) {
@@ -509,7 +569,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _restoringSession = true;
     try {
       final bookKey = mostRecentBookRatingKey(BookmarkStore.allPositions(),
-          completed: CompletedBooksStore.allCompleted());
+          completed: finishedBookKeys());
       if (bookKey == null) return false;
       // Cache first: instant, and works offline for downloaded books. The
       // network fetch covers streamed books (needs the server reachable).
@@ -654,6 +714,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       _pausedAt = null;
     }
 
+    // Logged before the save below: the save bumps the revision every
+    // "continue" list recomputes on, and a finished book only counts as
+    // picked up again once this play is in the log — logged after, the lists
+    // still read the book as finished until the next 10 s save.
+    _openSession();
     // Save bookmark immediately so Continue Listening appears without waiting
     // for the 10-second progress timer to fire. Skip when the source is still
     // loading — position is not meaningful and would overwrite the resume point.
@@ -662,7 +727,6 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     }
     _trackingFrom = DateTime.now();
     _startProgressTimer();
-    _logEvent('play');
     await _player.play();
   }
 
@@ -671,7 +735,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     cancelAutoAdvance(); // a deliberate pause means "stay here"
     _progressTimer?.cancel();
     _pausedAt = DateTime.now();
-    _logEvent('pause');
+    _closeSession();
     await _player.pause();
     // A rebuilt session whose stale state reads "playing" resolves every press
     // to pause — a platform-side no-op that emits nothing. Re-send the truth
@@ -688,13 +752,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // read as "stopping clears the sleep timer" while clearing nothing.
     _progressTimer?.cancel();
     _pausedAt = DateTime.now();
-    // Close the session in the playback log. Natural finish, media-button
-    // stop and swipe-away all end here, not in pause() — without this the
-    // final stretch had no end: no duration in Sessions, no History credit,
-    // and no position to return to. Only while playing (just_audio keeps
-    // `playing` true through `completed`, so a finish counts); a stop after
-    // a pause would log a second, unpaired pause.
-    if (_player.playing) _logEvent('pause');
+    // Natural finish, media-button stop and swipe-away all end here, not in
+    // pause() — without this the final stretch had no end: no duration in
+    // Sessions, no History credit, and no position to return to.
+    _closeSession();
     await _saveAndReportPosition(state: 'stopped');
     await _player.stop();
     await super.stop();
@@ -762,6 +823,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _previousAbsolutePositionMs = absolutePositionMs;
     canUndoSeekNotifier.value = true;
     await _player.seek(_clampToTrack(position));
+    _jumped();
   }
 
   @override
@@ -783,6 +845,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     } else {
       await _player.seekToNext();
     }
+    _jumped();
   }
 
   @override
@@ -804,6 +867,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     } else {
       await _player.seekToPrevious();
     }
+    _jumped();
   }
 
   /// Returns cached chapters for single-track (M4B) books, null otherwise.
@@ -836,6 +900,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> skipToQueueItem(int index) async {
     await _player.seek(Duration.zero, index: index);
+    _jumped();
   }
 
   // ── Browsing: Android Auto, the assistant, the resumption card ──────────
@@ -1025,6 +1090,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     if (target == null) return;
     await _player.seek(Duration(milliseconds: target.positionMs),
         index: target.index);
+    _jumped();
   }
 
   /// Seek to [absolutePosition] within the book, resolving the correct
@@ -1071,14 +1137,36 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     canUndoSeekNotifier.value = true;
     await _player.seek(Duration(milliseconds: target.positionMs),
         index: target.index);
+    _jumped();
   }
 
   void logSleepTimer() => _logEvent('sleepTimer');
 
-  void _logEvent(String type, {int? overridePositionMs}) {
+  // Whether the playback log has a `play` with no `pause` after it yet. The
+  // log's sessions are play → pause pairs, and three paths used to break the
+  // pairing: a jump while playing logged the new play without closing the old
+  // session, a play command while already playing logged a second play, and
+  // a pause or stop while already paused logged a pause with nothing to
+  // close. Each left a session with no end (or a stray pause) — a list of
+  // "from 1:40:21" rows after a few chapter taps. Only these two touch it.
+  bool _sessionOpen = false;
+
+  void _openSession() {
+    if (_sessionOpen) return;
+    _sessionOpen = _logEvent('play');
+  }
+
+  void _closeSession() {
+    if (!_sessionOpen) return;
+    _logEvent('pause');
+    _sessionOpen = false;
+  }
+
+  /// Whether anything was logged — nothing is, with no book loaded.
+  bool _logEvent(String type, {int? overridePositionMs}) {
     final track = _currentTrack;
     final bookKey = _bookRatingKey;
-    if (track == null || bookKey == null) return;
+    if (track == null || bookKey == null) return false;
     PlaybackLogStore.log(
       bookRatingKey: bookKey,
       event: AudioLogEvent(
@@ -1088,19 +1176,20 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         timestamp: DateTime.now(),
       ),
     );
+    return true;
   }
 
   Future<void> _markBookCompleted() async {
     final bookKey = _bookRatingKey;
     if (bookKey == null) return;
-    // Guard against double-counting within one listen (the 95% auto-complete and
-    // the completed-stream both fire). A fresh load resets the flag, so a later
-    // re-listen counts as a new completion — that drives the listen count.
+    // Guard against double-counting within one listen (more than one
+    // completion signal can arrive for the same finish). A fresh load resets
+    // the flag, so a later re-listen counts as a new completion — that drives
+    // the listen count.
     if (_completedThisSession) return;
     _completedThisSession = true;
-    await CompletedBooksStore.markCompleted(bookKey);
     final track = _tracks.firstOrNull;
-    ListeningHistoryStore.recordCompleted(
+    await recordBookFinished(
       ratingKey: bookKey,
       title: track?.bookTitle,
       thumbPath: track?.thumbPath,

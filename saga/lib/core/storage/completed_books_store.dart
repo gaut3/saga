@@ -34,6 +34,15 @@ class CompletedBooksStore {
   static List<int> _timestamps(String ratingKey) =>
       _timestampsAt(ServerScope.key(ratingKey));
 
+  /// Un-marking a book stores *when* it was reopened under this prefix,
+  /// beside its completion dates instead of deleting them: the dates are the
+  /// history ("finished 3 times", the Month tab), and losing them to fix a
+  /// list was the bug. Rating keys are numeric, so the prefix can't collide.
+  static const _reopenedPrefix = 'reopened:';
+
+  static bool _isMarker(String ratingKey) =>
+      ratingKey.startsWith(_reopenedPrefix);
+
   static List<int> _timestampsAt(String storageKey) {
     final v = _box.get(storageKey);
     if (v == null) return [];
@@ -41,6 +50,9 @@ class CompletedBooksStore {
     return [];
   }
 
+  /// Whether the book was *ever* finished — history, not state. A book shown
+  /// as finished is `isBookFinished` (`book_status.dart`): this stays true
+  /// through a re-read and after being marked not finished.
   static bool isCompleted(String ratingKey) =>
       _timestamps(ratingKey).isNotEmpty;
 
@@ -52,15 +64,51 @@ class CompletedBooksStore {
     final existing = _timestamps(ratingKey);
     existing.add(DateTime.now().millisecondsSinceEpoch);
     await _box.put(ServerScope.key(ratingKey), existing);
+    await _box.delete(ServerScope.prefixed(_reopenedPrefix, ratingKey));
   }
 
-  static Future<void> markIncomplete(String ratingKey) =>
-      _box.delete(ServerScope.key(ratingKey));
+  /// "Not finished" — takes back the most recent finish (the one being
+  /// disputed: usually a mistaken tap) and leaves every earlier one.
+  ///
+  /// It used to delete them all, wiping a book's history to fix a list; the
+  /// first fix for that kept them all, which made a mistaken "mark finished"
+  /// permanent and counted a finish/unfinish/finish toggle as two listens.
+  /// When earlier finishes remain, a reopen marker ([_reopenedPrefix]) keeps
+  /// the book out of the finished state.
+  static Future<void> markIncomplete(String ratingKey) async {
+    final ts = _timestamps(ratingKey)..sort();
+    if (ts.isNotEmpty) ts.removeLast();
+    final marker = ServerScope.prefixed(_reopenedPrefix, ratingKey);
+    if (ts.isEmpty) {
+      await _box.delete(ServerScope.key(ratingKey));
+      await _box.delete(marker);
+    } else {
+      await _box.put(ServerScope.key(ratingKey), ts);
+      await _box.put(marker, DateTime.now().millisecondsSinceEpoch);
+    }
+  }
 
+  /// The most recent completion, or null when the book was never finished.
+  static DateTime? lastCompletion(String ratingKey) {
+    final ts = _timestamps(ratingKey);
+    if (ts.isEmpty) return null;
+    return DateTime.fromMillisecondsSinceEpoch(
+        ts.reduce((a, b) => a > b ? a : b));
+  }
+
+  /// When the book was last marked not finished, or null.
+  static DateTime? reopenedAt(String ratingKey) {
+    final v = _box.get(ServerScope.prefixed(_reopenedPrefix, ratingKey));
+    return v is int ? DateTime.fromMillisecondsSinceEpoch(v) : null;
+  }
+
+  /// Every book with at least one recorded completion — the history. For
+  /// "is it finished *now*" (reopened, or being re-read) see
+  /// `book_status.dart`.
   static Set<String> allCompleted() => {
         for (final key in _box.keys)
           if (ServerScope.ratingKeyOf(key.toString()) case final rk?)
-            if (_timestampsAt(key.toString()).isNotEmpty) rk,
+            if (!_isMarker(rk) && _timestampsAt(key.toString()).isNotEmpty) rk,
       };
 
   /// All completion timestamps for a book, sorted oldest → newest.
@@ -75,10 +123,15 @@ class CompletedBooksStore {
 
   /// Full ratingKey → [timestampMs...] map for backup. Preserves per-completion
   /// dates and the times-finished count (the plain [allCompleted] set loses both).
+  ///
+  /// Reopen markers are not exported: the backup format is ratingKey → dates,
+  /// and a marker read back as a "book" would count as one. A restore can
+  /// therefore show an un-marked book as finished again — one tap to fix,
+  /// against a format change for every older backup.
   static Map<String, dynamic> exportAll() => {
         for (final key in _box.keys)
           if (ServerScope.ratingKeyOf(key.toString()) case final rk?)
-            rk: _timestampsAt(key.toString()),
+            if (!_isMarker(rk)) rk: _timestampsAt(key.toString()),
       };
 
   /// Merges a backed-up ratingKey → [timestampMs...] map. Completion timestamps

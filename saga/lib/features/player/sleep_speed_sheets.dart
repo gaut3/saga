@@ -6,6 +6,7 @@ import '../../core/providers.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../shared/widgets/saga_sheet.dart';
+import '../../shared/widgets/saga_toast.dart';
 import 'player_provider.dart';
 import 'player_service.dart';
 
@@ -95,10 +96,13 @@ void showSleepTimerSheet(BuildContext context, WidgetRef ref, bool isActive,
                         color: SagaColors.accent, size: 18)
                     : null,
                 onTap: () {
-                  ref
+                  final armed = ref
                       .read(sleepTimerProvider.notifier)
                       .setEndOfChapter(m4bChapters: m4bChapters);
                   Navigator.pop(ctx);
+                  if (!armed) {
+                    showSagaToast(context, kEndOfChapterUnknownMessage);
+                  }
                 },
               ),
               Divider(color: SagaColors.border, height: 8),

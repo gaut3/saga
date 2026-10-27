@@ -5,15 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [1.1.3] - Unreleased
 
-### Added
+### Changed
 - **Find your place from your listening sessions — and hear it before you jump.** Every session now shows where in the book it started and ended, the chapter it ended in, and how long you listened, not just the time of day. Tap the mark on a session to hear about thirty seconds around where it ended; tap it again, or another session, to stop. A preview never moves your saved place. Only **Resume** does, which starts the book right there. This is for the night you fall asleep listening: check the last few sessions until you hear something you remember, then resume from that one. Sessions are in the player as before, on each book's page (next to Chapters), and under each book in History's Day tab, where they replace the old separate "Started" and "Paused" lines. Suggested by [@cscott0108](https://github.com/cscott0108) ([#16](https://github.com/gaut3/saga/issues/16)).
 
 ### Fixed
 - **The notification, lock screen and bluetooth controls should no longer go dead after Saga has been open a long time.** If Android rebuilt Saga's playback service while the app stayed open, the new service lost its connection to the player. The notification still showed the right book and followed what you did in the app, but pressing its buttons did nothing until Saga was force-stopped. The fault is in the audio library Saga uses, and its latest release still has it, so Saga now carries a small fix of its own that reconnects a rebuilt service. The rebuild is up to Android and can't be triggered on demand, so the fix hasn't been seen at work yet. If the controls ever stop responding again, please open an issue.
-- **A session that ends by stopping now has an end.** Finishing a book, swiping the player away, swiping Saga out of recent apps or a stop button on headphones all ended a session without recording where. That last stretch showed no length under Sessions and wasn't counted in History's per-book times. It's recorded now, so it can be previewed and resumed too.
+- **Every listening session now has an end.** Several ways of leaving a session never recorded where it ended: finishing a book, swiping the player away, swiping Saga out of recent apps, a stop button on headphones, and jumping somewhere else while playing (a chapter, a bookmark, a History entry). Pressing play when the book was already playing also started a second, empty session. Those sessions showed no length under Sessions and weren't counted in History's per-book times, and a few chapter taps could leave a list of sessions with only a start. Each session now has exactly one start and one end, so it can be previewed and resumed too. Sessions recorded before this update stay as they were.
 - **The 13-week heatmap on History's Total tab has square cells.** They were drawn a few pixels taller than wide; they now match the month calendar.
+- **A book you're listening to again shows up where you'd look for it.** Once a book had been finished, Saga treated it as finished for good: start it again and it never appeared in Continue Listening, on the resume card, in Android Auto, or as the book that comes back after the app is closed. That last one could even bring back an *older* book instead. A finished book now counts as finished only until you pick it up again.
+- **Marking a book as not finished no longer erases its history.** It used to delete every recorded finish, so the times-finished count and the finished books in History's Month tab went with it. Now it takes back only the most recent finish, so a mistaken tap is fully undone and earlier finishes stay.
+- **History's Total tab updates while you listen.** Its totals, streak and heatmap only changed when you left the tab and came back.
+- **History's Month tab shows a finish as soon as you mark it.** Marking a book finished while History was open left the calendar without that day's dot until you left and came back, even though the Total tab already listed the book.
+- **The end-of-chapter sleep timer follows the audio.** It worked out the time once, when you set it, so seeking back afterwards paused mid-chapter, and speeding up let part of the next chapter play. It now adjusts to seeks, skips, chapter taps and speed changes. When the player doesn't know the chapter's length yet, it uses the length from your library instead of quietly setting an arbitrary one-minute timer, and only if neither knows it does it say so.
+- **When auto-play can't start the next book, it says so.** The countdown used to vanish, which looked the same as cancelling it. Now a message says the next book didn't start, and when the finished screen is still showing, its button tries again.
+- **Tapping the cover in the player works offline.** For a downloaded book with no connection to the server, the tap that reveals the book's details did nothing.
+- **Pausing when headphones are unplugged and during calls is more robust.** Saga sets this up once at launch, and a failure there used to switch it off silently until the app was restarted: unplugging would play the book through the speaker, and calls would play over it. The setup is now retried, and a failure is recorded in the diagnostics log.
+
+### Security
+- **The diagnostics log masks per-server access tokens too.** It already masked Plex's sign-in token. The server list Plex sends carries a separate access token for each server, and an error while reading that list could quote it. Nothing has been found leaking; this closes the gap before it could.
 
 ---
 

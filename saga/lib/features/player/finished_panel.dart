@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/book_progress.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/providers.dart';
 import '../../core/storage/bookmark_store.dart';
@@ -235,6 +236,21 @@ class _NextInSeriesButton extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
+              ),
+              ValueListenableBuilder<String?>(
+                valueListenable: service.autoAdvanceFailed,
+                builder: (context, failedKey, _) => failedKey == book.ratingKey
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Couldn\'t start the next book — is the server '
+                          'reachable? Tap above to try again.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: SagaColors.fgMuted, fontSize: 13),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
               if (resumable) ...[
                 const SizedBox(height: 8),

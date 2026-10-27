@@ -3,8 +3,8 @@ import 'plex/models/plex_book.dart';
 import 'storage/book_download_store.dart';
 import 'storage/book_metadata_store.dart';
 import 'storage/bookmark_store.dart';
-import 'storage/completed_books_store.dart';
 import 'storage/track_cache_store.dart';
+import 'book_status.dart';
 
 /// What Saga can show with no server: the books already described on the phone.
 ///
@@ -81,7 +81,7 @@ PlexBook? localBook(String bookRatingKey) {
 /// you just finished and "resuming" replays its last few seconds.
 List<String> localInProgressKeys() {
   final positions = BookmarkStore.allPositions();
-  final completed = CompletedBooksStore.allCompleted();
+  final completed = finishedBookKeys();
   return [
     for (final key in positions.keys)
       if (!completed.contains(key)) key,

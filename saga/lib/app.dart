@@ -7,6 +7,7 @@ import 'core/theme/saga_theme.dart';
 import 'features/auth/auth_screen.dart';
 import 'features/auth/server_selection_screen.dart';
 import 'features/main_shell.dart';
+import 'shared/widgets/saga_toast.dart';
 
 class App extends ConsumerWidget {
   const App({super.key});
@@ -57,6 +58,7 @@ class App extends ConsumerWidget {
     final base = t.isDark ? ThemeData.dark() : ThemeData.light();
 
     return MaterialApp(
+      navigatorKey: rootNavigatorKey,
       title: 'Saga',
       debugShowCheckedModeBanner: false,
       theme: base.copyWith(

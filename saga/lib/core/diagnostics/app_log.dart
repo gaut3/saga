@@ -139,9 +139,11 @@ class AppLog {
     // The token as plex.tv itself spells it. A malformed auth response ends up
     // quoted inside a FormatException (which includes the source text near the
     // error), and that carries `"authToken":"…"` — a shape the query-parameter
-    // rule above doesn't know.
+    // rule above doesn't know. `accessToken` is the same thing per server: the
+    // resources list `fetchServers` parses carries one for every server, and
+    // its parse errors are logged with the exception text.
     out = out.replaceAllMapped(
-        RegExp(r'''(authToken["']?\s*[=:]\s*["']?)([^"'\s,}]+)''',
+        RegExp(r'''((?:auth|access)Token["']?\s*[=:]\s*["']?)([^"'\s,}]+)''',
             caseSensitive: false),
         (m) => '${m[1]}••••');
     // Whole plex.direct name: <ip-with-dashes>.<machine id>.plex.direct

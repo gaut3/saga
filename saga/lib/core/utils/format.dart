@@ -1,11 +1,17 @@
 import 'date_math.dart';
 
-String fmtDuration(Duration d) {
+String fmtDuration(Duration d, {bool alwaysShowHours = false}) {
   final h = d.inHours;
   final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
   final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-  return h > 0 ? '$h:$m:$s' : '$m:$s';
+  return h > 0 || alwaysShowHours ? '$h:$m:$s' : '$m:$s';
 }
+
+/// A position in a book, always with the hour: `"0:48:49"`. [fmtDuration]
+/// drops the hour under 60 minutes, which is fine on a scrubber but reads as
+/// a time of day ("14:44") beside the clock times in a session list.
+String fmtBookPositionMs(int ms) =>
+    fmtDuration(Duration(milliseconds: ms < 0 ? 0 : ms), alwaysShowHours: true);
 
 String fmtDurationMs(int? ms) {
   if (ms == null || ms <= 0) return '';

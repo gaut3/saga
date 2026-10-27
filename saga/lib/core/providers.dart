@@ -24,6 +24,7 @@ import 'storage/named_bookmark_store.dart';
 import 'storage/settings_store.dart';
 import 'storage/track_cache_store.dart';
 import 'theme/saga_theme.dart';
+import 'book_status.dart';
 
 final plexClientProvider = Provider<PlexClient>((_) => PlexClient.instance);
 
@@ -210,7 +211,7 @@ final recentlyAddedProvider =
   ref.watch(activeServerUriProvider);
   ref.watch(completionRevisionProvider);
   final books = await ref.watch(plexApiProvider).fetchRecentlyAdded(sectionKey);
-  final completed = CompletedBooksStore.allCompleted();
+  final completed = finishedBookKeys();
   return books.toList()
     ..sort((a, b) {
       final ac = completed.contains(a.ratingKey);
@@ -242,7 +243,7 @@ final inProgressCountProvider = Provider<int>((ref) {
   ref.watch(completionRevisionProvider);
   ref.watch(bookmarkRevisionProvider);
   return BookmarkStore.savedBookKeys()
-      .difference(CompletedBooksStore.allCompleted())
+      .difference(finishedBookKeys())
       .length;
 });
 
@@ -251,7 +252,7 @@ final continueListeningProvider =
   ref.watch(completionRevisionProvider);
   ref.watch(bookmarkRevisionProvider);
   final savedKeys = BookmarkStore.savedBookKeys();
-  final inProgressKeys = savedKeys.difference(CompletedBooksStore.allCompleted());
+  final inProgressKeys = savedKeys.difference(finishedBookKeys());
   if (inProgressKeys.isEmpty) return [];
   final allBooks = await ref.watch(booksProvider(sectionKey).future);
   return allBooks.where((b) => inProgressKeys.contains(b.ratingKey)).toList()

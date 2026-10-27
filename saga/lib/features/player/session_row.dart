@@ -68,10 +68,10 @@ class SessionRow extends ConsumerWidget {
 
     final where = [
       if (start != null && end != null)
-        '${fmtDuration(Duration(milliseconds: start.absoluteMs))} → '
-            '${fmtDuration(Duration(milliseconds: end.absoluteMs))}'
+        '${fmtBookPositionMs(start.absoluteMs)} → '
+            '${fmtBookPositionMs(end.absoluteMs)}'
       else if (start != null)
-        'from ${fmtDuration(Duration(milliseconds: start.absoluteMs))}',
+        'from ${fmtBookPositionMs(start.absoluteMs)}',
       if (session.duration != null)
         fmtListenedMs(session.duration!.inMilliseconds),
     ].join('  ·  ');
@@ -84,27 +84,44 @@ class SessionRow extends ConsumerWidget {
             valueListenable: SessionPreview.instance.active,
             builder: (context, active, _) {
               final previewing = active == _previewId;
+              // Labelled like Resume on the other side: the mark alone read
+              // as "play the book", which is Resume's job.
               return Semantics(
                 button: true,
                 label: previewing ? 'Stop preview' : 'Preview this spot',
+                excludeSemantics: true,
                 child: InkWell(
                   onTap: () => _preview(context, ref),
                   borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    width: 34,
-                    height: 34,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: SagaColors.accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: ExcludeSemantics(
-                      child: AnimatedSagaMark(
-                        size: 20,
-                        state: previewing
-                            ? SagaMarkState.playing
-                            : SagaMarkState.paused,
-                      ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: SagaColors.accent.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: AnimatedSagaMark(
+                            size: 20,
+                            state: previewing
+                                ? SagaMarkState.playing
+                                : SagaMarkState.paused,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          previewing ? 'Stop' : 'Preview',
+                          style: TextStyle(
+                              color: SagaColors.accentText,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -140,13 +157,36 @@ class SessionRow extends ConsumerWidget {
               ],
             ),
           ),
-          TextButton(
-            onPressed: () => _resume(context, ref),
-            style: TextButton.styleFrom(
-              foregroundColor: SagaColors.accentText,
-              visualDensity: VisualDensity.compact,
+          // Icon over a small label, not a text button: the word beside the
+          // text took enough width to wrap the duration onto its own line,
+          // and an icon alone didn't say what it does.
+          Semantics(
+            button: true,
+            label: 'Resume from here',
+            excludeSemantics: true,
+            child: InkWell(
+              onTap: () => _resume(context, ref),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.play_circle_outline_rounded,
+                        size: 26, color: SagaColors.accent),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Resume',
+                      style: TextStyle(
+                          color: SagaColors.accentText,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            child: const Text('Resume'),
           ),
         ],
       ),

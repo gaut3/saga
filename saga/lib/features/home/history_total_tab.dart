@@ -18,6 +18,10 @@ class HistoryTotalTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Everything below is read straight from the stores, so nothing re-runs
+    // it unless this does: the totals, streak and heatmap froze while
+    // listening with the tab open. Same watch as the Day tab.
+    ref.watch(historyRevisionProvider);
     final today = DateTime.now();
     final todayClean = dayOnly(today);
 

@@ -8,6 +8,7 @@ import 'package:saga/core/storage/bookmark_store.dart';
 import 'package:saga/core/storage/completed_books_store.dart';
 import 'package:saga/core/storage/custom_collection_store.dart';
 import 'package:saga/core/storage/track_cache_store.dart';
+import 'package:saga/core/storage/playback_log_store.dart';
 import 'package:saga/features/player/media_browse.dart';
 
 import 'helpers/hive_test_env.dart';
@@ -29,6 +30,7 @@ void main() {
     await BookMetadataStore.init(testEncKey);
     await BookDownloadStore.init(testEncKey);
     await CompletedBooksStore.init(testEncKey);
+    await PlaybackLogStore.init(testEncKey);
     await CustomCollectionStore.init(testEncKey);
     await TrackCacheStore.init(testEncKey);
   });
@@ -355,6 +357,7 @@ void main() {
     await BookMetadataStore.init(testEncKey);
     await BookDownloadStore.init(testEncKey);
     await CompletedBooksStore.init(testEncKey);
+    await PlaybackLogStore.init(testEncKey);
     await CustomCollectionStore.init(testEncKey);
     await TrackCacheStore.init(testEncKey);
 

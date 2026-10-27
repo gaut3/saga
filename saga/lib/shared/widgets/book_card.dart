@@ -6,11 +6,11 @@ import '../../core/book_progress.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/providers.dart';
 import '../../core/storage/bookmark_store.dart';
-import '../../core/storage/completed_books_store.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../features/library/book_detail_screen.dart';
 import '../../features/player/player_provider.dart';
 import 'book_cover_image.dart';
+import '../../core/book_status.dart';
 
 // ── Card geometry ─────────────────────────────────────────────────────────────
 //
@@ -259,7 +259,7 @@ class BookProgressOverlay extends ConsumerWidget {
     ref.watch(bookmarkRevisionProvider);
     ref.watch(completionRevisionProvider);
 
-    if (CompletedBooksStore.isCompleted(book.ratingKey)) {
+    if (isBookFinished(book.ratingKey)) {
       return Positioned(
         top: 6,
         right: 6,
