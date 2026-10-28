@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/plex/plex_client.dart';
 import 'core/providers.dart';
+import 'core/scroll_frame_rate.dart';
 import 'core/theme/saga_theme.dart';
 import 'features/auth/auth_screen.dart';
 import 'features/auth/server_selection_screen.dart';
@@ -95,6 +96,8 @@ class App extends ConsumerWidget {
           ),
         ),
       ),
+      // Above the navigators, so the player and sheets are covered too.
+      builder: (context, child) => ScrollFrameRateBoost(child: child!),
       home: home,
     );
   }

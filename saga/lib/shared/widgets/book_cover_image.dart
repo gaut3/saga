@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io' show File;
-import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -131,11 +130,11 @@ class _BookCoverImageState extends State<BookCoverImage> {
   /// had. Reading it costs no request and no cache-validity check, so it is the
   /// faster path online too.
   Widget _fromFile(Uri uri) {
-    final provider = ResizeImage(
-      FileImage(File(uri.toFilePath())),
-      width: widget.cacheWidth,
-    );
-    if (widget.letterboxed) return _buildLetterbox(context, provider);
+    final file = FileImage(File(uri.toFilePath()));
+    final provider = ResizeImage(file, width: widget.cacheWidth);
+    if (widget.letterboxed) {
+      return _buildLetterbox(provider, ResizeImage(file, width: _backdropWidth));
+    }
     return Image(
       image: provider,
       fit: BoxFit.cover,
@@ -162,7 +161,16 @@ class _BookCoverImageState extends State<BookCoverImage> {
       fadeOutDuration: Duration.zero,
       placeholderFadeInDuration: _placeholderDelay,
       // One download, one cache entry — the letterbox draws it twice.
-      imageBuilder: widget.letterboxed ? _buildLetterbox : null,
+      imageBuilder: widget.letterboxed
+          ? (context, provider) => _buildLetterbox(
+                provider,
+                ResizeImage(
+                  CachedNetworkImageProvider(url,
+                      headers: PlexClient.instance.authHeaders),
+                  width: _backdropWidth,
+                ),
+              )
+          : null,
       placeholder: (_, _) => _placeholder(),
       errorWidget: (_, _, _) {
         if (_attempt < _maxRetries) {
@@ -177,30 +185,30 @@ class _BookCoverImageState extends State<BookCoverImage> {
     );
   }
 
-  /// Blurred cropped backdrop + scrim + contained artwork. Same treatment the
-  /// player screen uses for its hero cover, so letterboxed covers read the same
-  /// everywhere.
-  Widget _buildLetterbox(BuildContext context, ImageProvider provider) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Scale the blur to the box: a sigma tuned for a full-screen cover
-        // flattens a 180 px tile to a single colour.
-        final shortest = constraints.biggest.shortestSide;
-        final sigma = shortest.isFinite
-            ? (shortest / 12).clamp(6.0, 28.0)
-            : 28.0;
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-              child: Image(image: provider, fit: BoxFit.cover),
-            ),
-            ColoredBox(color: Colors.black.withValues(alpha: 0.30)),
-            Image(image: provider, fit: BoxFit.contain),
-          ],
-        );
-      },
+  /// Decode width of the letterbox backdrop. Stretched across the box with
+  /// bilinear filtering, a 16 px copy reads as a blur.
+  static const _backdropWidth = 16;
+
+  /// Soft cropped backdrop + scrim + contained artwork.
+  ///
+  /// The backdrop is a tiny decode stretched to fill, not an `ImageFilter.blur`:
+  /// a real blur is re-run on every frame the box moves, and a scrolling grid
+  /// of letterboxed tiles (Collections) spent up to 50 ms a frame on the GPU
+  /// doing it. Stretching a 16 px image costs nothing and looks the same
+  /// under the scrim.
+  Widget _buildLetterbox(ImageProvider provider, ImageProvider backdrop) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image(
+          image: backdrop,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.medium,
+          gaplessPlayback: true,
+        ),
+        ColoredBox(color: Colors.black.withValues(alpha: 0.30)),
+        Image(image: provider, fit: BoxFit.contain),
+      ],
     );
   }
 

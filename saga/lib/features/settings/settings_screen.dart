@@ -132,8 +132,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: Text('Settings',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
           ),
+          // The whole page is one Column, which — unlike a ListView's items —
+          // gets no repaint boundary of its own: every scroll frame re-recorded
+          // every tile, 5–15 ms on the UI thread, and Settings stuttered. Behind
+          // a boundary it's painted once and scrolling only moves the layer.
           SliverToBoxAdapter(
-            child: Column(
+            child: RepaintBoundary(
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 8),
@@ -492,6 +497,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
               ],
+            ),
             ),
           ),
         ],

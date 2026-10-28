@@ -5,6 +5,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.Surface
+import android.view.SurfaceView
+import android.view.View
+import android.view.ViewGroup
 import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.CastMediaControlIntent
@@ -122,6 +126,44 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
+    // Scroll-time frame-rate vote (see lib/core/scroll_frame_rate.dart). Flutter
+    // renders into one SurfaceView that never states a rate, so adaptive-
+    // refresh phones give it the "normal" rate — 60 Hz on a 120 Hz Pixel.
+    // Voting on that surface while a list moves lifts it to the display's top
+    // rate; a vote of 0 withdraws it. Android clamps the vote to the user's
+    // cap (Smooth display off, Battery Saver), so it never overrides them.
+    private fun setFrameRateBoost(boost: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val surface = findSurfaceView(window.decorView)?.holder?.surface ?: return
+        if (!surface.isValid) return
+        try {
+            surface.setFrameRate(
+                if (boost) maxRefreshRate() else 0f,
+                Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
+            )
+        } catch (e: Exception) {
+            // A surface torn down between the check and the call; the next
+            // scroll votes again.
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun maxRefreshRate(): Float {
+        val display = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) display
+            else windowManager.defaultDisplay) ?: return 120f
+        return display.supportedModes.maxOfOrNull { it.refreshRate } ?: 120f
+    }
+
+    private fun findSurfaceView(view: View): SurfaceView? {
+        if (view is SurfaceView) return view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                findSurfaceView(view.getChildAt(i))?.let { return it }
+            }
+        }
+        return null
+    }
+
     override fun onDestroy() {
         castContext?.sessionManager?.removeSessionManagerListener(
             sessionListener, CastSession::class.java
@@ -131,6 +173,17 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger, "com.gaut3.saga/frame_rate"
+        ).setMethodCallHandler { call, result ->
+            if (call.method == "setBoost") {
+                setFrameRateBoost(call.arguments as? Boolean ?: false)
+                result.success(null)
+            } else {
+                result.notImplemented()
+            }
+        }
 
         channel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger, castChannel
