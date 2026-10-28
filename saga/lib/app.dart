@@ -73,6 +73,11 @@ class App extends ConsumerWidget {
           onSurface: t.fg,
         ),
         scaffoldBackgroundColor: t.bg,
+        // No ripple, no press highlight, anywhere: a row answers with what it
+        // does (the mark animates, a screen opens, a list expands). Material's
+        // default grey flashed as a whitish block on Saga's warm dark screens.
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: Colors.transparent,
         appBarTheme: AppBarTheme(
           backgroundColor: t.bg,
           foregroundColor: t.fg,

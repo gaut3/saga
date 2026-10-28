@@ -93,7 +93,10 @@ class SessionRow extends ConsumerWidget {
                 child: InkWell(
                   onTap: () => _preview(context, ref),
                   borderRadius: BorderRadius.circular(8),
-                  child: Padding(
+                  // Fixed width: "Preview" and "Stop" differ, and sized to its
+                  // label the control shifted sideways when the label swapped.
+                  child: Container(
+                    width: 56,
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,

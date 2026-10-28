@@ -80,8 +80,12 @@ class SessionPreview {
       unawaited(player.play());
       return true;
     } catch (e) {
+      // Stopped (or another preview started) mid-load: [stop] disposed the
+      // player under the load, which then throws. That's a cancel, not a
+      // failure — saying "couldn't play" for it greeted every early Stop.
+      if (generation != _generation) return true;
       AppLog.log('playback', 'session preview failed: $e');
-      if (generation == _generation) await stop();
+      await stop();
       return false;
     }
   }
