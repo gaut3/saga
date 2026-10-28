@@ -36,3 +36,6 @@ build/debug-info/
 /diagnostics.md
 /Screenshot_*.png
 /assets
+
+# macOS Finder metadata
+.DS_Store

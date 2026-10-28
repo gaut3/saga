@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [1.1.3] - Unreleased
+## [1.1.3] - 2026-10-28
 
 ### Changed
 - **Find your place from your listening sessions — and hear it before you jump.** Every session now shows where in the book it started and ended, the chapter it ended in, and how long you listened, not just the time of day. Tap the mark on a session to hear about thirty seconds around where it ended; tap it again, or another session, to stop. A preview never moves your saved place. Only **Resume** does, which starts the book right there. This is for the night you fall asleep listening: check the last few sessions until you hear something you remember, then resume from that one. Sessions are in the player as before, on each book's page (next to Chapters), and under each book in History's Day tab, where they replace the old separate "Started" and "Paused" lines. Suggested by [@cscott0108](https://github.com/cscott0108) ([#16](https://github.com/gaut3/saga/issues/16)).
