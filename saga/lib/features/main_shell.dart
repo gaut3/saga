@@ -18,6 +18,7 @@ import '../core/providers.dart' show sagaThemeVariantProvider, tabIndexProvider;
 import 'player/player_provider.dart';
 import 'player/player_service.dart';
 import 'settings/settings_screen.dart';
+import 'widget/home_widget_sync.dart';
 
 class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});
@@ -76,6 +77,10 @@ class _MainShellState extends ConsumerState<MainShell>
       // used to vanish into the zone handler as one anonymous line.
       ref.read(playerServiceProvider).savePositionForLifecycle().catchError(
           (Object e) => AppLog.log('playback', 'lifecycle save failed: $e'));
+      // Leaving the app is when the home-screen widget becomes visible, and
+      // anything changed in here (a finish marked by hand, cleared progress)
+      // reached no player event.
+      HomeWidgetSync.refresh();
     } else if (state == AppLifecycleState.resumed) {
       // Back in the foreground — push any positions queued while offline.
       ref.read(playerServiceProvider).flushTimelineQueue();

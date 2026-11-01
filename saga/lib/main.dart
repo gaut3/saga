@@ -34,6 +34,7 @@ import 'core/storage/track_cache_store.dart';
 import 'core/storage/want_to_read_store.dart';
 import 'features/player/player_provider.dart';
 import 'features/player/player_service.dart';
+import 'features/widget/home_widget_sync.dart';
 
 Future<void> main() async {
   // Everything (including ensureInitialized and runApp) must live in the same
@@ -133,6 +134,10 @@ Future<void> _run() async {
     );
 
     setPlayerServiceInstance(service);
+
+    // The home-screen widget follows the player from here, headless engine
+    // included: a widget tap with the app closed runs main() with no screen.
+    HomeWidgetSync.attach(service);
 
     // Start listening for the real-loudness tap (drives the playing visualizer).
     AudioLevel.instance.setDelay(SettingsStore.animationSyncDelayMs);

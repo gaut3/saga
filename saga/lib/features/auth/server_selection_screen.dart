@@ -7,6 +7,7 @@ import '../../shared/widgets/saga_toast.dart';
 
 import '../../core/providers.dart';
 import '../player/player_provider.dart';
+import '../widget/home_widget_sync.dart';
 
 class ServerSelectionScreen extends ConsumerStatefulWidget {
   final bool isSetup;
@@ -135,6 +136,8 @@ class _ServerSelectionScreenState extends ConsumerState<ServerSelectionScreen> {
       dialogOpen = true;
 
       await discovery.selectServer(server);
+      // Another server's books, under another storage scope.
+      HomeWidgetSync.refresh();
 
       if (!context.mounted) return;
 

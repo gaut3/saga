@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **A home-screen widget.** It shows the book you're listening to, the same one as Home's Continue Listening card: cover, title, chapter, time left and progress, with resume or pause and your skip buttons in an amber footer. It works with Saga closed: tap Resume and your book starts within a second or two, at your place, with the usual short rewind. A skip with Saga closed moves from where you left off, never from the start. It wears the theme you've picked in Saga and changes with it. The widget comes in two sizes; resize it to switch. With nothing in progress it says so and opens your library, and when you're signed out it shows no book at all. Requested by [@cscott0108](https://github.com/cscott0108) ([#17](https://github.com/gaut3/saga/issues/17)).
+
 ### Changed
 - **The Continue Listening card has no border.** The amber outline around it is gone; the play button at its foot already shows whether the book is playing. The progress bar is a little thinner and the play button a little taller, to match the new home-screen widget.
 

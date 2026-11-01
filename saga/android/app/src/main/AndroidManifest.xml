@@ -47,19 +47,6 @@
             </intent-filter>
         </service>
 
-        <!-- Home-screen widget (1.2.0) -->
-        <receiver
-            android:name=".SagaWidgetProvider"
-            android:exported="false"
-            android:label="Saga">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/saga_widget_info"/>
-        </receiver>
-
         <!-- audio_service: media button receiver -->
         <receiver
             android:name="com.ryanheise.audioservice.MediaButtonReceiver"

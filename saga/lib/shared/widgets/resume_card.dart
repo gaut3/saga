@@ -48,12 +48,7 @@ class _ResumeCardState extends ConsumerState<ResumeCard> {
     });
 
     final savedPos = BookmarkStore.load(widget.book.ratingKey);
-    final total = bookTotalDurationMs(widget.book, savedPos);
-    final absolute = savedPos?.absolutePositionMs ?? 0;
-    final pct = bookProgressFraction(widget.book, savedPos) ?? 0.0;
-    final remainingMs = total != null
-        ? (total - absolute).clamp(0, total)
-        : null;
+    final (:remainingMs, fraction: pct) = resumeProgress(widget.book, savedPos);
 
     final nowPlayingKey = ref.watch(nowPlayingKeyProvider).valueOrNull;
     final isNowPlaying = nowPlayingKey == widget.book.ratingKey;
@@ -252,22 +247,13 @@ class _ResumeCardState extends ConsumerState<ResumeCard> {
   Future<void> _resume() async {
     if (_loading) return;
     final service = ref.read(playerServiceProvider);
-    // If this book is already loaded (paused), just play without reloading.
-    if (service.currentBookRatingKey == widget.book.ratingKey) {
-      await service.play();
-      return;
-    }
-    setState(() => _loading = true);
+    // The loaded book just plays; no loading state for that.
+    final loaded = service.currentBookRatingKey == widget.book.ratingKey;
+    if (!loaded) setState(() => _loading = true);
     try {
-      final tracks = await ref.read(
-        tracksProvider(widget.book.ratingKey).future,
-      );
-      if (!mounted) return;
-      await startBook(
-        service: service,
-        bookRatingKey: widget.book.ratingKey,
-        tracks: tracks,
-        from: const BookStartPoint.resume(),
+      await service.resumeBook(
+        widget.book.ratingKey,
+        loadTracks: () => ref.read(tracksProvider(widget.book.ratingKey).future),
       );
     } catch (e) {
       // "Loading…" quietly reverting to "Resume listening" reads as a dead
@@ -281,13 +267,28 @@ class _ResumeCardState extends ConsumerState<ResumeCard> {
         );
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && _loading) setState(() => _loading = false);
     }
   }
 
   Future<void> _pause() async {
     await ref.read(playerServiceProvider).pause();
   }
+}
+
+/// The card's two progress figures: time left (null when the book's length
+/// is unknown) and the fraction listened. The home-screen widget shows the
+/// same two, from here.
+({int? remainingMs, double fraction}) resumeProgress(
+  PlexBook book,
+  BookPosition? pos,
+) {
+  final total = bookTotalDurationMs(book, pos);
+  final absolute = pos?.absolutePositionMs ?? 0;
+  return (
+    remainingMs: total != null ? (total - absolute).clamp(0, total) : null,
+    fraction: bookProgressFraction(book, pos) ?? 0.0,
+  );
 }
 
 /// "Ch. N · Title" for the saved position, or null if unknown. Single-file

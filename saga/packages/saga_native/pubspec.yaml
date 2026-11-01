@@ -1,0 +1,19 @@
+name: saga_native
+description: Saga's own Android code that must exist on every Flutter engine, including the headless one audio_service starts. Today the home-screen widget.
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: ^3.10.7
+  flutter: ">=3.38.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.gaut3.saga.nativebridge
+        pluginClass: SagaNativePlugin

@@ -119,6 +119,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   final _jumps = StreamController<void>.broadcast();
   void _jumped() => _jumps.add(null);
 
+  /// Fires after a position save and after a finish is recorded: what the
+  /// home-screen widget redraws on. A stream rather than another callback
+  /// slot, because those slots are filled by a Riverpod provider, and the
+  /// headless engine a widget tap starts (app closed) never builds it.
+  Stream<void> get progressChanged => _progressChanged.stream;
+  final _progressChanged = StreamController<void>.broadcast();
+
   /// Stops a pending auto-advance. Called by any user action that implies they
   /// want to stay put — play, pause, seek, dismissing the panel, loading
   /// another book, or clearing the session.
@@ -571,10 +578,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       final bookKey = mostRecentBookRatingKey(BookmarkStore.allPositions(),
           completed: finishedBookKeys());
       if (bookKey == null) return false;
-      // Cache first: instant, and works offline for downloaded books. The
-      // network fetch covers streamed books (needs the server reachable).
-      final tracks =
-          TrackCacheStore.load(bookKey) ?? await _api.fetchTracks(bookKey);
+      final tracks = await _tracksFor(bookKey);
       if (tracks.isEmpty) return false;
       final started = await startBook(
         service: this,
@@ -965,6 +969,88 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   Future<void> playMediaItem(MediaItem mediaItem) =>
       playFromMediaId(mediaItem.id);
 
+  /// A book's tracks for a launch that didn't come with them. Cache first:
+  /// instant, and works offline for downloaded books, which in a car or from
+  /// the home-screen widget is the difference between a book starting and
+  /// nothing happening. The fetch covers a book never played on this device.
+  Future<List<PlexTrack>> _tracksFor(String bookRatingKey) async =>
+      TrackCacheStore.load(bookRatingKey) ??
+      await _api.fetchTracks(bookRatingKey);
+
+  /// Plays [bookRatingKey] from where the listener left it: a plain [play]
+  /// when it's the loaded book (no reload: Prologue 4.2.0 restarted a playing
+  /// book from its widget), otherwise a resume launch through [startBook].
+  /// Home's resume card and the home-screen widget both come through here.
+  /// Throws what [loadTracks] or the launch throws.
+  Future<void> resumeBook(String bookRatingKey,
+      {Future<List<PlexTrack>> Function()? loadTracks}) async {
+    if (_bookRatingKey == bookRatingKey) {
+      await play();
+      return;
+    }
+    final tracks = await (loadTracks ?? () => _tracksFor(bookRatingKey))();
+    if (tracks.isEmpty) throw StateError('no tracks for book $bookRatingKey');
+    await startBook(
+      service: this,
+      bookRatingKey: bookRatingKey,
+      tracks: tracks,
+      from: const BookStartPoint.resume(),
+    );
+  }
+
+  /// The widget's skip buttons. When [bookRatingKey] isn't the loaded book
+  /// (the app was closed), it's loaded paused at its saved position first, so
+  /// the skip moves from there and never from 0:00, then the result is saved:
+  /// a paused book has no timer to save it.
+  Future<void> skipBook(String bookRatingKey, {required bool forward}) async {
+    if (_bookRatingKey != bookRatingKey) {
+      final pos = BookmarkStore.load(bookRatingKey);
+      if (pos == null) return;
+      final tracks = await _tracksFor(bookRatingKey);
+      if (tracks.isEmpty) return;
+      final started = await startBook(
+        service: this,
+        bookRatingKey: bookRatingKey,
+        tracks: tracks,
+        // The exact saved point: no resume rewind, the listener asked for a
+        // skip, not to pick up where they were.
+        from: BookStartPoint.atTrack(pos.trackRatingKey,
+            positionMs: pos.positionMs),
+        playback: LaunchPlayback.none,
+      );
+      if (!started) return;
+    }
+    forward ? await fastForward() : await rewind();
+    await savePositionForLifecycle();
+  }
+
+  /// The home-screen widget's buttons, sent by audio_service's custom-action
+  /// start (see the SAGA PATCH in AudioService.onStartCommand). Each names
+  /// the book the widget shows, so a press does what the widget says even
+  /// when another book is loaded.
+  @override
+  Future<dynamic> customAction(String name,
+      [Map<String, dynamic>? extras]) async {
+    final book = extras?['book'] as String?;
+    try {
+      switch (name) {
+        case 'widgetPlay':
+          if (book != null) await resumeBook(book);
+        case 'widgetPause':
+          await pause();
+        case 'widgetSkip':
+          if (book != null) {
+            await skipBook(book, forward: extras?['forward'] == true);
+          }
+        default:
+          return await super.customAction(name, extras);
+      }
+    } catch (e) {
+      // No screen to explain a failure on: leave a trace.
+      AppLog.log('playback', 'widget $name failed for book $book: $e');
+    }
+  }
+
   /// Starts a book chosen from the browse tree.
   ///
   /// Resumes rather than restarts: picking a book you're halfway through out
@@ -978,11 +1064,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       return;
     }
     try {
-      // Cache first: in a car that is the difference between a book starting
-      // and nothing happening. The fetch covers a book browsed but never
-      // played on this device.
-      final tracks =
-          TrackCacheStore.load(bookKey) ?? await _api.fetchTracks(bookKey);
+      final tracks = await _tracksFor(bookKey);
       if (tracks.isEmpty) {
         AppLog.log('playback', 'playFromMediaId: no tracks for book $bookKey');
         return;
@@ -1204,6 +1286,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     );
     justFinishedBook.value = bookKey; // trigger the finished panel
     onBookCompleted?.call();
+    _progressChanged.add(null);
   }
 
   void _startProgressTimer() {
@@ -1275,6 +1358,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       ),
     );
     onBookmarkSaved?.call();
+    _progressChanged.add(null);
 
     _api.reportTimeline(
       ratingKey: track.ratingKey,

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="saga_widget_label">Saga</string>
+    <string name="saga_widget_description">Your current book: resume, pause and skip</string>
+    <string name="saga_widget_empty_title">Nothing in progress</string>
+    <string name="saga_widget_empty_subtitle">Books you start show up here.</string>
+    <string name="saga_widget_empty_action">Open Library</string>
+    <string name="saga_widget_signed_out_title">Signed out</string>
+    <string name="saga_widget_signed_out_subtitle">Tap to sign in</string>
+    <string name="saga_widget_signed_out_action">Sign in</string>
+    <string name="saga_widget_resume">Resume</string>
+    <string name="saga_widget_pause">Pause</string>
+    <string name="saga_widget_skip_back">Back %d seconds</string>
+    <string name="saga_widget_skip_forward">Forward %d seconds</string>
+</resources>

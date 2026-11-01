@@ -69,6 +69,8 @@ Saga stores your data privately, but some of it is deliberately published to And
 
 **Anyone who can see your screen.** Saga does not block screenshots or hide itself from the app switcher, so a book cover or title can appear in a screen recording or in the recents view. On a locked phone, the playback notification shows the current book's title, author and cover to anyone holding it — Android's own "hide sensitive notification content" setting is the control for that, and Saga cannot override it. If you want your server's address hidden from screenshots of the Settings screen, there is a **Redact server address** toggle in Settings → Server.
 
+**The home-screen widget** *(1.2.0, only if you add it)* shows your current book's title, chapter, cover and progress on the home screen, to anyone using the phone. To draw it without starting the app, Saga keeps a copy of exactly those details (plus the book's Plex ID and your skip intervals) **unencrypted** in its private storage, and the cover as a file it already keeps there for the lock screen. No credential and no server address is in that copy. It is never read back to play or resume anything; your position comes only from the encrypted store. Signing out replaces the copy with "Signed out", so no title outlives your account on the home screen.
+
 ---
 
 ## What signing out removes

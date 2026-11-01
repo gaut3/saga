@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ink, from saga_theme.dart: only what the initial layout shows before the
+     first draw. Every draw takes the app's current theme from the snapshot
+     (decided 2026-11-01, over the Vellum handoff's fixed colours). -->
+<resources>
+    <color name="saga_widget_surface">#FF261B16</color>
+    <color name="saga_widget_fg">#FFF4EAD8</color>
+    <color name="saga_widget_fg_muted">#A6F4EAD8</color>
+    <color name="saga_widget_fg_subtle">#84F4EAD8</color>
+    <color name="saga_widget_accent">#FFE0A050</color>
+    <color name="saga_widget_accent_fg">#FF1E1410</color>
+</resources>

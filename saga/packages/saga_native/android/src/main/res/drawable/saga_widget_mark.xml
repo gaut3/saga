@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The 4-spine mark, geometry from brand/assets/svg/mark (200 box). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="52dp" android:height="52dp"
+    android:viewportWidth="200" android:viewportHeight="200">
+    <path android:fillColor="@color/saga_widget_fg"
+        android:pathData="M46,48 h12 a5,5 0 0 1 5,5 v94 a5,5 0 0 1 -5,5 h-12 a5,5 0 0 1 -5,-5 v-94 a5,5 0 0 1 5,-5 Z" />
+    <path android:fillColor="@color/saga_widget_accent"
+        android:pathData="M78,38 h12 a5,5 0 0 1 5,5 v114 a5,5 0 0 1 -5,5 h-12 a5,5 0 0 1 -5,-5 v-114 a5,5 0 0 1 5,-5 Z" />
+    <path android:fillColor="@color/saga_widget_fg"
+        android:pathData="M110,56 h12 a5,5 0 0 1 5,5 v78 a5,5 0 0 1 -5,5 h-12 a5,5 0 0 1 -5,-5 v-78 a5,5 0 0 1 5,-5 Z" />
+    <path android:fillColor="@color/saga_widget_fg"
+        android:pathData="M142,46 h12 a5,5 0 0 1 5,5 v98 a5,5 0 0 1 -5,5 h-12 a5,5 0 0 1 -5,-5 v-98 a5,5 0 0 1 5,-5 Z" />
+</vector>

@@ -24,6 +24,10 @@ dependencies:
   audio_service: ^0.18.19
   audio_session: ^0.1.22
 
+  # Saga's own native code that must exist on every engine (the widget)
+  saga_native:
+    path: packages/saga_native
+
   # Networking
   dio: ^5.11.1
   connectivity_plus: ^6.0.0

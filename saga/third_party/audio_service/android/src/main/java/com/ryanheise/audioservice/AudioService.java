@@ -104,6 +104,11 @@ public class AudioService extends MediaBrowserServiceCompat {
     private static ServiceListener listener;
     // SAGA PATCH: see onStartCommand.
     private static final long PLACEHOLDER_FOREGROUND_MS = 20000;
+    /** SAGA PATCH: start the service with a custom action: extras
+     *  {@link #EXTRA_CUSTOM_ACTION_NAME} and {@link #EXTRA_CUSTOM_ACTION_EXTRAS}. */
+    public static final String ACTION_CUSTOM = "com.ryanheise.audioservice.action.CUSTOM";
+    public static final String EXTRA_CUSTOM_ACTION_NAME = "com.ryanheise.audioservice.extra.CUSTOM_ACTION_NAME";
+    public static final String EXTRA_CUSTOM_ACTION_EXTRAS = "com.ryanheise.audioservice.extra.CUSTOM_ACTION_EXTRAS";
     private static List<MediaSessionCompat.QueueItem> queue = new ArrayList<>();
     private static final Map<String, MediaMetadataCompat> mediaMetadataCache = new HashMap<>();
 
@@ -358,31 +363,22 @@ public class AudioService extends MediaBrowserServiceCompat {
 
     @Override
     public int onStartCommand(final Intent intent, int flags, int startId) {
-        // SAGA PATCH: a media button sent straight to the service, as the home
-        // screen widget does with PendingIntent.getForegroundService.
-        if (intent != null && Intent.ACTION_MEDIA_BUTTON.equals(intent.getAction())) {
-            // Foreground at once: otherwise only Dart starting playback calls
-            // startForeground, and a slow restore misses Android's deadline.
+        // SAGA PATCH: a custom action sent straight to the service, as the home
+        // screen widget does with PendingIntent.getForegroundService. Its play
+        // names the book it shows, which a media key can't, and the bypass
+        // keycodes don't survive handleIntent anyway (dropped before the
+        // session callback, Android 17). Goes foreground at once: otherwise
+        // only Dart starting playback calls startForeground, and a slow restore
+        // misses Android's deadline. A cold start needs nothing else: the
+        // listener is linked when the engine attaches, in onCreate, and calls
+        // queue on the Java side until Dart's "configure".
+        if (intent != null && ACTION_CUSTOM.equals(intent.getAction())) {
             if (!notificationCreated) startPlaceholderForeground();
-            // The bypass keycodes (explicit play/pause) can't go through
-            // handleIntent: MediaController drops KEYCODE_MUTE/MEDIA_RECORD
-            // before the session callback (seen on Android 17), while a real
-            // KEYCODE_MEDIA_PLAY arrives as a click, which toggles. Call the
-            // callback directly. A press on a cold process is safe: the
-            // listener is linked when the engine attaches, in onCreate, and
-            // calls queue until Dart's "configure".
-            @SuppressWarnings("deprecation")
-            final KeyEvent event = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
-            if (event != null && event.getAction() == KeyEvent.ACTION_DOWN) {
-                if (event.getKeyCode() == KEYCODE_BYPASS_PLAY) {
-                    mediaSessionCallback.onPlay();
-                    return START_NOT_STICKY;
-                }
-                if (event.getKeyCode() == KEYCODE_BYPASS_PAUSE) {
-                    mediaSessionCallback.onPause();
-                    return START_NOT_STICKY;
-                }
+            final String name = intent.getStringExtra(EXTRA_CUSTOM_ACTION_NAME);
+            if (name != null) {
+                mediaSessionCallback.onCustomAction(name, intent.getBundleExtra(EXTRA_CUSTOM_ACTION_EXTRAS));
             }
+            return START_NOT_STICKY;
         }
         MediaButtonReceiver.handleIntent(mediaSession, intent);
         return START_NOT_STICKY;

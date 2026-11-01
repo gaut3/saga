@@ -36,6 +36,7 @@ import '../../shared/widgets/saga_mark.dart'
     show SagaWordmark, SagaMark, AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_sheet.dart';
 import '../../shared/widgets/saga_toast.dart';
+import '../widget/home_widget_sync.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -664,6 +665,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return;
       }
       ref.read(isAuthenticatedProvider.notifier).state = false;
+      // The shell (and its lifecycle hook) is gone from here on: take the
+      // book off the home-screen widget now.
+      HomeWidgetSync.refresh();
     }
   }
 
@@ -828,7 +832,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       'books you are part-way through, your downloads and collections, and what is '
       'playing now. No password or server address is ever exposed this way, but the '
       'titles are visible. Every audiobook and music app that offers these features '
-      'is in the same position.';
+      'is in the same position.\n\n'
+      '• If you add Saga\'s home-screen widget, it shows your current book\'s title, '
+      'chapter, cover and progress on the home screen, where anyone holding the '
+      'phone can see them. To draw it, Saga keeps a copy of those details '
+      'unencrypted in its private storage. Signing out removes the book from it.';
 
   static const _termsText =
       'Saga is an independent, unofficial client for Plex Media Server. It is not '
@@ -921,6 +929,7 @@ class _ThemePicker extends ConsumerWidget {
               onTap: () async {
                 ref.read(sagaThemeVariantProvider.notifier).state = t.variant;
                 await SettingsStore.setThemeIndex(t.variant.index);
+                HomeWidgetSync.refresh();
               },
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),

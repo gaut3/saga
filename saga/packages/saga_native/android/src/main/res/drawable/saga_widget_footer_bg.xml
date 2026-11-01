@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- White: tinted with the theme's footer colour at runtime. Bottom corners
+     rounded too: below Android 12 the card's background doesn't clip. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FFFFFFFF" />
+    <corners android:bottomLeftRadius="14dp" android:bottomRightRadius="14dp" />
+</shape>
