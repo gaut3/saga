@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.2.0 spike: play only. The resume-card layout (frame 09) replaces this. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#1E1410">
+
+    <ImageButton
+        android:id="@+id/saga_widget_play"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="center"
+        android:background="#E0A050"
+        android:contentDescription="Play"
+        android:scaleType="center"
+        android:src="@drawable/audio_service_play_arrow" />
+</FrameLayout>

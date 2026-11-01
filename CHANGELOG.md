@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **The Continue Listening card has no border.** The amber outline around it is gone; the play button at its foot already shows whether the book is playing. The progress bar is a little thinner and the play button a little taller, to match the new home-screen widget.
+
+### Fixed
+- **The player's bottom row lines up.** The five buttons under the controls were spaced by the gaps between them, so a wide label like "Bookmark" pushed Cast off-centre under the play button, and the row shifted as the sleep timer counted down. Each button now has an equal share of the row: Cast sits directly under play, nothing moves as labels change, and each button is easier to hit.
+- **A cover can no longer be saved half-downloaded.** Opening a book could start two downloads of its cover into the same file at once. If they overlapped, or the download was cut off, the broken image was kept, and Saga never downloads a saved cover again. A cover is now downloaded once at a time and only saved once it's complete. If you use two Plex servers, their covers are also kept apart, so one server's book can't show another's cover.
+- **Swiping the player away always removes it.** If stopping playback failed during the swipe, the mini player and the notification stayed on screen. Your place was already saved; now the rest of the clean-up happens too.
+- **Tapping a chapter after another book has started no longer jumps the new book.** If the chapter list was open when the next book began, for example through auto-play, a tap applied the old book's chapter to the new one. The list now just closes.
+- **Sign out is either done or says it isn't.** If signing out failed partway, the screen could stay signed in with no message, or show you as signed in after your sign-in had already been removed from the phone. Now you're shown as signed out exactly when your Plex sign-in is gone from the phone. If removing it fails, Saga stays signed in and says to try again. Clearing the account's cached covers no longer stops a sign-out partway, and a failure there is recorded in the diagnostics log.
+- **Clear progress says when it didn't finish.** If clearing failed partway, it stopped without a word and the screens kept showing the old progress until Saga was restarted. Now the screens update with what was cleared, and a message says to try again.
+- **One damaged record no longer holds up the others.** Positions waiting to be sent to Plex are sent book by book, and a single unreadable entry stopped all of them. Unreadable entries are now skipped, here and in the records of downloaded files. Saving your place when you leave the app also records a failure in the diagnostics log, where it used to leave no trace.
+- **The update notice shows once.** Turning the update check off and on again in Settings showed "Update available" again each time.
+
+---
+
 ## [1.1.3] - 2026-10-28
 
 ### Changed

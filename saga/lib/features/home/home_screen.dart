@@ -1,36 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/book_progress.dart';
-import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_book.dart';
-import '../../core/plex/models/plex_track.dart';
 import '../../core/providers.dart';
 import '../../core/stats/streak.dart';
 import '../../core/storage/settings_store.dart';
 import '../../shared/widgets/book_card.dart';
-import '../../shared/widgets/book_cover_image.dart';
 import '../../shared/widgets/offline_note.dart';
+import '../../shared/widgets/resume_card.dart';
 import '../../shared/widgets/saga_error_view.dart';
-import '../../shared/widgets/saga_toast.dart';
-import '../../core/storage/bookmark_store.dart';
-import '../../core/storage/chapter_store.dart';
 import '../../core/storage/custom_collection_store.dart';
 import '../../core/storage/listening_history_store.dart';
 import '../../core/storage/want_to_read_store.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../core/utils/date_math.dart';
 import '../../core/utils/format.dart';
-import '../../shared/widgets/saga_mark.dart'
-    show SagaWordmark, AnimatedSagaMark, SagaMarkState;
+import '../../shared/widgets/saga_mark.dart' show SagaWordmark;
 import '../auth/server_selection_screen.dart';
 import '../collections/collection_detail_screen.dart';
 import '../../shared/widgets/week_bars.dart';
-import '../player/book_launch.dart';
-import '../player/open_player.dart';
-import '../player/player_provider.dart';
-import '../player/player_screen.dart';
-import '../player/track_position_math.dart';
 import 'all_bookmarks_screen.dart';
 import 'history_screen.dart';
 
@@ -511,7 +499,7 @@ class _ContinueListeningSection extends StatelessWidget {
         const _SectionTitle('Continue Listening'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _ResumeCard(book: books.first),
+          child: ResumeCard(book: books.first),
         ),
         if (rest.isNotEmpty) ...[
           const SizedBox(height: 18),
@@ -568,283 +556,6 @@ class _BookStrip extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-// ── Resume card ───────────────────────────────────────────────────────────────
-
-class _ResumeCard extends ConsumerStatefulWidget {
-  final PlexBook book;
-  const _ResumeCard({required this.book});
-
-  @override
-  ConsumerState<_ResumeCard> createState() => _ResumeCardState();
-}
-
-class _ResumeCardState extends ConsumerState<_ResumeCard> {
-  bool _loading = false;
-
-  @override
-  Widget build(BuildContext context) {
-    // Clear loading state the moment this book actually starts playing,
-    // so we jump straight from loading animation to playing animation
-    // without a flash of the paused/resume state.
-    ref.listen(nowPlayingKeyProvider, (_, next) {
-      if (next.valueOrNull == widget.book.ratingKey && _loading) {
-        setState(() => _loading = false);
-      }
-    });
-
-    final savedPos = BookmarkStore.load(widget.book.ratingKey);
-    final total = bookTotalDurationMs(widget.book, savedPos);
-    final absolute = savedPos?.absolutePositionMs ?? 0;
-    final pct = bookProgressFraction(widget.book, savedPos) ?? 0.0;
-    final remainingMs = total != null ? (total - absolute).clamp(0, total) : null;
-
-    final nowPlayingKey = ref.watch(nowPlayingKeyProvider).valueOrNull;
-    final isNowPlaying = nowPlayingKey == widget.book.ratingKey;
-
-    // Tracks are fetched lazily for the hero book so we can label the current
-    // chapter; the result is cached and reused when the player opens.
-    final tracks = ref.watch(tracksProvider(widget.book.ratingKey)).valueOrNull;
-    final chapterLabel = _chapterLabel(tracks, savedPos);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: SagaColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: isNowPlaying
-                ? SagaColors.accent
-                : SagaColors.accent.withValues(alpha: 0.4),
-            width: 1.5),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: Column(
-          children: [
-            // ── Tap the body to open the player ──
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _openPlayerView,
-              // One TalkBack stop for the whole body, announced as a button;
-              // title, chapter and remaining-time texts merge into it.
-              child: MergeSemantics(
-                child: Semantics(
-                  button: true,
-                  child: SizedBox(
-                    height: 152,
-                    child: Row(
-                  children: [
-                    // Square footprint so square covers aren't cropped on the
-                    // sides (BoxFit.cover in a portrait box clipped left/right).
-                    SizedBox(
-                      width: 152,
-                      height: 152,
-                      child: BookCoverImage(
-                          thumbPath: widget.book.thumbPath,
-                          cacheWidth: kCoverCacheWidthCard),
-                    ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.book.title,
-                              style: TextStyle(
-                                  color: SagaColors.fg,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (chapterLabel != null) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                chapterLabel,
-                                style: TextStyle(
-                                    color: SagaColors.fgMuted, fontSize: 12.5),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                            const Spacer(),
-                            Row(
-                              children: [
-                                if (remainingMs != null)
-                                  Text(
-                                    '${fmtListenedMs(remainingMs)} left',
-                                    style: TextStyle(
-                                        color: SagaColors.fg,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700),
-                                  ),
-                                const Spacer(),
-                                Text(
-                                  '${(pct * 100).round()}%',
-                                  style: TextStyle(
-                                      color: SagaColors.fgSubtle, fontSize: 13),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 7),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: LinearProgressIndicator(
-                                value: pct,
-                                backgroundColor: SagaColors.surfaceAlt,
-                                valueColor:
-                                    AlwaysStoppedAnimation(SagaColors.accent),
-                                minHeight: 7,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            // ── Accent footer: the primary play/pause action ──
-            // accentDim, not accent: this is the widest amber area in the app
-            // (see SagaColors.accentDim). Identical outside Onyx.
-            Material(
-              color: SagaColors.accentDim,
-              child: InkWell(
-                onTap: _loading ? null : (isNowPlaying ? _pause : _resume),
-                child: SizedBox(
-                  height: 50,
-                  // Label is centred and the mark is pinned to a fixed spot, so
-                  // neither jumps as the label changes width.
-                  child: Stack(
-                    children: [
-                      Center(
-                        child: Text(
-                          _loading
-                              ? 'Loading…'
-                              : isNowPlaying
-                                  ? 'Pause'
-                                  : 'Resume listening',
-                          style: TextStyle(
-                              color: SagaColors.accentFg,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      Positioned(
-                        left: 24,
-                        top: 0,
-                        bottom: 0,
-                        // Our own mark, monochrome on the accent button: the
-                        // play triangle morphs to/from the pause bars, and the
-                        // bars shimmer (converging into the pause glyph) while
-                        // loading — no 4-spine flash in between.
-                        child: Center(
-                          child: AnimatedSagaMark(
-                            size: 24,
-                            monoColor: SagaColors.accentFg,
-                            playPauseControl: true,
-                            loading: _loading,
-                            state: (isNowPlaying || _loading)
-                                ? SagaMarkState.playing
-                                : SagaMarkState.paused,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// "Ch. N · Title" for the saved position, or null if unknown. Single-file
-  /// M4B books use the cached embedded chapters; multi-track books use the
-  /// track at the saved position.
-  String? _chapterLabel(List<PlexTrack>? tracks, BookPosition? pos) {
-    if (tracks == null || tracks.isEmpty || pos == null) return null;
-    if (tracks.length == 1) {
-      final chaps = ChapterStore.load(pos.trackRatingKey);
-      if (chaps == null || chaps.isEmpty) return null;
-      // Through the shared [chapterIndexAt], like the player, the mini player,
-      // the notification and both chapter lists — this card was the seventh
-      // hand-rolled copy of the same loop.
-      final ci = chapterIndexAt(
-          [for (final c in chaps) c.start.inMilliseconds], pos.positionMs);
-      return 'Ch. ${ci + 1} · ${chaps[ci].title}';
-    }
-    final idx = tracks.indexWhere((t) => t.ratingKey == pos.trackRatingKey);
-    if (idx < 0) return null;
-    return 'Ch. ${idx + 1} · ${tracks[idx].title}';
-  }
-
-  /// Tapping the card body opens the player. When the card's book is already
-  /// the loaded one (playing or paused) that's a plain push; otherwise the
-  /// book is loaded without starting audio, through the shared helper — the
-  /// silent inline version left a blank "Now Playing" with no title and no
-  /// error when the load failed, while the footer button right below
-  /// explained itself.
-  Future<void> _openPlayerView() async {
-    final service = ref.read(playerServiceProvider);
-    if (service.currentBookRatingKey == widget.book.ratingKey) {
-      Navigator.of(context, rootNavigator: true)
-          .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
-      return;
-    }
-    await openPlayerAndStart(
-      context: context,
-      service: service,
-      bookRatingKey: widget.book.ratingKey,
-      loadTracks: () => ref.read(tracksProvider(widget.book.ratingKey).future),
-      from: const BookStartPoint.resume(),
-      playback: LaunchPlayback.none,
-    );
-  }
-
-  Future<void> _resume() async {
-    if (_loading) return;
-    final service = ref.read(playerServiceProvider);
-    // If this book is already loaded (paused), just play without reloading.
-    if (service.currentBookRatingKey == widget.book.ratingKey) {
-      await service.play();
-      return;
-    }
-    setState(() => _loading = true);
-    try {
-      final tracks =
-          await ref.read(tracksProvider(widget.book.ratingKey).future);
-      if (!mounted) return;
-      await startBook(
-        service: service,
-        bookRatingKey: widget.book.ratingKey,
-        tracks: tracks,
-        from: const BookStartPoint.resume(),
-      );
-    } catch (e) {
-      // "Loading…" quietly reverting to "Resume listening" reads as a dead
-      // button — say what happened instead.
-      AppLog.log('playback', 'home resume failed: $e');
-      if (mounted) {
-        showSagaToast(context,
-            'Couldn\'t load this book — is the server reachable?',
-            isError: true);
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _pause() async {
-    await ref.read(playerServiceProvider).pause();
   }
 }
 

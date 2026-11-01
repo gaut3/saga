@@ -613,17 +613,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       confirmColor: Colors.orangeAccent,
     );
     if (confirmed) {
-      await BookmarkStore.clearAll();
-      await CompletedBooksStore.clearAll();
-      await ListeningHistoryStore.clearAll();
-      await NamedBookmarkStore.clearAll();
-      await PlaybackLogStore.clearAll();
-      await ListenDaysStore.clearAll();
+      var cleared = false;
+      try {
+        await BookmarkStore.clearAll();
+        await CompletedBooksStore.clearAll();
+        await ListeningHistoryStore.clearAll();
+        await NamedBookmarkStore.clearAll();
+        await PlaybackLogStore.clearAll();
+        await ListenDaysStore.clearAll();
+        cleared = true;
+      } catch (e) {
+        AppLog.log('storage', 'clear progress failed partway: $e');
+      } finally {
+        // Bump even after a partial wipe: whatever did clear must not keep
+        // showing until a restart.
+        if (mounted) {
+          ref.read(bookmarkRevisionProvider.notifier).state++;
+          ref.read(completionRevisionProvider.notifier).state++;
+          ref.read(historyRevisionProvider.notifier).state++;
+        }
+      }
       if (!mounted) return;
-      ref.read(bookmarkRevisionProvider.notifier).state++;
-      ref.read(completionRevisionProvider.notifier).state++;
-      ref.read(historyRevisionProvider.notifier).state++;
-      showSagaToast(context, 'Listening progress cleared');
+      showSagaToast(context, cleared
+          ? 'Listening progress cleared'
+          : "Couldn't clear everything. Try again.");
     }
   }
 
@@ -641,7 +654,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       // server's keys — a book left playing across sign-out would file the
       // rest of its session under the wrong server's book.
       await ref.read(playerServiceProvider).stopAndClear();
-      await ref.read(plexClientProvider).clearAuth();
+      try {
+        await ref.read(plexClientProvider).clearAuth();
+      } catch (e) {
+        // clearAuth throws only while the token is still stored. Showing the
+        // sign-in screen now would claim a sign-out that didn't happen.
+        AppLog.log('auth', 'sign-out failed, still signed in: $e');
+        if (mounted) showSagaToast(context, "Couldn't sign out. Try again.");
+        return;
+      }
       ref.read(isAuthenticatedProvider.notifier).state = false;
     }
   }

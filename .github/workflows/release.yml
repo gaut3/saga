@@ -89,7 +89,11 @@ jobs:
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           body_path: RELEASE_NOTES.md
-          make_latest: true
+          # A hyphenated tag (v2.0.0-beta.1) is a beta: a pre-release, never
+          # "Latest" — the in-app updater reads releases/latest, so a beta
+          # published as latest would be offered to every stable user.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
           files: |
             saga/dist/saga.apk
             saga/dist/saga.apk.sha256

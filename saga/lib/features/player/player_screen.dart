@@ -1126,51 +1126,57 @@ class _BottomActions extends ConsumerWidget {
       valueListenable: service.canUndoSeekNotifier,
       builder: (_, canUndo, _) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
+        // Equal slots, not spaceEvenly: that spaces the gaps, so each button's
+        // centre moved with its neighbours' label widths — Cast sat right of
+        // the play mark ("Bookmark" is wide), and the row shifted as the sleep
+        // countdown or speed label changed length.
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _ActionButton(
-              label: '${speed}x',
-              icon: Icons.speed,
-              active: speed != 1.0,
-              semanticLabel: 'Playback speed: $speed×',
-              onTap: () =>
-                  showSpeedSheet(context, service: service, bookKey: bookKey),
-            ),
-            _ActionButton(
-              label: 'Bookmark',
-              icon: Icons.bookmark_add_outlined,
-              semanticLabel: 'Add bookmark',
-              onTap: () => _addBookmark(context, ref),
-            ),
-            _ActionButton(
-              label: 'Cast',
-              icon: Icons.cast,
-              semanticLabel: 'Cast to device',
-              onTap: () => showCastSheet(context, service: service),
-            ),
-            _SleepTimerButton(
-              service: service,
-              timerEnd: timerEnd,
-              remaining: () => ref.read(sleepTimerProvider.notifier).remaining,
-              onTap: () {
-                final isActive = timerEnd != null;
-                final defaultMinutes = SettingsStore.defaultSleepTimerMinutes;
-                if (!isActive && defaultMinutes != 0) {
-                  _startDefaultSleepTimer(context, ref, defaultMinutes);
-                } else {
-                  showSleepTimerSheet(context, ref, isActive,
-                      service: service);
-                }
-              },
-            ),
-            _ActionButton(
-              label: 'Undo',
-              icon: Icons.undo,
-              active: canUndo,
-              semanticLabel: 'Undo seek',
-              onTap: canUndo ? service.undoSeek : () {},
-            ),
+            for (final button in [
+              _ActionButton(
+                label: '${speed}x',
+                icon: Icons.speed,
+                active: speed != 1.0,
+                semanticLabel: 'Playback speed: $speed×',
+                onTap: () =>
+                    showSpeedSheet(context, service: service, bookKey: bookKey),
+              ),
+              _ActionButton(
+                label: 'Bookmark',
+                icon: Icons.bookmark_add_outlined,
+                semanticLabel: 'Add bookmark',
+                onTap: () => _addBookmark(context, ref),
+              ),
+              _ActionButton(
+                label: 'Cast',
+                icon: Icons.cast,
+                semanticLabel: 'Cast to device',
+                onTap: () => showCastSheet(context, service: service),
+              ),
+              _SleepTimerButton(
+                service: service,
+                timerEnd: timerEnd,
+                remaining: () => ref.read(sleepTimerProvider.notifier).remaining,
+                onTap: () {
+                  final isActive = timerEnd != null;
+                  final defaultMinutes = SettingsStore.defaultSleepTimerMinutes;
+                  if (!isActive && defaultMinutes != 0) {
+                    _startDefaultSleepTimer(context, ref, defaultMinutes);
+                  } else {
+                    showSleepTimerSheet(context, ref, isActive,
+                        service: service);
+                  }
+                },
+              ),
+              _ActionButton(
+                label: 'Undo',
+                icon: Icons.undo,
+                active: canUndo,
+                semanticLabel: 'Undo seek',
+                onTap: canUndo ? service.undoSeek : () {},
+              ),
+            ])
+              Expanded(child: button),
           ],
         ),
       ),
@@ -1342,7 +1348,9 @@ class _ActionButton extends StatelessWidget {
         button: true,
         excludeSemantics: true,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          // Narrow sides: each button fills a fifth of the row, so the slot
+          // is the tap target and the label gets the width.
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

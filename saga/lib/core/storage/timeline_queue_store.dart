@@ -79,7 +79,12 @@ class TimelineQueueStore {
       final bookKey = ServerScope.ratingKeyOf(k);
       if (bookKey == null) continue;
       final v = _box.get(k);
-      if (v is Map) result[bookKey] = PendingTimeline.fromMap(v);
+      if (v is! Map) continue;
+      // One malformed record must not throw the whole flush — every other
+      // book's pending position would stay unsent behind it.
+      try {
+        result[bookKey] = PendingTimeline.fromMap(v);
+      } catch (_) {}
     }
     return result;
   }

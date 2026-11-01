@@ -5,6 +5,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path_provider/path_provider.dart';
 
+import 'server_scope.dart';
+
 class ArtworkCache {
   static Directory? _dir;
 
@@ -26,10 +28,19 @@ class ArtworkCache {
   /// matter on any phone that can install the app.
   static const _maxBytes = 64 * 1024 * 1024;
 
+  /// Downloads in flight, by final path. `loadBook` and the track-change
+  /// listener both prefetch the book's cover, and two writers into one file is
+  /// how a cover gets corrupted — and a cover on disk is served forever.
+  static final Map<String, Future<Uri?>> _inFlight = {};
+
   static Future<void> init() async {
     final base = await getApplicationDocumentsDirectory();
     _dir = Directory('${base.path}/artwork_cache');
     await _dir!.create(recursive: true);
+    // Nothing is in flight yet, so any `.part` here is a download the process
+    // died during. Never served (no reader asks for that name), but it would
+    // sit there counting against the ceiling.
+    unawaited(_sweepPartials());
     // Deliberately not awaited: a cover cache is not worth delaying the first
     // frame for, and a failure here must never keep the app from starting.
     unawaited(prune());
@@ -52,7 +63,9 @@ class ArtworkCache {
       final files = <({File file, int size, DateTime modified})>[];
       var total = 0;
       await for (final entry in dir.list()) {
-        if (entry is! File) continue;
+        // A `.part` is a download in flight — deleting it would fail that
+        // download's rename. Dead ones are swept at [init].
+        if (entry is! File || entry.path.endsWith('.part')) continue;
         final stat = await entry.stat();
         total += stat.size;
         files.add((file: entry, size: stat.size, modified: stat.modified));
@@ -96,10 +109,28 @@ class ArtworkCache {
     }
   }
 
-  // Stable filename from the thumb path using a simple djb2-style hash.
+  static Future<void> _sweepPartials() async {
+    final dir = _dir;
+    if (dir == null) return;
+    try {
+      await for (final entry in dir.list()) {
+        if (entry is File && entry.path.endsWith('.part')) {
+          await entry.delete();
+        }
+      }
+    } catch (_) {
+      // Leftovers are harmless; prune still bounds the directory.
+    }
+  }
+
+  // Stable filename from the thumb path using a simple djb2-style hash. The
+  // thumb path carries a per-server rating key, so it goes through
+  // [ServerScope] like every per-book store: the primary server hashes the
+  // bare path (existing covers keep their names), a second server's doesn't
+  // collide with it.
   static String _filename(String thumbPath) {
     var h = 5381;
-    for (final c in thumbPath.codeUnits) {
+    for (final c in ServerScope.key(thumbPath).codeUnits) {
       h = ((h << 5) + h + c) & 0xFFFFFFFF;
     }
     return '${h.toRadixString(16)}.art';
@@ -123,16 +154,31 @@ class ArtworkCache {
     final filePath = '${_dir!.path}/${_filename(thumbPath)}';
     final file = File(filePath);
     if (await file.exists()) return file.uri;
+    return _inFlight[filePath] ??=
+        _download('$serverUri$thumbPath', filePath, authHeaders)
+            .whenComplete(() => _inFlight.remove(filePath));
+  }
+
+  /// Writes to `<path>.part` and renames on success, so the final name only
+  /// ever holds a whole cover — a cut-off download leaves a `.part`, never a
+  /// half image under the name readers trust.
+  static Future<Uri?> _download(
+    String url,
+    String filePath,
+    Map<String, String> authHeaders,
+  ) async {
+    final part = File('$filePath.part');
     try {
       await _dio.download(
-        '$serverUri$thumbPath',
-        filePath,
+        url,
+        part.path,
         options: Options(
           headers: authHeaders,
           receiveTimeout: const Duration(seconds: 15),
           sendTimeout: const Duration(seconds: 10),
         ),
       );
+      final file = await part.rename(filePath);
       // Hold the ceiling here too, not only at launch: [init] was the sole
       // caller, so a long run that opened many books stayed oversized until the
       // next cold start. Cheap to do per download — a cover is only downloaded
@@ -140,8 +186,11 @@ class ArtworkCache {
       // this is one directory listing per *new* cover, unawaited, never on the
       // read path.
       unawaited(prune());
-      return File(filePath).uri;
+      return file.uri;
     } catch (_) {
+      try {
+        if (await part.exists()) await part.delete();
+      } catch (_) {}
       return null;
     }
   }

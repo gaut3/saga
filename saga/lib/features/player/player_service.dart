@@ -776,7 +776,15 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     if (_clearing) return;
     _clearing = true;
     try {
-      await stop();
+      // The user asked for the session to be gone, so a throw in stop() must
+      // not skip the teardown below — the pill and notification would survive
+      // the swipe. stop() saves the position before anything that can throw
+      // on the player side, so continuing doesn't cost the user their place.
+      try {
+        await stop();
+      } catch (e) {
+        AppLog.log('playback', 'stop failed while clearing session: $e');
+      }
       cancelAutoAdvance();
       // Any load still in flight is now stale — without this it could
       // repopulate the state we're about to clear.

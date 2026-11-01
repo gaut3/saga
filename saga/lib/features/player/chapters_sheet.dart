@@ -14,6 +14,7 @@ import 'track_position_math.dart';
 void showChaptersSheet(BuildContext context,
     {required AudioPlayerService service, String? m4bKey}) {
   final tracks = service.currentTracks;
+  final bookKey = service.currentBookRatingKey;
 
   showSagaSheet<void>(context, (_) => Consumer(
       builder: (ctx, ref, _) {
@@ -48,11 +49,13 @@ void showChaptersSheet(BuildContext context,
                     ? _M4bChapterList(
                         chapters: m4bChapters,
                         service: service,
+                        bookKey: bookKey,
                         scrollController: scrollController,
                       )
                     : _PlexTrackList(
                         tracks: tracks,
                         service: service,
+                        bookKey: bookKey,
                         scrollController: scrollController,
                       ),
               ),
@@ -67,16 +70,28 @@ void showChaptersSheet(BuildContext context,
   );
 }
 
+/// The lists were built for the book playing when the sheet opened. If another
+/// book has started since (auto-advance, Android Auto, a media button), a tap
+/// would seek the new book to the old one's chapter, or past the end of its
+/// track list. Close the sheet instead.
+void _jumpIfSameBook(BuildContext context, AudioPlayerService service,
+    String? bookKey, VoidCallback jump) {
+  if (service.currentBookRatingKey == bookKey) jump();
+  Navigator.pop(context);
+}
+
 // ── M4B chapter list ──────────────────────────────────────────────────────────
 
 class _M4bChapterList extends StatelessWidget {
   final List<M4bChapter> chapters;
   final AudioPlayerService service;
+  final String? bookKey;
   final ScrollController scrollController;
 
   const _M4bChapterList({
     required this.chapters,
     required this.service,
+    required this.bookKey,
     required this.scrollController,
   });
 
@@ -116,10 +131,8 @@ class _M4bChapterList extends StatelessWidget {
                 fmtDuration(chapter.start),
                 style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12),
               ),
-              onTap: () {
-                service.seek(chapter.start);
-                Navigator.pop(context);
-              },
+              onTap: () => _jumpIfSameBook(
+                  context, service, bookKey, () => service.seek(chapter.start)),
             );
           },
         );
@@ -137,11 +150,13 @@ class _M4bChapterList extends StatelessWidget {
 class _PlexTrackList extends StatelessWidget {
   final List<PlexTrack> tracks;
   final AudioPlayerService service;
+  final String? bookKey;
   final ScrollController scrollController;
 
   const _PlexTrackList({
     required this.tracks,
     required this.service,
+    required this.bookKey,
     required this.scrollController,
   });
 
@@ -182,10 +197,8 @@ class _PlexTrackList extends StatelessWidget {
                 fmtDuration(Duration(milliseconds: track.durationMs)),
                 style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12),
               ),
-              onTap: () {
-                service.skipToQueueItem(i);
-                Navigator.pop(context);
-              },
+              onTap: () => _jumpIfSameBook(
+                  context, service, bookKey, () => service.skipToQueueItem(i)),
             );
           },
         );

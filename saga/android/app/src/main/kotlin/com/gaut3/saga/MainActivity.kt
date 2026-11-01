@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import androidx.annotation.RequiresApi
 import android.view.Surface
 import android.view.SurfaceView
 import android.view.View
@@ -147,11 +148,13 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
-    @Suppress("DEPRECATION")
+    // API 30+ only, like its one caller (Surface.setFrameRate is API 30):
+    // the pre-30 branch through the deprecated windowManager.defaultDisplay
+    // could never run, and only drew a CodeQL alert (#15).
+    @RequiresApi(Build.VERSION_CODES.R)
     private fun maxRefreshRate(): Float {
-        val display = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) display
-            else windowManager.defaultDisplay) ?: return 120f
-        return display.supportedModes.maxOfOrNull { it.refreshRate } ?: 120f
+        val d = display ?: return 120f
+        return d.supportedModes.maxOfOrNull { it.refreshRate } ?: 120f
     }
 
     private fun findSurfaceView(view: View): SurfaceView? {

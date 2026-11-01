@@ -80,6 +80,21 @@ void main() {
     expect(File('${dir.path}/newest.art').existsSync(), isTrue);
   });
 
+  test('a download in flight is never pruned', () async {
+    // A `.part` is a cover still being written; deleting it would fail that
+    // download's rename. It's the oldest and largest here, so it would be the
+    // first to go if prune counted it.
+    await writeCover('pending.art.part', 40, ageMinutes: 500);
+    await writeCover('a.art', 30, ageMinutes: 200);
+    await writeCover('b.art', 30, ageMinutes: 10);
+
+    await ArtworkCache.prune();
+
+    expect(File('${dir.path}/pending.art.part').existsSync(), isTrue);
+    expect(File('${dir.path}/a.art').existsSync(), isTrue);
+    expect(File('${dir.path}/b.art').existsSync(), isTrue);
+  });
+
   test('pruning an uninitialised cache is a no-op, not a crash', () async {
     ArtworkCache.debugSetDirectory(null);
     await expectLater(ArtworkCache.prune(), completes);

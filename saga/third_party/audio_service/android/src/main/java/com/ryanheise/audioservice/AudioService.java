@@ -102,6 +102,8 @@ public class AudioService extends MediaBrowserServiceCompat {
     static AudioService instance;
     private static PendingIntent contentIntent;
     private static ServiceListener listener;
+    // SAGA PATCH: see onStartCommand.
+    private static final long PLACEHOLDER_FOREGROUND_MS = 20000;
     private static List<MediaSessionCompat.QueueItem> queue = new ArrayList<>();
     private static final Map<String, MediaMetadataCompat> mediaMetadataCache = new HashMap<>();
 
@@ -356,9 +358,58 @@ public class AudioService extends MediaBrowserServiceCompat {
 
     @Override
     public int onStartCommand(final Intent intent, int flags, int startId) {
+        // SAGA PATCH: a media button sent straight to the service, as the home
+        // screen widget does with PendingIntent.getForegroundService.
+        if (intent != null && Intent.ACTION_MEDIA_BUTTON.equals(intent.getAction())) {
+            // Foreground at once: otherwise only Dart starting playback calls
+            // startForeground, and a slow restore misses Android's deadline.
+            if (!notificationCreated) startPlaceholderForeground();
+            // The bypass keycodes (explicit play/pause) can't go through
+            // handleIntent: MediaController drops KEYCODE_MUTE/MEDIA_RECORD
+            // before the session callback (seen on Android 17), while a real
+            // KEYCODE_MEDIA_PLAY arrives as a click, which toggles. Call the
+            // callback directly. A press on a cold process is safe: the
+            // listener is linked when the engine attaches, in onCreate, and
+            // calls queue until Dart's "configure".
+            @SuppressWarnings("deprecation")
+            final KeyEvent event = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
+            if (event != null && event.getAction() == KeyEvent.ACTION_DOWN) {
+                if (event.getKeyCode() == KEYCODE_BYPASS_PLAY) {
+                    mediaSessionCallback.onPlay();
+                    return START_NOT_STICKY;
+                }
+                if (event.getKeyCode() == KEYCODE_BYPASS_PAUSE) {
+                    mediaSessionCallback.onPause();
+                    return START_NOT_STICKY;
+                }
+            }
+        }
         MediaButtonReceiver.handleIntent(mediaSession, intent);
         return START_NOT_STICKY;
     }
+
+    // SAGA PATCH: see onStartCommand. If nothing is playing by the deadline
+    // (no book to restore, server unreachable), drop the empty notification
+    // rather than leave it standing.
+    private void startPlaceholderForeground() {
+        try {
+            internalStartForeground();
+        } catch (Exception e) {
+            System.out.println("audio_service: placeholder startForeground failed: " + e);
+            return;
+        }
+        handler.removeCallbacks(dropPlaceholderForeground);
+        handler.postDelayed(dropPlaceholderForeground, PLACEHOLDER_FOREGROUND_MS);
+    }
+
+    private final Runnable dropPlaceholderForeground = new Runnable() {
+        @Override
+        public void run() {
+            if (playing) return;
+            ServiceCompat.stopForeground(AudioService.this, STOP_FOREGROUND_REMOVE);
+            notificationCreated = false;
+        }
+    };
 
     public void stop() {
         deactivateMediaSession();
@@ -368,6 +419,7 @@ public class AudioService extends MediaBrowserServiceCompat {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        handler.removeCallbacks(dropPlaceholderForeground); // SAGA PATCH
         if (listener != null) {
             listener.onDestroy();
             listener = null;
@@ -711,6 +763,8 @@ public class AudioService extends MediaBrowserServiceCompat {
     }
 
     private void enterPlayingState() {
+        // SAGA PATCH: a real notification takes over from the placeholder.
+        handler.removeCallbacks(dropPlaceholderForeground);
         ContextCompat.startForegroundService(this, new Intent(AudioService.this, AudioService.class));
         if (!mediaSession.isActive())
             mediaSession.setActive(true);

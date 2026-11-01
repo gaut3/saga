@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/diagnostics/app_log.dart';
 import '../core/storage/settings_store.dart';
 import '../core/update/update_checker.dart';
 import '../shared/widgets/mini_player_pill.dart';
@@ -35,6 +36,12 @@ class _MainShellState extends ConsumerState<MainShell>
     (_) => GlobalKey<NavigatorState>(),
   );
 
+  /// The release the update toast has already announced this session.
+  /// Settings re-runs the check when its toggle flips, and the listener below
+  /// can't tell a re-run from a first run — without this, every off/on showed
+  /// the same toast again.
+  String? _announcedUpdate;
+
   @override
   void initState() {
     super.initState();
@@ -64,7 +71,11 @@ class _MainShellState extends ConsumerState<MainShell>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
-      ref.read(playerServiceProvider).savePositionForLifecycle();
+      // Not awaited (the OS doesn't wait for us), but not unwatched either: this
+      // is the save most likely to come just before a kill, and a throw here
+      // used to vanish into the zone handler as one anonymous line.
+      ref.read(playerServiceProvider).savePositionForLifecycle().catchError(
+          (Object e) => AppLog.log('playback', 'lifecycle save failed: $e'));
     } else if (state == AppLifecycleState.resumed) {
       // Back in the foreground — push any positions queued while offline.
       ref.read(playerServiceProvider).flushTimelineQueue();
@@ -99,11 +110,12 @@ class _MainShellState extends ConsumerState<MainShell>
 
     // Surface the launch update check — the result was only ever visible in
     // Settings › About, so an enabled check could find an update nobody saw.
-    // The provider is cached per session, so this fires once per launch.
+    // Once per release per session: see [_announcedUpdate].
     ref.listen(updateCheckProvider, (_, next) {
       final result = next.valueOrNull;
-      if (result?.isNewer == true) {
-        showSagaToast(context, 'Update available: ${result!.latestTag}');
+      if (result?.isNewer == true && result!.latestTag != _announcedUpdate) {
+        _announcedUpdate = result.latestTag;
+        showSagaToast(context, 'Update available: ${result.latestTag}');
       }
     });
 

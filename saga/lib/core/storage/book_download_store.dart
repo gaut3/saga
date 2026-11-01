@@ -52,7 +52,10 @@ class BookDownloadStore {
 
   static Set<String> _getSet(String bookRatingKey) {
     final val = _box.get(ServerScope.key(bookRatingKey));
-    if (val == null) return {};
-    return (val as List<dynamic>).cast<String>().toSet();
+    // whereType, not cast: a lazy cast throws on first read of a bad element,
+    // inside whichever caller happened to iterate — a malformed entry reads
+    // as its valid tracks instead.
+    if (val is! List) return {};
+    return val.whereType<String>().toSet();
   }
 }

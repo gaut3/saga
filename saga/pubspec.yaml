@@ -57,7 +57,9 @@ dependencies:
 #
 # Vendored audio_service 0.18.19: patched so a playback service Android rebuilds
 # inside a live engine re-links to the Dart handler (without it, notification /
-# lock-screen / bluetooth controls go dead until process death). Re-vendor +
+# lock-screen / bluetooth controls go dead until process death), and so a media
+# button sent straight to the service (the home-screen widget) goes foreground
+# at once, and its explicit play/pause reaches the handler. Re-vendor +
 # `git apply third_party/audio_service.patch` on audio_service bumps.
 dependency_overrides:
   just_audio:

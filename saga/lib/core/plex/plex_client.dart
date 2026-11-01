@@ -162,6 +162,11 @@ class PlexClient {
     await _storage.delete(key: _serverUriKey);
   }
 
+  /// Signs out. Throws only while the token is still stored, which is the one
+  /// case where the caller must keep showing the account as signed in.
+  /// Everything after the token is gone is best-effort and logged: with the
+  /// credential off the device the user *is* signed out, and a leftover cache
+  /// must not leave the screen saying otherwise.
   Future<void> clearAuth() async {
     if (_token != null) {
       try {
@@ -176,17 +181,31 @@ class PlexClient {
         // Best-effort — continue with local cleanup regardless
       }
     }
+    // First, and the only step allowed to throw. In-memory state is cleared
+    // after it, so a failed delete leaves a session that still works rather
+    // than one that looks signed in with no token behind it.
+    await _storage.delete(key: _tokenKey);
     _token = null;
     _serverUri = null;
     _machineIdentifier = null;
     _dio.options.headers.remove('X-Plex-Token');
-    await _storage.delete(key: _tokenKey);
-    await _storage.delete(key: _serverUriKey);
-    await _storage.delete(key: _machineIdKey);
+
+    Future<void> bestEffort(String step, Future<void> Function() run) async {
+      try {
+        await run();
+      } catch (e) {
+        AppLog.log('auth', 'sign-out: $step failed: $e');
+      }
+    }
+
+    await bestEffort('clearing server address', () async {
+      await _storage.delete(key: _serverUriKey);
+      await _storage.delete(key: _machineIdKey);
+    });
     // Re-point storage now rather than on next launch, so a signed-out session
     // reads the same (last-active server's) records it will read after a
     // restart. Callers stop playback first — see the sign-out flow in Settings.
-    await ServerScope.configure(null);
+    await bestEffort('storage scope', () => ServerScope.configure(null));
 
     // Signing out has to mean signing out. Credentials alone were being
     // cleared while every cover of the account's library stayed on disk — in
@@ -199,10 +218,12 @@ class PlexClient {
     // author record for every book ever opened. Books with a position or a
     // download keep theirs — those are what sign-out promises to keep, and
     // their records are what names them on the offline shelves.
-    final pruned = await BookMetadataStore.pruneOrphans();
-    if (pruned > 0) {
-      AppLog.log('storage', 'sign-out pruned $pruned cached book records');
-    }
+    await bestEffort('metadata prune', () async {
+      final pruned = await BookMetadataStore.pruneOrphans();
+      if (pruned > 0) {
+        AppLog.log('storage', 'sign-out pruned $pruned cached book records');
+      }
+    });
   }
 
   /// Drops every locally cached cover: the image cache and the artwork cache.

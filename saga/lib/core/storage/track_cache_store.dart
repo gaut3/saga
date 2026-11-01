@@ -49,6 +49,7 @@ class TrackCacheStore {
   /// (book downloaded before the cache existed and not yet backfilled).
   static int? trackCount(String bookRatingKey) {
     final raw = _box.get(ServerScope.key(bookRatingKey));
-    return raw == null ? null : (raw as List<dynamic>).length;
+    // Same tolerance as [load]: a malformed entry is unknown, not a throw.
+    return raw is List ? raw.length : null;
   }
 }
