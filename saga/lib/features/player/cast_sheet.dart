@@ -95,8 +95,12 @@ class _CastSheetState extends ConsumerState<_CastSheet> {
     if (bookKey != null) {
       final handoff = CastHandoff(
         bookRatingKey: bookKey,
-        trackRatingKey: track.ratingKey,
-        trackStartMs: service.absolutePositionMs - positionMs,
+        tracks: [
+          (
+            trackRatingKey: track.ratingKey,
+            startMs: service.absolutePositionMs - positionMs,
+          ),
+        ],
         totalDurationMs:
             service.totalBookDurationMs > 0 ? service.totalBookDurationMs : null,
       );

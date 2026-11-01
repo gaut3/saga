@@ -87,14 +87,18 @@ final castServiceProvider = Provider<CastService>((ref) {
   // Writes the cast position straight to the bookmark, keyed by the handoff
   // identity — never by whatever the local player holds now. Runs on every
   // 10 s poll tick, so an app killed mid-cast loses at most 10 s.
+  //
+  // Queue item 0: one file is cast today. The queue's status will name the
+  // current item, and the handoff already maps any item to its track.
   Future<void> writeBack(CastHandoff h, int posMs) async {
-    if (posMs <= 0) return;
+    final at = h.positionAt(0, posMs);
+    if (at == null || at.positionMs <= 0) return;
     await BookmarkStore.save(
       h.bookRatingKey,
       BookPosition(
-        trackRatingKey: h.trackRatingKey,
-        positionMs: posMs,
-        absolutePositionMs: h.trackStartMs + posMs,
+        trackRatingKey: at.trackRatingKey,
+        positionMs: at.positionMs,
+        absolutePositionMs: at.absoluteMs,
         totalDurationMs: h.totalDurationMs,
         savedAt: DateTime.now(),
       ),
@@ -112,7 +116,8 @@ final castServiceProvider = Provider<CastService>((ref) {
       // handback. Raw seek: no undo arming, no session-log skip event.
       if (posMs > 0 &&
           player.currentBookRatingKey == h.bookRatingKey &&
-          player.currentTrackInfo?.ratingKey == h.trackRatingKey) {
+          player.currentTrackInfo?.ratingKey ==
+              h.positionAt(0, posMs)?.trackRatingKey) {
         await player.player.seek(Duration(milliseconds: posMs));
       }
       AppLog.log('cast', 'session ended — position handed back');

@@ -67,11 +67,6 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc"/>
-
-        <!-- Google Cast SDK options provider -->
-        <meta-data
-            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
-            android:value="com.gaut3.saga.CastOptionsProvider"/>
     </application>
 
     <queries>

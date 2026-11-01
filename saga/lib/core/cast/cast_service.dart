@@ -20,35 +20,68 @@ class CastDevice {
 /// switch the TV off hours later, and B was seeked to A's position and saved.
 class CastHandoff {
   final String bookRatingKey;
-  final String trackRatingKey;
 
-  /// Absolute offset of the cast track's start within the book, so a
-  /// track-relative cast position converts to a whole-book one.
-  final int trackStartMs;
+  /// Every track handed to the device, in queue order, each with its start
+  /// offset in the book, so a queue item's position converts to a place in
+  /// the book. One entry while a single file is cast; the queue hands over
+  /// the rest of the book.
+  final List<({String trackRatingKey, int startMs})> tracks;
   final int? totalDurationMs;
 
   const CastHandoff({
     required this.bookRatingKey,
-    required this.trackRatingKey,
-    required this.trackStartMs,
+    required this.tracks,
     this.totalDurationMs,
   });
 
+  /// Where the device is, as a place in the book: queue item [itemIndex] at
+  /// [itemPositionMs]. Null for an index the handoff doesn't know, such as a
+  /// status from an older queue: skipping a save is recoverable, filing a
+  /// position under the wrong track is not.
+  ({String trackRatingKey, int positionMs, int absoluteMs})? positionAt(
+      int itemIndex, int itemPositionMs) {
+    if (itemIndex < 0 || itemIndex >= tracks.length) return null;
+    final t = tracks[itemIndex];
+    final pos = itemPositionMs < 0 ? 0 : itemPositionMs;
+    return (
+      trackRatingKey: t.trackRatingKey,
+      positionMs: pos,
+      absoluteMs: t.startMs + pos,
+    );
+  }
+
   /// Round-trips through [SettingsStore] so a relaunch mid-cast can keep
   /// tracking the session the Cast SDK auto-resumes. Rating keys are numeric,
-  /// so '|' is a safe separator.
-  String serialize() =>
-      '$bookRatingKey|$trackRatingKey|$trackStartMs|${totalDurationMs ?? ''}';
+  /// so '|', ',' and ':' are safe separators.
+  String serialize() => 'v2|$bookRatingKey|${totalDurationMs ?? ''}|'
+      '${tracks.map((t) => '${t.trackRatingKey}:${t.startMs}').join(',')}';
 
+  /// Reads v2, and the v1 form (`book|track|startMs|total`) written before
+  /// the queue, so a cast running across the upgrade keeps its writeback.
   static CastHandoff? tryParse(String raw) {
     final parts = raw.split('|');
+    if (parts.length == 4 && parts[0] == 'v2') {
+      if (parts[1].isEmpty || parts[3].isEmpty) return null;
+      final tracks = <({String trackRatingKey, int startMs})>[];
+      for (final entry in parts[3].split(',')) {
+        final kv = entry.split(':');
+        if (kv.length != 2 || kv[0].isEmpty) return null;
+        final start = int.tryParse(kv[1]);
+        if (start == null || start < 0) return null;
+        tracks.add((trackRatingKey: kv[0], startMs: start));
+      }
+      return CastHandoff(
+        bookRatingKey: parts[1],
+        tracks: tracks,
+        totalDurationMs: int.tryParse(parts[2]),
+      );
+    }
     if (parts.length != 4 || parts[0].isEmpty || parts[1].isEmpty) return null;
     final startMs = int.tryParse(parts[2]);
     if (startMs == null) return null;
     return CastHandoff(
       bookRatingKey: parts[0],
-      trackRatingKey: parts[1],
-      trackStartMs: startMs,
+      tracks: [(trackRatingKey: parts[1], startMs: startMs)],
       totalDurationMs: int.tryParse(parts[3]),
     );
   }
