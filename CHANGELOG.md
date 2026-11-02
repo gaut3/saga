@@ -15,6 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - **The Continue Listening card has no border.** The amber outline around it is gone; the play button at its foot already shows whether the book is playing. The progress bar is a little thinner and the play button a little taller, to match the new home-screen widget.
+- **Dependency housekeeping.** Two libraries moved up a patch version: flutter_cache_manager, which now catches an error it used to let through while updating a cached cover's record, and url_launcher, which opens the Plex sign-in page. Nothing about the app changes.
 
 ### Fixed
 - **The player's bottom row lines up.** The five buttons under the controls were spaced by the gaps between them, so a wide label like "Bookmark" pushed the cast button off-centre under the play button, and the row shifted as the sleep timer counted down. Each button now has an equal share of the row: the middle one sits directly under play, nothing moves as labels change, and each button is easier to hit.
