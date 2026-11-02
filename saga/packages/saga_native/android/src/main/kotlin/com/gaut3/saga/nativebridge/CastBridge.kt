@@ -293,7 +293,6 @@ internal object CastBridge {
             }
             "setRate" -> {
                 val rate = call.argument<Double>("rate") ?: 1.0
-        val loadId = call.argument<String>("loadId") ?: ""
                 command(result) { it.setPlaybackRate(rate) }
             }
             "setStreamVolume" -> {
