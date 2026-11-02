@@ -79,6 +79,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late int _defaultSleepTimer;
   late bool _redactServer;
   late bool _updateCheck;
+  final _updateRowKey = GlobalKey();
   String _version = '';
 
   @override
@@ -108,6 +109,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     ref.watch(sagaThemeVariantProvider);
     final client = ref.watch(plexClientProvider);
+
+    // The update banner's tap lands here. After a frame, so the tab switch
+    // that came with it has laid this screen out.
+    ref.listen(revealUpdateRowProvider, (_, _) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final row = _updateRowKey.currentContext;
+        if (row == null || !row.mounted) return;
+        Scrollable.ensureVisible(row,
+            alignment: 0.5, duration: const Duration(milliseconds: 300));
+      });
+    });
 
     return Scaffold(
       backgroundColor: SagaColors.bg,
@@ -403,9 +415,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 _SwitchTile(
                   icon: Icons.update_outlined,
-                  title: 'Check for updates on launch',
+                  title: 'Check for updates automatically',
                   subtitle:
-                      'Off by default — one request to GitHub per launch when on',
+                      'Off by default — one request to GitHub when Saga starts, '
+                      'and daily if it stays open',
                   value: _updateCheck,
                   onChanged: (v) async {
                     await SettingsStore.setUpdateCheckEnabled(v);
@@ -433,6 +446,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     _ => 'View releases on GitHub',
                   };
                   return _SettingsTile(
+                    key: _updateRowKey,
                     icon: hasUpdate
                         ? Icons.new_releases_outlined
                         : Icons.system_update_outlined,
@@ -814,8 +828,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       'not encrypted — a player has to be able to read it.\n\n'
       '• The only servers Saga talks to are your own Plex server (to browse and '
       'stream your library) and plex.tv (to sign in). If you switch on the update '
-      'check in About, that adds one request to GitHub per launch, and nothing '
-      'else — it is off unless you turn it on.\n\n'
+      'check in About, that adds one request to GitHub when Saga starts, and '
+      'once a day if it stays open, and nothing else — it is off unless you '
+      'turn it on.\n\n'
       '• No analytics, no tracking, no advertising, no telemetry. Nothing about '
       'you or your library is sent to the author or to anyone else, ever.\n\n'
       '• Saga requests no microphone, camera, contacts, or location access. Even the '
@@ -878,6 +893,7 @@ class _SettingsTile extends StatelessWidget {
   final VoidCallback onTap;
 
   const _SettingsTile({
+    super.key,
     required this.icon,
     required this.title,
     required this.subtitle,

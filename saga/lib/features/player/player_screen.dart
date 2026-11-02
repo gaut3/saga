@@ -130,6 +130,10 @@ class PlayerScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 4),
               _ProgressBar(service: service),
+              // The time row sat flush on the play mark; chapter mode's
+              // centred "left in book" label made it look cramped. The cover
+              // (the flexible child) gives up the space.
+              const SizedBox(height: 8),
               _Controls(service: service),
               const SizedBox(height: 4),
               _BottomActions(service: service, bookKey: bookKey),
@@ -888,6 +892,8 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
         final displayDur = Duration(
             milliseconds:
                 chapterMode ? spanMs : (totalMs > 0 ? totalMs : absMs));
+        final bookLeft = _remainingAtSpeed(Duration(milliseconds: displayAbsMs),
+            Duration(milliseconds: totalMs), speed);
 
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -976,32 +982,60 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Stack(
+                  alignment: Alignment.center,
                   children: [
-                    Text(fmtDuration(displayPos),
-                        style: TextStyle(
-                            color: SagaColors.fgMuted, fontSize: 12)),
-                    // Remaining listening time at the current playback speed
-                    // (the audiobook convention: 2 h left at 1.5× is really
-                    // 1 h 20 m of your evening). Tap to toggle to book total.
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _showTotal = !_showTotal),
-                      child: Semantics(
-                        label: _showTotal
-                            ? (chapterMode ? 'Chapter length' : 'Book length')
-                            : 'Time remaining at current speed',
-                        button: true,
-                        child: Text(
-                          _showTotal
-                              ? fmtDuration(displayDur)
-                              : '-${fmtDuration(_remainingAtSpeed(displayPos, displayDur, speed))}',
-                          style: TextStyle(
-                              color: SagaColors.fgMuted, fontSize: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(fmtDuration(displayPos),
+                            style: TextStyle(
+                                color: SagaColors.fgMuted, fontSize: 12)),
+                        // Remaining listening time at the current playback speed
+                        // (the audiobook convention: 2 h left at 1.5× is really
+                        // 1 h 20 m of your evening). Tap to toggle to book total.
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => setState(() => _showTotal = !_showTotal),
+                          child: Semantics(
+                            label: _showTotal
+                                ? (chapterMode ? 'Chapter length' : 'Book length')
+                                : 'Time remaining at current speed',
+                            button: true,
+                            child: Text(
+                              _showTotal
+                                  ? fmtDuration(displayDur)
+                                  : '-${fmtDuration(_remainingAtSpeed(displayPos, displayDur, speed))}',
+                              style: TextStyle(
+                                  color: SagaColors.fgMuted, fontSize: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    // Chapter mode turns both side labels into chapter times,
+                    // which leaves the book's own time left nowhere on the
+                    // player (GitHub #21). It sits between them, at the
+                    // current speed like the right label, so it costs the
+                    // cover no height. Follows the thumb while dragging.
+                    // Centred over the row rather than placed in it: in the
+                    // row it sat between two labels whose widths change as
+                    // their digits do, and drifted side to side. The inset
+                    // clears the widest side label ("-1:02:13").
+                    if (chapterMode && totalMs > 0)
+                      IgnorePointer(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 64),
+                          child: Text(
+                            '${fmtListenedMs(bookLeft.inMilliseconds)} left in book',
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                color: SagaColors.fgSubtle, fontSize: 12),
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),

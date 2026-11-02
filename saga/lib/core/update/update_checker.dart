@@ -141,7 +141,12 @@ Future<UpdateCheckResult> checkForUpdate() async {
   }
 }
 
-/// Cached per app session; MainShell kicks it off post-frame when enabled,
-/// and the Settings screen re-reads/invalidates it from the toggle.
+/// Cached per app session; MainShell kicks it off post-frame when enabled and
+/// re-runs it on resume once a day has passed, and the Settings screen
+/// re-reads/invalidates it from the toggle.
 final updateCheckProvider =
     FutureProvider<UpdateCheckResult>((ref) => checkForUpdate());
+
+/// Bumped by the update banner's tap; Settings scrolls its "Check for
+/// updates" row into view on each bump.
+final revealUpdateRowProvider = StateProvider<int>((_) => 0);

@@ -144,7 +144,7 @@ Saga is local-first with no analytics, no crash reporting SDK, and nothing trans
 | `plex.tv/api/v2/resources` | Sign-in / reconnect | Discover your Plex servers |
 | `plex.tv/users/sign_out.json` | Sign-out | Invalidate the session (best-effort) |
 | **Your own Plex server** | Always | Everything else: library browsing, streaming, cover art, playback progress |
-| `api.github.com/repos/gaut3/saga/releases/latest` | **Opt-in only, default off** | "Check for updates on launch" (Settings → About) — one anonymous GET per launch when enabled |
+| `api.github.com/repos/gaut3/saga/releases/latest` | **Opt-in only, default off** | "Check for updates automatically" (Settings → About) — one anonymous GET when Saga starts, and once a day if it stays open, when enabled |
 
 **That's the complete list.** Everything authenticates with the token in an HTTP header, with **one** exception: Chromecast, because a Cast device fetches the stream itself and cannot send headers, so the credential has to travel in the URL. Since 1.1.0 that URL carries a **delegated token** requested from your server — scoped to that one server and self-expiring — rather than your account token, because a Cast device reports what it is playing to anything else on the network that asks. If your server is too old to mint one, Saga falls back to the account token rather than refusing to cast, and drops the cover art so the key travels only in the audio URLs (one per file of the book, since 1.2.0 casts the whole book as a queue). Notification and lock-screen artwork was the second exception until 1.1.0; it no longer involves the token at all. Details in the [privacy policy](PRIVACY_POLICY.md).
 

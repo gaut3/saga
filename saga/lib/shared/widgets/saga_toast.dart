@@ -48,18 +48,57 @@ void showSagaToast(
   overlay.insert(entry);
 }
 
+/// A toast that stays until it's closed: tapping the body runs [onTap], the
+/// close button runs [onClose], and either one removes it.
+///
+/// For news that a 2.5 s toast at launch is too easy to miss (the update
+/// check: it fires while the app is still opening, and people missed it).
+void showSagaBanner(
+  BuildContext context,
+  String message, {
+  required VoidCallback onTap,
+  required VoidCallback onClose,
+}) {
+  final overlay = Navigator.of(context, rootNavigator: true).overlay;
+  if (overlay == null) return;
+
+  late OverlayEntry entry;
+  entry = OverlayEntry(
+    builder: (ctx) => _SagaToast(
+      message: message,
+      top: MediaQuery.of(ctx).padding.top,
+      isError: false,
+      onTap: onTap,
+      onClose: onClose,
+      onDone: () {
+        if (entry.mounted) entry.remove();
+      },
+    ),
+  );
+
+  overlay.insert(entry);
+}
+
 class _SagaToast extends ConsumerStatefulWidget {
   final String message;
   final double top;
   final bool isError;
-  final Duration duration;
+
+  /// Null keeps it up until [onTap] or [onClose] (a banner).
+  final Duration? duration;
+  final VoidCallback? onTap;
+
+  /// Non-null shows a close button.
+  final VoidCallback? onClose;
   final VoidCallback onDone;
 
   const _SagaToast({
     required this.message,
     required this.top,
     required this.isError,
-    required this.duration,
+    this.duration,
+    this.onTap,
+    this.onClose,
     required this.onDone,
   });
 
@@ -82,7 +121,8 @@ class _SagaToastState extends ConsumerState<_SagaToast>
     );
     _opacity = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
     _ctrl.forward();
-    Future.delayed(widget.duration, _dismiss);
+    final duration = widget.duration;
+    if (duration != null) Future.delayed(duration, _dismiss);
   }
 
   void _dismiss() {
@@ -118,12 +158,20 @@ class _SagaToastState extends ConsumerState<_SagaToast>
         opacity: _opacity,
         child: Center(
           child: GestureDetector(
-            onTap: _dismiss,
+            onTap: () {
+              // The guard in _dismiss also keeps a double tap from running
+              // the action twice.
+              if (_dismissed) return;
+              _dismiss();
+              widget.onTap?.call();
+            },
             child: Material(
               color: Colors.transparent,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding: widget.onClose == null
+                    ? const EdgeInsets.symmetric(horizontal: 20, vertical: 10)
+                    : const EdgeInsets.only(left: 20, right: 4),
+                margin: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
                   color: bg,
                   borderRadius: BorderRadius.circular(99),
@@ -137,17 +185,35 @@ class _SagaToastState extends ConsumerState<_SagaToast>
                 ),
                 // liveRegion is how SnackBar gets TalkBack to read it out;
                 // without it every toast confirmation is visual-only.
-                child: Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    widget.message,
-                    style: TextStyle(
-                      color: fg,
-                      fontFamily: 'Manrope',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Semantics(
+                        liveRegion: true,
+                        button: widget.onTap != null,
+                        child: Text(
+                          widget.message,
+                          style: TextStyle(
+                            color: fg,
+                            fontFamily: 'Manrope',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    if (widget.onClose != null)
+                      IconButton(
+                        icon: Icon(Icons.close, size: 18, color: fg),
+                        tooltip: 'Dismiss',
+                        onPressed: () {
+                          if (_dismissed) return;
+                          _dismiss();
+                          widget.onClose!();
+                        },
+                      ),
+                  ],
                 ),
               ),
             ),

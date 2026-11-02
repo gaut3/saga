@@ -216,6 +216,14 @@ class SettingsStore {
   static Future<void> setUpdateCheckEnabled(bool v) =>
       _box.put('updateCheck', v);
 
+  // The release whose "Update available" banner was closed or tapped. It
+  // stays up every launch until then; after that, only Settings shows it.
+  static String? get dismissedUpdateTag =>
+      _box.get('dismissedUpdateTag') as String?;
+
+  static Future<void> setDismissedUpdateTag(String tag) =>
+      _box.put('dismissedUpdateTag', tag);
+
   // Mask server address in Settings for screenshots/recordings.
   static bool get redactServerAddress =>
       _box.get('redactServerAddress', defaultValue: false) as bool;

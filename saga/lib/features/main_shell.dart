@@ -48,12 +48,27 @@ class _MainShellState extends ConsumerState<MainShell>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Opt-in, default off: one anonymous GET to GitHub per launch. Never
-      // blocks startup; the result is cached in the provider for Settings.
-      if (mounted && SettingsStore.updateCheckEnabled) {
-        ref.read(updateCheckProvider);
-      }
+      if (mounted) _checkForUpdate();
     });
+  }
+
+  /// When the update check last ran this session; null before the first.
+  DateTime? _lastUpdateCheck;
+
+  /// Opt-in, default off: one anonymous GET to GitHub when Saga starts, and
+  /// again on returning to it once a day has passed. Starts alone weren't
+  /// enough: an audiobook player can stay running for days, so a release
+  /// went unseen until the next fresh start (GitHub #22). Never blocks; the
+  /// result is cached in the provider for Settings and the banner.
+  void _checkForUpdate() {
+    if (!SettingsStore.updateCheckEnabled) return;
+    final last = _lastUpdateCheck;
+    if (last != null) {
+      if (DateTime.now().difference(last) < const Duration(hours: 24)) return;
+      ref.invalidate(updateCheckProvider);
+    }
+    _lastUpdateCheck = DateTime.now();
+    ref.read(updateCheckProvider);
   }
 
   @override
@@ -83,7 +98,20 @@ class _MainShellState extends ConsumerState<MainShell>
       // leaves it with no title or artwork. Reopening the app is a free moment
       // to heal it, so the lock screen is right without waiting for a play.
       ref.read(playerServiceProvider).republishNowPlaying();
+      _checkForUpdate();
     }
+  }
+
+  static const _settingsTab = 4;
+
+  /// Settings, scrolled to "Check for updates", whose tap opens the release
+  /// on GitHub. Closes the player or a sheet first: the banner shows over
+  /// everything, so it can be tapped from anywhere.
+  void _openUpdateInSettings() {
+    rootNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+    _navKeys[_settingsTab].currentState?.popUntil((r) => r.isFirst);
+    ref.read(tabIndexProvider.notifier).state = _settingsTab;
+    ref.read(revealUpdateRowProvider.notifier).state++;
   }
 
   static const _navItems = [
@@ -110,13 +138,27 @@ class _MainShellState extends ConsumerState<MainShell>
 
     // Surface the launch update check — the result was only ever visible in
     // Settings › About, so an enabled check could find an update nobody saw.
-    // Once per release per session: see [_announcedUpdate].
+    // A banner, not a toast: a 2.5 s toast fired while the app was still
+    // opening, and people missed it (GitHub #22). It comes back each launch
+    // until it's closed or tapped for that release; once per session at most
+    // (see [_announcedUpdate]).
     ref.listen(updateCheckProvider, (_, next) {
       final result = next.valueOrNull;
-      if (result?.isNewer == true && result!.latestTag != _announcedUpdate) {
-        _announcedUpdate = result.latestTag;
-        showSagaToast(context, 'Update available: ${result.latestTag}');
+      final tag = result?.latestTag;
+      if (result?.isNewer != true || tag == null) return;
+      if (tag == _announcedUpdate || tag == SettingsStore.dismissedUpdateTag) {
+        return;
       }
+      _announcedUpdate = tag;
+      showSagaBanner(
+        context,
+        'Update available: $tag',
+        onTap: () {
+          SettingsStore.setDismissedUpdateTag(tag);
+          _openUpdateInSettings();
+        },
+        onClose: () => SettingsStore.setDismissedUpdateTag(tag),
+      );
     });
 
     return PopScope(
