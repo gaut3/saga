@@ -27,7 +27,7 @@
 - Auto-play the next book in a collection, with a cancellable countdown (off by default)
 - Tap the cover on the player to look through it at the book's details
 - Always-visible mini player; swipe it away to dismiss, long-press for options
-- Chromecast support via native Cast SDK — your place is handed back when casting ends. Not yet while casting: the sleep timer, listening stats, and moving on to the next file of a multi-file book
+- Chromecast support via native Cast SDK: the whole book is cast as one queue, the notification, lock screen, headset and widget drive the TV, the sleep timer and listening stats work on it, and your place is handed back when casting ends
 - Headphone unplug auto-pause; auto-resume after calls and brief interruptions (on by default, and never over another app's media)
 - Android Auto — Continue listening, Downloaded, and your collections in the order you dragged them; built from what's already on the phone, so a downloaded book plays in the car with no server involved. Asking for a book by name works too. The same browse tree backs the lock screen's media-resumption card
 
@@ -146,7 +146,7 @@ Saga is local-first with no analytics, no crash reporting SDK, and nothing trans
 | **Your own Plex server** | Always | Everything else: library browsing, streaming, cover art, playback progress |
 | `api.github.com/repos/gaut3/saga/releases/latest` | **Opt-in only, default off** | "Check for updates on launch" (Settings → About) — one anonymous GET per launch when enabled |
 
-**That's the complete list.** Everything authenticates with the token in an HTTP header, with **one** exception: Chromecast, because a Cast device fetches the stream itself and cannot send headers, so the credential has to travel in the URL. Since 1.1.0 that URL carries a **delegated token** requested from your server — scoped to that one server and self-expiring — rather than your account token, because a Cast device reports what it is playing to anything else on the network that asks. If your server is too old to mint one, Saga falls back to the account token rather than refusing to cast, and drops the cover art so the key travels in one place instead of two. Notification and lock-screen artwork was the second exception until 1.1.0; it no longer involves the token at all. Details in the [privacy policy](PRIVACY_POLICY.md).
+**That's the complete list.** Everything authenticates with the token in an HTTP header, with **one** exception: Chromecast, because a Cast device fetches the stream itself and cannot send headers, so the credential has to travel in the URL. Since 1.1.0 that URL carries a **delegated token** requested from your server — scoped to that one server and self-expiring — rather than your account token, because a Cast device reports what it is playing to anything else on the network that asks. If your server is too old to mint one, Saga falls back to the account token rather than refusing to cast, and drops the cover art so the key travels only in the audio URLs (one per file of the book, since 1.2.0 casts the whole book as a queue). Notification and lock-screen artwork was the second exception until 1.1.0; it no longer involves the token at all. Details in the [privacy policy](PRIVACY_POLICY.md).
 
 **Verify it yourself:** point [PCAPdroid](https://github.com/emanuele-f/PCAPdroid) (on-device, no root) at Saga — you'll see traffic only to your own server and `plex.tv` (plus `api.github.com` if you enabled update checks).
 

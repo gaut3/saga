@@ -167,7 +167,7 @@ class _PlexTrackList extends StatelessWidget {
     // to the next file while the sheet was up.
     return StreamBuilder<int?>(
       stream: service.currentIndexStream,
-      initialData: service.player.currentIndex,
+      initialData: service.currentIndex,
       builder: (context, idxSnap) {
         final currentIdx = idxSnap.data ?? 0;
         return ListView.builder(

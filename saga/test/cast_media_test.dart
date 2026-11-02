@@ -9,9 +9,10 @@ import 'package:saga/core/plex/plex_client.dart';
 /// (`media_browse_test` polices that exclusivity), and a Cast receiver's
 /// status — `contentId` included — is readable unauthenticated by anything on
 /// the LAN. So *which* credential goes in that URL, and into how many URLs,
-/// is a security decision: a delegated token may ride along on artwork, the
-/// account token must appear exactly once, artwork dropped. These tests pin
-/// the fallback — the branch nothing else exercises.
+/// is a security decision: a delegated token may ride along on artwork; the
+/// account token goes only where the audio needs it (each queued file), with
+/// artwork dropped. These tests pin the fallback — the branch nothing else
+/// exercises.
 void main() {
   const server = 'http://192.168.1.9:32400';
   const accountToken = 'ACCOUNT-TOKEN-SECRET';
@@ -43,19 +44,43 @@ void main() {
     );
 
     final media = await client.buildCastMedia(
-        partKey: '/library/parts/1/file.m4b', thumbPath: '/library/thumb/1');
+        partKeys: ['/library/parts/1/file.m4b'], thumbPath: '/library/thumb/1');
 
     expect(asked?.path, '/security/token',
         reason: 'the delegated token must come from the Plex endpoint');
     expect(media, isNotNull);
-    expect(media!.streamUrl, contains('X-Plex-Token=$delegatedToken'));
+    expect(media!.streamUrls.single, contains('X-Plex-Token=$delegatedToken'));
     expect(media.artUrl, isNotNull,
         reason: 'artwork costs nothing extra with a delegated token');
     expect(media.artUrl, contains('X-Plex-Token=$delegatedToken'));
-    expect('${media.streamUrl} ${media.artUrl}',
+    expect('${media.streamUrls.single} ${media.artUrl}',
         isNot(contains(accountToken)),
         reason: 'the account token must never reach a Cast URL '
             'when a delegated one exists');
+  });
+
+  test('a whole book is one mint: every file carries the same token',
+      () async {
+    var mints = 0;
+    final client = PlexClient.forTest(
+      serverUri: server,
+      token: accountToken,
+      dio: dioAnswering((_) {
+        mints++;
+        return json({
+          'MediaContainer': {'token': delegatedToken}
+        });
+      }),
+    );
+
+    final media = await client.buildCastMedia(
+        partKeys: ['/library/parts/1/a.mp3', '/library/parts/2/b.mp3']);
+
+    expect(mints, 1);
+    expect(media!.streamUrls, [
+      '$server/library/parts/1/a.mp3?X-Plex-Token=$delegatedToken',
+      '$server/library/parts/2/b.mp3?X-Plex-Token=$delegatedToken',
+    ]);
   });
 
   test('an older server putting the token at the top level still counts',
@@ -67,9 +92,9 @@ void main() {
     );
 
     final media = await client.buildCastMedia(
-        partKey: '/library/parts/1/file.m4b', thumbPath: '/library/thumb/1');
+        partKeys: ['/library/parts/1/file.m4b'], thumbPath: '/library/thumb/1');
 
-    expect(media!.streamUrl, contains('X-Plex-Token=$delegatedToken'));
+    expect(media!.streamUrls.single, contains('X-Plex-Token=$delegatedToken'));
     expect(media.artUrl, contains('X-Plex-Token=$delegatedToken'));
   });
 
@@ -83,10 +108,10 @@ void main() {
     );
 
     final media = await client.buildCastMedia(
-        partKey: '/library/parts/1/file.m4b', thumbPath: '/library/thumb/1');
+        partKeys: ['/library/parts/1/file.m4b'], thumbPath: '/library/thumb/1');
 
     expect(media, isNotNull, reason: 'casting still works, at a price');
-    expect(media!.streamUrl, contains('X-Plex-Token=$accountToken'));
+    expect(media!.streamUrls.single, contains('X-Plex-Token=$accountToken'));
     expect(media.artUrl, isNull,
         reason: 'a second copy of the account token buys only a thumbnail — '
             'artwork must be dropped on the fallback');
@@ -100,9 +125,9 @@ void main() {
     );
 
     final media = await client.buildCastMedia(
-        partKey: '/library/parts/1/file.m4b', thumbPath: '/library/thumb/1');
+        partKeys: ['/library/parts/1/file.m4b'], thumbPath: '/library/thumb/1');
 
-    expect(media!.streamUrl, contains('X-Plex-Token=$accountToken'));
+    expect(media!.streamUrls.single, contains('X-Plex-Token=$accountToken'));
     expect(media.artUrl, isNull);
   });
 
@@ -111,13 +136,13 @@ void main() {
         serverUri: server,
         token: null,
         dio: dioAnswering((_) => json({'token': delegatedToken})));
-    expect(await noToken.buildCastMedia(partKey: '/p'), isNull);
+    expect(await noToken.buildCastMedia(partKeys: ['/p']), isNull);
 
     final noServer = PlexClient.forTest(
         serverUri: null,
         token: accountToken,
         dio: dioAnswering((_) => json({'token': delegatedToken})));
-    expect(await noServer.buildCastMedia(partKey: '/p'), isNull);
+    expect(await noServer.buildCastMedia(partKeys: ['/p']), isNull);
   });
 }
 

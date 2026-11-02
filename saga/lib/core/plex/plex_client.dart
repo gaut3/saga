@@ -359,14 +359,17 @@ class PlexClient {
   ///
   ///  * With a delegated token, a listener on the network gets a short-lived
   ///    key to one server. Artwork comes along, since it costs nothing extra.
-  ///  * Without one, the URL carries the account token — a key to the whole
-  ///    Plex account. That is the price of casting at all, but it is paid once:
-  ///    [artUrl] is null, because a second copy of it buys only a thumbnail.
+  ///  * Without one, the URLs carry the account token — a key to the whole
+  ///    Plex account. That is the price of casting at all: every file of the
+  ///    queue needs it, and they're readable from the same receiver, so more
+  ///    files expose nothing more. [artUrl] is null, because exposing it to
+  ///    one more consumer buys only a thumbnail.
   ///
   /// Always a server URL, never a local file — the Cast device can't reach the
-  /// phone's storage.
-  Future<({String streamUrl, String? artUrl})?> buildCastMedia({
-    required String partKey,
+  /// phone's storage. One URL per part, in order: a book is cast as a queue of
+  /// its files, all carrying the one token minted here.
+  Future<({List<String> streamUrls, String? artUrl})?> buildCastMedia({
+    required List<String> partKeys,
     String? thumbPath,
   }) async {
     final serverUri = _serverUri;
@@ -376,7 +379,10 @@ class PlexClient {
 
     final token = Uri.encodeQueryComponent(credential.token);
     return (
-      streamUrl: '$serverUri$partKey?X-Plex-Token=$token',
+      streamUrls: [
+        for (final partKey in partKeys)
+          '$serverUri$partKey?X-Plex-Token=$token',
+      ],
       artUrl: (credential.isDelegated && thumbPath != null)
           ? '$serverUri$thumbPath?X-Plex-Token=$token'
           : null,

@@ -47,11 +47,6 @@ class _MainShellState extends ConsumerState<MainShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Construct the cast service now, not at first cast-sheet open: its
-    // native-call handler must exist for the position writeback to hear a
-    // session ending — including one the Cast SDK auto-resumed after an app
-    // restart, when the sheet may never be opened at all.
-    ref.read(castServiceProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Opt-in, default off: one anonymous GET to GitHub per launch. Never
       // blocks startup; the result is cached in the provider for Settings.

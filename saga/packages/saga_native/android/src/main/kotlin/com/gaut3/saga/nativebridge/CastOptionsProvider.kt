@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.android.gms.cast.framework.CastOptions
 import com.google.android.gms.cast.framework.OptionsProvider
 import com.google.android.gms.cast.framework.SessionProvider
+import com.google.android.gms.cast.framework.media.CastMediaOptions
 
 class CastOptionsProvider : OptionsProvider {
     companion object {
@@ -22,6 +23,16 @@ class CastOptionsProvider : OptionsProvider {
             // Saga's own playback service while casting. Off, rather than
             // declaring it connectedDevice and adding two permissions for it.
             .setEnableReconnectionService(false)
+            // No SDK notification and no SDK media session: Saga's own
+            // playback service stands for the TV while casting, so the lock
+            // screen, Bluetooth and the widget all reach one handler. With
+            // these on, a cast showed two notifications (AntennaPod #5728).
+            .setCastMediaOptions(
+                CastMediaOptions.Builder()
+                    .setNotificationOptions(null)
+                    .setMediaSessionEnabled(false)
+                    .build()
+            )
             .build()
     }
 

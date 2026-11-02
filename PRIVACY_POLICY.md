@@ -47,7 +47,7 @@ Your Plex account is subject to [Plex's own Privacy Policy](https://www.plex.tv/
 
 When you cast a book, the Chromecast device fetches the audio stream directly from your Plex server — the audio does not pass through the phone. A Cast device cannot send HTTP headers, so the credential has to travel in the stream URL. **This is the only remaining place where a credential appears in a URL rather than a header.**
 
-It matters more than it looks: a Chromecast will tell anything else on the same network what it is currently playing, URL included, without asking for proof of anything. So *which* credential is in that URL is the whole question. *Changed in 1.1.0:* Saga now asks your server for a delegated token — one that works only on that server and expires by itself — and casts with that. If your server cannot issue one, Saga falls back to your account token rather than refusing to cast, and in that case sends no cover art, so the credential travels in one place instead of two.
+It matters more than it looks: a Chromecast will tell anything else on the same network what it is currently playing, URL included, without asking for proof of anything. So *which* credential is in that URL is the whole question. *Changed in 1.1.0:* Saga now asks your server for a delegated token — one that works only on that server and expires by itself — and casts with that. If your server cannot issue one, Saga falls back to your account token rather than refusing to cast, and in that case sends no cover art, so the credential travels only in the audio URLs. *Changed in 1.2.0:* a book is cast as one queue of all its files, so each file's URL carries the token, all minted in one request and held by the same Cast device.
 
 ### Note on your device identifier
 

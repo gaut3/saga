@@ -27,7 +27,7 @@ import '../../shared/widgets/meta_chip.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_toast.dart';
 import 'bookmark_edit_sheet.dart';
-import 'cast_sheet.dart';
+import 'device_sheet.dart';
 import 'chapters_sheet.dart';
 import 'finished_panel.dart';
 import 'player_provider.dart';
@@ -1147,12 +1147,7 @@ class _BottomActions extends ConsumerWidget {
                 semanticLabel: 'Add bookmark',
                 onTap: () => _addBookmark(context, ref),
               ),
-              _ActionButton(
-                label: 'Cast',
-                icon: Icons.cast,
-                semanticLabel: 'Cast to device',
-                onTap: () => showCastSheet(context, service: service),
-              ),
+              _DeviceButton(service: service),
               _SleepTimerButton(
                 service: service,
                 timerEnd: timerEnd,
@@ -1211,7 +1206,7 @@ class _BottomActions extends ConsumerWidget {
     if (key == null) return;
     final track = service.currentTrackInfo;
     if (track == null) return;
-    final positionMs = service.player.position.inMilliseconds;
+    final positionMs = service.trackPositionMs;
 
     // One creation path — NamedBookmark.create owns the id scheme and the
     // default label. This flow used to mint hex-microsecond ids of its own,
@@ -1320,6 +1315,30 @@ class _SleepTimerButtonState extends State<_SleepTimerButton> {
   }
 }
 
+/// "Device" in the action row; the TV's name, in accentText, while casting.
+class _DeviceButton extends StatelessWidget {
+  final AudioPlayerService service;
+  const _DeviceButton({required this.service});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: service.casting,
+      builder: (context, casting, _) {
+        final name = casting ? service.cast.deviceName : null;
+        return _ActionButton(
+          label: name ?? 'Device',
+          icon: casting ? Icons.cast_connected : Icons.cast,
+          active: casting,
+          semanticLabel:
+              casting ? 'Playing on ${name ?? 'a Cast device'}' : 'Play on',
+          onTap: () => showDeviceSheet(context, service: service),
+        );
+      },
+    );
+  }
+}
+
 class _ActionButton extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -1356,7 +1375,11 @@ class _ActionButton extends StatelessWidget {
             children: [
               Icon(icon, color: color, size: 22),
               const SizedBox(height: 4),
-              Text(label, style: TextStyle(color: color, fontSize: 10)),
+              // One line: the Device button carries a TV's name.
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: color, fontSize: 10)),
             ],
           ),
         ),

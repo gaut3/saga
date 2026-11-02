@@ -5,7 +5,9 @@ import 'package:audio_session/audio_session.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:rxdart/rxdart.dart';
 
+import '../../core/cast/cast_service.dart';
 import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/plex/plex_api.dart';
@@ -22,6 +24,7 @@ import '../../core/storage/playback_log_store.dart';
 import '../../core/storage/timeline_queue_store.dart';
 import '../../core/storage/track_cache_store.dart';
 import 'book_launch.dart';
+import 'cast_queue.dart';
 import 'media_browse.dart';
 import 'resume_rewind.dart';
 import 'session_restore.dart';
@@ -82,11 +85,14 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   // incoming book while the platform player still holds the outgoing one, so
   // any position save in that window would file A's position under B's key.
   bool _loadInProgress = false;
-  // True while loadBook has muted the player to hide the old audio during a
-  // playWhenReady load. An explicit flag, not a `volume == 0` sniff — the
-  // sleep fade (floor 0.05) and the interruption duck (0.5) also write the
-  // volume, and a sniff either misses our mute or clobbers theirs.
+  // The phone player's volume is the product of three things, and only
+  // [_applyVolume] writes it: loadBook's mute (hides the old audio during a
+  // playWhenReady load), the interruption duck, and the sleep timer's fade.
+  // Three writers of one volume each restored to 1.0 and wiped out the
+  // others: a duck ending mid-fade jumped back to full volume.
   bool _mutedForLoad = false;
+  double _duckLevel = 1.0;
+  double _fadeLevel = 1.0;
   int _lastChapterIndex = -1; // for chapter-aware notification title (single M4B)
   bool _completedThisSession = false; // guards the per-listen completion count
   int _previousAbsolutePositionMs = -1; // -1 = no saved position for undo
@@ -170,6 +176,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         // Guard behind ready: if the error fires during loading, _player.position
         // is Duration.zero and writing that would overwrite the real resume point.
         AppLog.log('playback', 'stream error: $e');
+        // The phone's player sits paused while a TV plays; an error on it
+        // must not reload the book onto the TV.
+        if (_castActive) return;
         _progressTimer?.cancel();
         // Capture where playback *actually* is before anything else touches it.
         // This used to reload from `BookmarkStore.load(key)`, which is up to a
@@ -202,13 +211,16 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       // Should never fire — which is exactly why it's worth recording.
       AppLog.log('playback', 'listener error: $e');
     });
-    _player.positionStream
-        .listen(_updateChapterMediaItem, onError: (Object e, StackTrace st) {
+    _player.positionStream.listen((p) {
+      // While casting the phone's position is the stale one the cast began
+      // at; the TV's statuses update the chapter instead.
+      if (!_castActive) _updateChapterMediaItem(p);
+    }, onError: (Object e, StackTrace st) {
       // Should never fire — which is exactly why it's worth recording.
       AppLog.log('playback', 'listener error: $e');
     });
     _player.processingStateStream.listen((state) {
-      if (state == ProcessingState.completed) {
+      if (state == ProcessingState.completed && !_castActive) {
         _markBookCompleted();
         stop();
       }
@@ -220,6 +232,14 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // Pause when headphones are unplugged (ACTION_AUDIO_BECOMING_NOISY).
     // audio_service does not handle this automatically.
     unawaited(_setUpAudioSession());
+
+    cast.stateStream.listen(_onCastState, onError: (Object e, StackTrace st) {
+      AppLog.log('cast', 'listener error: $e');
+    });
+    cast.statusStream.listen(_onCastStatus, onError: (Object e, StackTrace st) {
+      AppLog.log('cast', 'listener error: $e');
+    });
+    unawaited(_resumeCastIfLive());
   }
 
   // Held so a retry of [_setUpAudioSession] can't register a listener twice.
@@ -275,7 +295,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
               if (SettingsStore.resumeAfterInterruption) {
                 if (_player.playing) _onInterruptionBegin('duck');
               } else {
-                _player.setVolume(0.5);
+                _duckLevel = 0.5;
+                unawaited(_applyVolume());
               }
             case AudioInterruptionType.pause:
             case AudioInterruptionType.unknown:
@@ -284,7 +305,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         } else {
           switch (event.type) {
             case AudioInterruptionType.duck:
-              _player.setVolume(1.0); // no-op if we paused instead of ducking
+              // A no-op if we paused instead of ducking.
+              _duckLevel = 1.0;
+              unawaited(_applyVolume());
               _maybeResumeAfterInterruption('duck');
             case AudioInterruptionType.pause:
               _maybeResumeAfterInterruption('pause');
@@ -402,6 +425,15 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   }) async {
     if (tracks.isEmpty) throw ArgumentError('Cannot load a book with no tracks');
 
+    // With a TV connected the book goes there: the phone's player loads it
+    // paused, as the place to come back to, and the TV gets the queue. Every
+    // launch path (chapter, bookmark, History, the next book) lands here, so
+    // none of them can start the phone over a cast. Not a stream-error
+    // reload (the phone's own player), and not the relaunch that is taking
+    // back a cast the TV is already playing.
+    final toTv =
+        cast.state == CastState.connected && !_castAdopting && !isAutoReload;
+
     // A jump while playing (chapter, bookmark, History, a session's Resume)
     // reloads through here and plays again: close the running session at
     // the place being left, while the identity fields still describe it.
@@ -482,7 +514,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
     try {
       _playlist = ConcatenatingAudioSource(children: sources);
-      if (playWhenReady) {
+      if (playWhenReady && !toTv) {
         // Declare the play intent BEFORE the network await. Broadcasting
         // playing=true is what makes audio_service promote to a foreground
         // service and take its wake lock — started here, while the app is
@@ -496,8 +528,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
           // A previous source is still loaded — mute so the early play intent
           // doesn't audibly resume the old audio during the load. Restored in
           // the finally below.
-          await _player.setVolume(0);
           _mutedForLoad = true;
+          await _applyVolume();
         }
         unawaited(_player.play());
       }
@@ -516,7 +548,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       // foreground service with no audio source. Generation-checked like the
       // state clear below — a *stale* load's failure arriving while a newer
       // book loads must not pause the book the user just started.
-      if (playWhenReady && gen == _loadGeneration) unawaited(_player.pause());
+      if (playWhenReady && !toTv && gen == _loadGeneration) {
+        unawaited(_player.pause());
+      }
       // Only clear state if no newer load has taken over: a failed stale load
       // (e.g. interrupted because the user tapped another book) must not wipe
       // the new book's key/tracks — that would silently drop its saves.
@@ -530,13 +564,17 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       // mute would make all playback silent with no visible cause.
       if (_mutedForLoad) {
         _mutedForLoad = false;
-        await _player.setVolume(1);
+        await _applyVolume();
       }
       // Gen-guarded: a superseded load's finally must not reopen the save
       // window while the newer load is still mid-swap.
       if (gen == _loadGeneration) _loadInProgress = false;
     }
     if (gen != _loadGeneration) return; // superseded by a newer load
+    if (toTv) {
+      await _castLoad(startTrackIndex, resumePositionMs,
+          autoplay: playWhenReady);
+    }
     if (!isAutoReload) _jumped();
   }
 
@@ -682,8 +720,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // the notification stuck on a lying pause icon.
     if (_bookRatingKey == null || _tracks.isEmpty) {
       if (!await _restoreLastSession()) return;
-    } else if (_player.processingState == ProcessingState.idle &&
-        !_loadInProgress) {
+    } else if (_castActive
+        // The TV finished the book, or dropped it (an error, another
+        // sender): the same reload as a stopped phone player.
+        ? (_castFinished ||
+            (cast.status?.state == CastPlayerState.idle && !_castLoading))
+        : (_player.processingState == ProcessingState.idle &&
+            !_loadInProgress)) {
       // Warm-process resume: the session was stopped but the process — and
       // the book in this handler — survived, so the restore above is skipped
       // while the platform player sits torn down (idle). Falling through to
@@ -705,14 +748,14 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // Smart rewind: if resuming after a pause, seek back proportionally to how
     // long the user was away. Only fires when paused within the same session
     // (_pausedAt is set). Uses the same curve as the resume-after-load path.
-    if (_pausedAt != null && _player.processingState == ProcessingState.ready) {
+    if (_pausedAt != null && _isReady) {
       final awaySeconds = DateTime.now().difference(_pausedAt!).inSeconds;
       _pausedAt = null;
       final rewindMs = _resumeRewindMs(awaySeconds);
       if (rewindMs > 0) {
-        final currentMs = _player.position.inMilliseconds;
+        final currentMs = _trackPosMs;
         final targetMs = (currentMs - rewindMs).clamp(0, currentMs);
-        if (targetMs < currentMs) await _player.seek(Duration(milliseconds: targetMs));
+        if (targetMs < currentMs) await _seekTo(targetMs);
       }
     } else {
       _pausedAt = null;
@@ -726,11 +769,24 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // Save bookmark immediately so Continue Listening appears without waiting
     // for the 10-second progress timer to fire. Skip when the source is still
     // loading — position is not meaningful and would overwrite the resume point.
-    if (_player.processingState == ProcessingState.ready) {
+    if (_isReady) {
       await _saveAndReportPosition(state: 'playing');
     }
     _trackingFrom = DateTime.now();
     _startProgressTimer();
+    if (_castActive) {
+      // The play guard: with a cast live, nothing plays on the phone.
+      _castWantsPlay = true;
+      _castCommandAt = DateTime.now();
+      _broadcastState();
+      // Only a paused receiver needs telling: a load in flight (or one just
+      // landed, still buffering) plays when it's ready, and an idle one was
+      // reloaded above.
+      if (!_castLoading && cast.status?.state == CastPlayerState.paused) {
+        await cast.play();
+      }
+      return;
+    }
     await _player.play();
   }
 
@@ -740,7 +796,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _progressTimer?.cancel();
     _pausedAt = DateTime.now();
     _closeSession();
-    await _player.pause();
+    if (_castActive) {
+      _castWantsPlay = false;
+      _castCommandAt = DateTime.now();
+      await cast.pause();
+    } else {
+      await _player.pause();
+    }
     // A rebuilt session whose stale state reads "playing" resolves every press
     // to pause — a platform-side no-op that emits nothing. Re-send the truth
     // so the session's buttons flip back to a working direction.
@@ -761,6 +823,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // Sessions, no History credit, and no position to return to.
     _closeSession();
     await _saveAndReportPosition(state: 'stopped');
+    if (_castActive) {
+      // Stopping Saga stops the TV too: swipe-away means quit (see
+      // [onTaskRemoved]), and a cast left running would have nothing on the
+      // phone controlling it any more. Its place is the one just saved.
+      await _leaveCast(saved: true);
+      unawaited(cast.stopCasting());
+    }
     await _player.stop();
     await super.stop();
   }
@@ -821,7 +890,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   Duration _clampToTrack(Duration position) {
     if (position.isNegative) return Duration.zero;
-    final durMs = _player.duration?.inMilliseconds ?? 0;
+    final durMs = currentTrackDurationMs ?? 0;
     if (durMs <= 0) return position;
     final maxMs = (durMs - _endGuardMs).clamp(0, durMs).toInt();
     return position.inMilliseconds > maxMs
@@ -834,7 +903,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     cancelAutoAdvance(); // scrubbing back means "I'm not done with this book"
     _previousAbsolutePositionMs = absolutePositionMs;
     canUndoSeekNotifier.value = true;
-    await _player.seek(_clampToTrack(position));
+    await _seekTo(_clampToTrack(position).inMilliseconds);
     _jumped();
   }
 
@@ -844,8 +913,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     final chapters = _chaptersIfSingleTrack();
     if (chapters != null) {
       final idx = chapterIndexAt(
-          [for (final c in chapters) c.start.inMilliseconds],
-          _player.position.inMilliseconds);
+          [for (final c in chapters) c.start.inMilliseconds], _trackPosMs);
       // Already in the last chapter: nothing to skip to, so do nothing.
       // Falling back to the last chapter (the old `orElse: () => last`)
       // seeked to *its* start — backwards, by up to a whole chapter. Seeking
@@ -853,7 +921,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       // detection and marks the book finished. Same bug the sleep timer's
       // end-of-chapter target had.
       if (idx + 1 >= chapters.length) return;
-      await _player.seek(_clampToTrack(chapters[idx + 1].start));
+      await _seekTo(_clampToTrack(chapters[idx + 1].start).inMilliseconds);
+    } else if (_castActive) {
+      final next = (_index ?? 0) + 1;
+      if (next >= _tracks.length) return;
+      await _seekTo(0, index: next);
     } else {
       await _player.seekToNext();
     }
@@ -865,17 +937,22 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _logEvent('skipPrev');
     final chapters = _chaptersIfSingleTrack();
     if (chapters != null) {
-      final posMs = _player.position.inMilliseconds;
+      final posMs = _trackPosMs;
       final idx = chapterIndexAt(
           [for (final c in chapters) c.start.inMilliseconds], posMs);
       const thresholdMs = 5000;
       if (idx <= 0) {
-        await _player.seek(Duration.zero);
+        await _seekTo(0);
       } else if (posMs - chapters[idx].start.inMilliseconds < thresholdMs) {
-        await _player.seek(chapters[idx - 1].start);
+        await _seekTo(chapters[idx - 1].start.inMilliseconds);
       } else {
-        await _player.seek(chapters[idx].start);
+        await _seekTo(chapters[idx].start.inMilliseconds);
       }
+    } else if (_castActive) {
+      // just_audio's seekToPrevious: the previous file's start, or this
+      // file's start in the first.
+      final prev = (_index ?? 0) - 1;
+      await _seekTo(0, index: prev < 0 ? null : prev);
     } else {
       await _player.seekToPrevious();
     }
@@ -911,8 +988,581 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToQueueItem(int index) async {
-    await _player.seek(Duration.zero, index: index);
+    await _seekTo(0, index: index);
     _jumped();
+  }
+
+  // ── Where the book plays: the phone, or a TV ────────────────────────────
+  //
+  // While a cast is live this handler drives the TV instead of the phone's
+  // player. Every control (the app, the notification, the lock screen,
+  // Bluetooth, the car, the widget) arrives here, so routing here is what
+  // keeps them all on the TV: absorb cast beside its handler, and its lock
+  // screen went on controlling the stopped phone player. The phone's player
+  // holds the book paused where the cast began, and takes it back, paused,
+  // at the TV's place when the cast ends. Saves, the session log and History
+  // run unchanged against the TV's position, through the getters below.
+
+  /// The Cast bridge. Owned here, not by a provider: a headless engine (the
+  /// widget, a headset, the car) never builds providers, and the TV has to
+  /// answer to those too.
+  final CastService cast = CastService();
+
+  /// True while the TV holds this handler's book.
+  final ValueNotifier<bool> casting = ValueNotifier(false);
+  final _castingSubject = BehaviorSubject<bool>.seeded(false);
+  bool get _castActive => casting.value;
+
+  CastPositionTracker? _castTracker;
+  // Where the TV is: its last trustworthy report, or where a load or a seek
+  // asked it to be until it reports.
+  ({int item, int positionMs}) _castPlace = (item: 0, positionMs: 0);
+  DateTime _castPlaceAt = DateTime.now();
+  final _castItem = BehaviorSubject<int?>.seeded(null);
+  // What the listener asked for. The receiver's own state lags a command by
+  // a round trip; the notification and the saves follow this, and the TV's
+  // own remote moves it too.
+  bool _castWantsPlay = false;
+  DateTime? _castCommandAt;
+  bool _castLoading = false;
+  bool _castFinished = false;
+  String? _castLoadId;
+  int _castLoadCount = 0;
+  DateTime? _castRateAskedAt;
+  // The device sheet picked a device: cast the loaded book once connected,
+  // playing if the phone (or the TV before it) was.
+  bool _castOnConnect = false;
+  bool _castAutoplayOnConnect = false;
+  // A relaunch found a stored handoff: the session the SDK resumes for it.
+  CastHandoff? _castPendingAdopt;
+  Timer? _castAdoptTimeout;
+  bool _castAdopting = false;
+  DateTime? _handoffWrittenAt;
+  int? _remoteVolume;
+
+  /// The Default Media Receiver plays 0.5× to 2×.
+  static double _castRate(double speed) => speed.clamp(0.5, 2.0).toDouble();
+
+  static const _remoteVolumeSteps = 20;
+
+  /// The current file's index.
+  int? get _index => _castActive ? _castPlace.item : _player.currentIndex;
+
+  /// Position within the current file.
+  int get _trackPosMs =>
+      _castActive ? _castPositionNowMs : _player.position.inMilliseconds;
+
+  bool get _isPlaying => _castActive ? _castWantsPlay : _player.playing;
+
+  /// Whether the position means anything: not mid-load, and on a TV, not
+  /// before it has reported a place it can be trusted with.
+  bool get _isReady => _castActive
+      ? !_castLoading && !_castFinished && _castTracker?.last != null
+      : _player.processingState == ProcessingState.ready;
+
+  int get _castPositionNowMs {
+    var ms = _castPlace.positionMs;
+    final s = cast.status;
+    if (_castWantsPlay &&
+        !_castLoading &&
+        s != null &&
+        s.state == CastPlayerState.playing) {
+      final elapsed = DateTime.now().difference(_castPlaceAt).inMilliseconds;
+      ms += (elapsed * (s.rate > 0 ? s.rate : 1.0)).round();
+    }
+    final i = _castPlace.item;
+    if (i < _tracks.length && _tracks[i].durationMs > 0) {
+      ms = ms.clamp(0, _tracks[i].durationMs).toInt();
+    }
+    return ms;
+  }
+
+  AudioProcessingState get _castProcessing {
+    if (_castFinished) return AudioProcessingState.completed;
+    if (_castLoading) return AudioProcessingState.loading;
+    return switch (cast.status?.state) {
+      CastPlayerState.loading => AudioProcessingState.loading,
+      CastPlayerState.buffering => AudioProcessingState.buffering,
+      _ => AudioProcessingState.ready,
+    };
+  }
+
+  /// Moves playback to [positionMs] in file [index] (the current file when
+  /// null), on whichever player holds the book.
+  Future<void> _seekTo(int positionMs, {int? index}) async {
+    if (!_castActive) {
+      await _player.seek(Duration(milliseconds: positionMs), index: index);
+      return;
+    }
+    final item = index ?? _castPlace.item;
+    _setCastPlace((item: item, positionMs: positionMs));
+    final s = cast.status;
+    if (s != null &&
+        s.loadId == (_castLoadId ?? s.loadId) &&
+        s.item == item &&
+        s.state != CastPlayerState.idle) {
+      await cast.seek(positionMs);
+    } else if (!await cast.jump(item, positionMs)) {
+      // The receiver's queue doesn't know the item (or there's no queue):
+      // load the book again, at the target.
+      await _castLoad(item, positionMs, autoplay: _castWantsPlay);
+    }
+  }
+
+  /// The one writer of the phone player's volume; see [_mutedForLoad].
+  Future<void> _applyVolume() =>
+      _player.setVolume(_mutedForLoad ? 0 : _duckLevel * _fadeLevel);
+
+  /// The sleep timer's fade, 0–1 (1 = none). On a TV it fades the stream's
+  /// own volume, so the TV's volume stays where the listener set it, and a
+  /// fade that never got restored ends with the stream, not the TV.
+  Future<void> setFadeLevel(double level) async {
+    _fadeLevel = level;
+    if (_castActive) {
+      await cast.setStreamVolume(level);
+    } else {
+      await _applyVolume();
+    }
+  }
+
+  /// Connects to [device], and casts the loaded book once the session is up.
+  /// Moving from one TV to another passes through the phone (the SDK ends
+  /// the old session first), so whether to play is decided now.
+  Future<void> castTo(CastDevice device) async {
+    final autoplay = _isPlaying;
+    // The current TV hands the place back first, so the next one starts
+    // from it.
+    if (cast.state == CastState.connected) await stopCasting();
+    _castOnConnect = true;
+    _castAutoplayOnConnect = autoplay;
+    _castPendingAdopt = null;
+    await cast.selectDevice(device);
+  }
+
+  /// Ends the cast. The TV's place comes back to the phone; [resumeHere]
+  /// carries on playing there if the TV was ("This phone" in the device
+  /// sheet). Otherwise the phone lands paused.
+  Future<void> stopCasting({bool resumeHere = false}) async {
+    if (_castActive) {
+      // One fresh reading, so the place handed back is the exact one.
+      final s = await cast.fetchStatus();
+      if (s != null) _onCastStatus(s);
+      await _leaveCast(resumeHere: resumeHere);
+    }
+    await cast.stopCasting();
+  }
+
+  /// The TV's own volume, 0–1 (the device sheet's slider).
+  Future<void> setCastVolume(double volume) => cast.setDeviceVolume(volume);
+
+  void _onCastState(CastState s) {
+    if (s == CastState.connected) {
+      _castAdoptTimeout?.cancel();
+      if (_castOnConnect) {
+        _castOnConnect = false;
+        unawaited(_startCasting(
+            autoplay: _castAutoplayOnConnect || _player.playing));
+      } else if (_castPendingAdopt != null) {
+        final h = _castPendingAdopt!;
+        _castPendingAdopt = null;
+        unawaited(_adoptCast(h));
+      }
+    } else if (s == CastState.idle) {
+      _castOnConnect = false;
+      if (_castActive) {
+        unawaited(_leaveCast());
+      } else if (cast.handoff != null) {
+        unawaited(_writeBackHandoff(ended: true));
+      }
+    }
+  }
+
+  /// Hands the loaded book to the TV that just connected, from where the
+  /// phone is. With no book loaded the session simply stays up, and the
+  /// next book started goes to the TV ([loadBook]).
+  Future<void> _startCasting({required bool autoplay}) async {
+    if (_bookRatingKey == null || _tracks.isEmpty || _loadInProgress) return;
+    if (_castActive) return;
+    final index = _player.currentIndex ?? 0;
+    final positionMs = _player.position.inMilliseconds;
+    // On disk before anything moves: the place the TV starts from.
+    await savePositionForLifecycle();
+    // A raw pause: the listen carries on, on the TV, so the session log and
+    // History keep running.
+    await _player.pause();
+    final ok = await _castLoad(index, positionMs, autoplay: autoplay);
+    // No server to hand the TV: carry on here.
+    if (!ok && !_castActive && autoplay) unawaited(_player.play());
+  }
+
+  /// Loads the book onto the TV as one queue of its files, at file [index],
+  /// [positionMs] in. Returns whether the receiver took it.
+  Future<bool> _castLoad(int index, int positionMs,
+      {required bool autoplay}) async {
+    final key = _bookRatingKey;
+    final tracks = List.of(_tracks);
+    if (key == null || index < 0 || index >= tracks.length) return false;
+    final first = tracks.first;
+    final media = await castQueueFor(tracks);
+    if (media == null) {
+      cast.reportError('Casting needs your Plex server to be reachable.');
+      return false;
+    }
+    if (key != _bookRatingKey) return false; // another book started meanwhile
+    final durations = [for (final t in tracks) t.durationMs];
+    final total = durations.fold<int>(0, (a, b) => a + b);
+    final loadId =
+        '${DateTime.now().millisecondsSinceEpoch}-${++_castLoadCount}';
+    final handoff = CastHandoff(
+      bookRatingKey: key,
+      tracks: [
+        for (var i = 0; i < tracks.length; i++)
+          (
+            trackRatingKey: tracks[i].ratingKey,
+            startMs: absoluteFromTrack(durations, i, 0),
+          ),
+      ],
+      totalDurationMs: total > 0 ? total : null,
+      loadId: loadId,
+    );
+    // Stored before the load: a relaunch mid-cast has to know what the TV
+    // holds, and the session can outlive this process.
+    await SettingsStore.setActiveCastHandoff(handoff.serialize());
+    _castLoadId = loadId;
+    _enterCast(handoff, place: (item: index, positionMs: positionMs));
+    _castWantsPlay = autoplay;
+    _castLoading = true;
+    _broadcastState();
+    final ok = await cast.loadQueue(
+      items: media.items,
+      title: first.bookTitle ?? first.title,
+      artist: first.authorName ?? '',
+      artwork: media.artwork,
+      startIndex: index,
+      positionMs: positionMs,
+      autoplay: autoplay,
+      rate: _castRate(_player.speed),
+      loadId: loadId,
+    );
+    if (loadId != _castLoadId) return ok; // a newer load took over
+    _castLoading = false;
+    if (!ok) {
+      // The session's still up: the TV stays the target, and play tries
+      // the load again.
+      cast.reportError("The TV couldn't play this book.");
+      _castWantsPlay = false;
+    }
+    _broadcastState();
+    return ok;
+  }
+
+  void _enterCast(CastHandoff h,
+      {required ({int item, int positionMs}) place}) {
+    cast.beginSession(h);
+    _castTracker = CastPositionTracker(h);
+    _castFinished = false;
+    if (!_castActive) {
+      casting.value = true;
+      _castingSubject.add(true);
+      if (_fadeLevel < 1) unawaited(cast.setStreamVolume(_fadeLevel));
+    }
+    _setCastPlace(place);
+    _publishRemoteVolume();
+  }
+
+  void _setCastPlace(({int item, int positionMs}) place, [DateTime? at]) {
+    _castPlace = place;
+    _castPlaceAt = at ?? DateTime.now();
+    if (_castItem.value != place.item && place.item < _tracks.length) {
+      _castItem.add(place.item);
+      // The TV moved to another file: the notification follows it.
+      _lastChapterIndex = -1;
+      mediaItem.add(_trackToMediaItem(_tracks[place.item]));
+      _prefetchArtwork(_tracks[place.item]);
+    }
+    _updateChapterMediaItem(Duration(milliseconds: place.positionMs));
+  }
+
+  void _onCastStatus(CastStatus s) {
+    final tracker = _castTracker;
+    if (tracker == null) return;
+    final place = tracker.accept(s);
+    if (!_castActive) {
+      if (place != null) unawaited(_writeBackHandoff());
+      return;
+    }
+    if (place != null) {
+      _setCastPlace(place, s.receivedAt);
+      _followCastRemote(s);
+      if (s.state == CastPlayerState.playing) _reapplyCastRate(s);
+    }
+    if (s.finished && !_castLoading && !_castFinished && _castAtBookEnd) {
+      unawaited(_onCastFinished());
+    }
+    _broadcastState();
+    _publishRemoteVolume(s);
+  }
+
+  /// The TV paused or played on its own (its remote, another sender): the
+  /// session log and the saves follow it as they follow the phone. Not in
+  /// the moment after a command of ours, when the receiver can still report
+  /// the state it's leaving.
+  void _followCastRemote(CastStatus s) {
+    final command = _castCommandAt;
+    if (command != null &&
+        DateTime.now().difference(command) < const Duration(seconds: 3)) {
+      return;
+    }
+    if (s.state == CastPlayerState.paused && _castWantsPlay) {
+      _castWantsPlay = false;
+      _progressTimer?.cancel();
+      _pausedAt = DateTime.now();
+      _closeSession();
+      unawaited(_saveAndReportPosition(state: 'paused'));
+    } else if (s.state == CastPlayerState.playing && !_castWantsPlay) {
+      _castWantsPlay = true;
+      _pausedAt = null;
+      _openSession();
+      _trackingFrom = DateTime.now();
+      _startProgressTimer();
+    }
+  }
+
+  /// The receiver has a speed of its own, and drops to 1× on a reload or a
+  /// reconnect (Audiobookshelf #1254, absorb #15). Put the book's back, at
+  /// most every few seconds.
+  void _reapplyCastRate(CastStatus s) {
+    final want = _castRate(_player.speed);
+    if ((s.rate - want).abs() < 0.01) return;
+    final now = DateTime.now();
+    final asked = _castRateAskedAt;
+    if (asked != null && now.difference(asked) < const Duration(seconds: 5)) {
+      return;
+    }
+    _castRateAskedAt = now;
+    AppLog.log('cast', 'receiver at ${s.rate}×, re-applying $want×');
+    unawaited(cast.setRate(want));
+  }
+
+  /// The last file, within its final half minute: the only place a
+  /// receiver's "finished" means the book did.
+  bool get _castAtBookEnd {
+    final last = _tracks.length - 1;
+    if (last < 0 || _castPlace.item != last) return false;
+    final dur = _tracks[last].durationMs;
+    return dur <= 0 || _castPlace.positionMs >= dur - 30000;
+  }
+
+  /// The TV played the book's last file to the end (it goes idle, not
+  /// "ended": AntennaPod PR #8594). The same finish the phone's player
+  /// records, without its stop: the session stays on the TV, and the next
+  /// book (auto-advance, or the listener) goes there too.
+  Future<void> _onCastFinished() async {
+    _castFinished = true;
+    _castWantsPlay = false;
+    _progressTimer?.cancel();
+    final last = _tracks.length - 1;
+    _setCastPlace((item: last, positionMs: _tracks[last].durationMs));
+    _closeSession();
+    await _markBookCompleted();
+    await _saveAndReportPosition(state: 'stopped');
+    _broadcastState();
+  }
+
+  /// The TV is done with the book: its place comes back to the phone's
+  /// player, paused there unless [resumeHere]. One path for Stop casting, a
+  /// TV switched off, a dropped network and someone else casting over us. A
+  /// lost connection never carries on playing on the phone (AntennaPod
+  /// #6539): the listener may be across the house from it. [saved]: the
+  /// caller has just saved the place.
+  Future<void> _leaveCast({bool resumeHere = false, bool saved = false}) async {
+    if (!_castActive) return;
+    final wasPlaying = _castWantsPlay;
+    final finished = _castFinished;
+    _progressTimer?.cancel();
+    // Still reading the TV: the session closes, and the place saves, at its
+    // last good position.
+    _closeSession();
+    if (!saved && !finished) await _saveAndReportPosition(state: 'paused');
+    final place = _castPlace;
+    casting.value = false;
+    _castingSubject.add(false);
+    _castTracker = null;
+    _castWantsPlay = false;
+    _castLoading = false;
+    _castFinished = false;
+    _castLoadId = null;
+    _remoteVolume = null;
+    cast.clearHandoff();
+    androidPlaybackInfo.add(LocalAndroidPlaybackInfo());
+    await SettingsStore.setActiveCastHandoff(null);
+    try {
+      if (finished) {
+        // Idle, so the next play replays the book ([_reloadStoppedSession])
+        // rather than carrying on from where the cast began.
+        await _player.stop();
+      } else if (_player.audioSource != null && place.item < _tracks.length) {
+        await _player.seek(Duration(milliseconds: place.positionMs),
+            index: place.item);
+      }
+    } catch (e) {
+      AppLog.log('cast', 'handing the place back to the phone failed: $e');
+    }
+    _pausedAt = DateTime.now();
+    if (_fadeLevel < 1) await _applyVolume();
+    _broadcastState();
+    AppLog.log('cast', 'cast ended — place handed back to the phone');
+    if (resumeHere && wasPlaying) await play();
+  }
+
+  /// A relaunch mid-cast: the Cast SDK resumes the session on its own, and
+  /// the stored handoff says what the TV holds. The SDK can take a moment,
+  /// so a session not up yet gets a minute to connect.
+  Future<void> _resumeCastIfLive() async {
+    final stored = SettingsStore.activeCastHandoff;
+    if (stored == null) return;
+    final h = CastHandoff.tryParse(stored);
+    if (h == null) {
+      await SettingsStore.setActiveCastHandoff(null);
+      return;
+    }
+    if (await cast.syncSessionState()) {
+      await _adoptCast(h);
+      return;
+    }
+    _castPendingAdopt = h;
+    _castAdoptTimeout = Timer(const Duration(minutes: 1), () {
+      if (_castPendingAdopt != h) return;
+      _castPendingAdopt = null;
+      unawaited(SettingsStore.setActiveCastHandoff(null));
+    });
+  }
+
+  /// Takes back a cast found live after a relaunch: loads [h]'s book here,
+  /// paused at the TV's place, and makes the TV the target again. Anything
+  /// that doesn't line up (another book loaded, the files changed, no track
+  /// list offline) leaves the TV alone and only keeps its place saved,
+  /// through the handoff ([_writeBackHandoff]).
+  Future<void> _adoptCast(CastHandoff h) async {
+    cast.beginSession(h);
+    _castTracker = CastPositionTracker(h);
+    final s = cast.status ?? await cast.fetchStatus();
+    final at = s == null ? null : _castTracker!.accept(s);
+    _castAdopting = true;
+    try {
+      if (_bookRatingKey != null && _bookRatingKey != h.bookRatingKey) return;
+      final tracks = await _tracksFor(h.bookRatingKey);
+      final keys = [for (final t in tracks) t.ratingKey];
+      if (!listEquals(keys, [for (final t in h.tracks) t.trackRatingKey])) {
+        AppLog.log('cast', 'live cast left alone: its files changed');
+        return;
+      }
+      if (_bookRatingKey == null) {
+        final started = await startBook(
+          service: this,
+          bookRatingKey: h.bookRatingKey,
+          tracks: tracks,
+          from: at != null
+              ? BookStartPoint.atTrackIndex(at.item, positionMs: at.positionMs)
+              : const BookStartPoint.resume(),
+          playback: LaunchPlayback.none,
+        );
+        if (!started) return;
+      }
+      _castLoadId = h.loadId;
+      _enterCast(h,
+          place: at ??
+              (
+                item: _player.currentIndex ?? 0,
+                positionMs: _player.position.inMilliseconds,
+              ));
+      if (at != null) _castTracker!.accept(s!);
+      if (s != null && s.playing) {
+        _castWantsPlay = true;
+        _openSession();
+        _trackingFrom = DateTime.now();
+        _startProgressTimer();
+      }
+      _broadcastState();
+      AppLog.log('cast', 'took back a live cast after a relaunch');
+    } catch (e) {
+      AppLog.log('cast', 'taking back a live cast failed: $e');
+    } finally {
+      _castAdopting = false;
+    }
+  }
+
+  /// For a cast this handler didn't take over ([_adoptCast]): keeps the TV's
+  /// place saved through the handoff, at most every 10 s, and once more
+  /// when the session [ended].
+  Future<void> _writeBackHandoff({bool ended = false}) async {
+    final tracker = _castTracker;
+    final h = cast.handoff;
+    if (tracker == null || h == null) return;
+    final now = DateTime.now();
+    final written = _handoffWrittenAt;
+    if (!ended &&
+        written != null &&
+        now.difference(written) < const Duration(seconds: 10)) {
+      return;
+    }
+    _handoffWrittenAt = now;
+    try {
+      final last = tracker.last;
+      final at = last == null ? null : h.positionAt(last.item, last.positionMs);
+      if (at != null) {
+        await BookmarkStore.save(
+          h.bookRatingKey,
+          BookPosition(
+            trackRatingKey: at.trackRatingKey,
+            positionMs: at.positionMs,
+            absolutePositionMs: at.absoluteMs,
+            totalDurationMs: h.totalDurationMs,
+            savedAt: now,
+          ),
+        );
+        onBookmarkSaved?.call();
+        _progressChanged.add(null);
+      }
+    } catch (e) {
+      AppLog.log('cast', 'position writeback failed: $e');
+    } finally {
+      if (ended) {
+        _castTracker = null;
+        cast.clearHandoff();
+        await SettingsStore.setActiveCastHandoff(null);
+        AppLog.log('cast', 'session ended — position handed back');
+      }
+    }
+  }
+
+  /// While casting, the phone's volume keys move the TV.
+  void _publishRemoteVolume([CastStatus? s]) {
+    if (!_castActive) return;
+    final v = (s ?? cast.status)?.deviceVolume ?? 0.5;
+    final steps = (v * _remoteVolumeSteps).round();
+    if (steps == _remoteVolume) return;
+    _remoteVolume = steps;
+    androidPlaybackInfo.add(RemoteAndroidPlaybackInfo(
+      volumeControlType: AndroidVolumeControlType.absolute,
+      maxVolume: _remoteVolumeSteps,
+      volume: steps,
+    ));
+  }
+
+  @override
+  Future<void> androidSetRemoteVolume(int volumeIndex) async {
+    if (!_castActive) return;
+    await cast.setDeviceVolume(volumeIndex / _remoteVolumeSteps);
+  }
+
+  @override
+  Future<void> androidAdjustRemoteVolume(
+      AndroidVolumeDirection direction) async {
+    if (!_castActive) return;
+    final v = cast.status?.deviceVolume ?? 0.5;
+    await cast.setDeviceVolume(
+        (v + direction.index / _remoteVolumeSteps).clamp(0.0, 1.0));
   }
 
   // ── Browsing: Android Auto, the assistant, the resumption card ──────────
@@ -1085,7 +1735,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> setSpeed(double speed) async {
+    // The phone's player keeps the speed while casting too: it's what the
+    // book plays at when it comes back, and what [_castLoad] sends.
     await _player.setSpeed(speed);
+    if (_castActive) await cast.setRate(_castRate(speed));
     playbackState.add(playbackState.value.copyWith(speed: speed));
   }
 
@@ -1125,8 +1778,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// Saves the current position immediately. Called by the periodic 10-s timer;
   /// skips when the player is not fully ready to avoid writing a stale position.
   Future<void> savePosition() async {
-    if (_player.processingState == ProcessingState.ready) {
-      await _saveAndReportPosition(state: _player.playing ? 'playing' : 'paused');
+    if (_isReady) {
+      await _saveAndReportPosition(state: _isPlaying ? 'playing' : 'paused');
     }
   }
 
@@ -1135,9 +1788,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// while the player is buffering on a slow connection.
   /// _player.position remains valid during ProcessingState.buffering.
   Future<void> savePositionForLifecycle() async {
-    final ps = _player.processingState;
-    if (ps == ProcessingState.idle || ps == ProcessingState.completed) return;
-    await _saveAndReportPosition(state: _player.playing ? 'playing' : 'paused');
+    if (_castActive) {
+      if (!_isReady) return;
+    } else {
+      final ps = _player.processingState;
+      if (ps == ProcessingState.idle || ps == ProcessingState.completed) return;
+    }
+    await _saveAndReportPosition(state: _isPlaying ? 'playing' : 'paused');
   }
 
   @override
@@ -1157,16 +1814,38 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   PlexTrack? get currentTrackInfo => _currentTrack;
   List<PlexTrack> get currentTracks => List.unmodifiable(_tracks);
 
-  Stream<Duration> get positionStream => _player.positionStream;
-  Stream<int?> get currentIndexStream => _player.currentIndexStream;
+  /// Position within the current file, on whichever player holds the book;
+  /// moves on between the TV's status pushes.
+  Stream<Duration> get positionStream => _castingSubject.switchMap((c) => c
+      ? Stream<Duration>.periodic(const Duration(milliseconds: 200),
+              (_) => Duration(milliseconds: _castPositionNowMs))
+          .startWith(Duration(milliseconds: _castPositionNowMs))
+      : _player.positionStream);
+  Stream<int?> get currentIndexStream => _castingSubject
+      .switchMap((c) => c ? _castItem.stream : _player.currentIndexStream);
+
+  /// Position within the current file, right now.
+  int get trackPositionMs => _trackPosMs;
+
+  /// The current file's index.
+  int? get currentIndex => _index;
+
+  /// The current file's length: the player's, else Plex's metadata (a
+  /// stream still buffering has none, and the TV never says).
+  int? get currentTrackDurationMs {
+    final playerMs = _castActive ? null : _player.duration?.inMilliseconds;
+    if (playerMs != null && playerMs > 0) return playerMs;
+    final i = _index;
+    final metaMs = i != null && i < _tracks.length ? _tracks[i].durationMs : 0;
+    return metaMs > 0 ? metaMs : null;
+  }
 
   /// Total duration of all tracks in the currently loaded book.
   int get totalBookDurationMs =>
       _tracks.fold<int>(0, (s, t) => s + t.durationMs);
 
   /// Current position expressed as an absolute offset into the whole book.
-  int get absolutePositionMs =>
-      _absolutePositionMs(_player.position.inMilliseconds);
+  int get absolutePositionMs => _absolutePositionMs(_trackPosMs);
 
   /// Restore the position that existed before the most recent [seekAbsolute]
   /// call. Single undo level — a second call is a no-op. Seeks directly
@@ -1178,8 +1857,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     canUndoSeekNotifier.value = false;
     final target = trackFromAbsolute(_trackDurationsMs, targetMs);
     if (target == null) return;
-    await _player.seek(Duration(milliseconds: target.positionMs),
-        index: target.index);
+    await _seekTo(target.positionMs, index: target.index);
     _jumped();
   }
 
@@ -1195,13 +1873,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     if (chapters != null) {
       return chapterRangeAt(
         [for (final c in chapters) c.start.inMilliseconds],
-        _player.position.inMilliseconds,
+        _trackPosMs,
         totalMs,
       );
     }
     if (_tracks.length > 1) {
       final durations = _trackDurationsMs;
-      final idx = (_player.currentIndex ?? 0).clamp(0, durations.length - 1);
+      final idx = (_index ?? 0).clamp(0, durations.length - 1);
       final startMs = absoluteFromTrack(durations, idx, 0);
       return (startMs: startMs, endMs: startMs + durations[idx]);
     }
@@ -1225,8 +1903,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // null return lit the Undo button against a position never left.
     _previousAbsolutePositionMs = absolutePositionMs;
     canUndoSeekNotifier.value = true;
-    await _player.seek(Duration(milliseconds: target.positionMs),
-        index: target.index);
+    await _seekTo(target.positionMs, index: target.index);
     _jumped();
   }
 
@@ -1262,7 +1939,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       event: AudioLogEvent(
         type: type,
         trackRatingKey: track.ratingKey,
-        positionMs: overridePositionMs ?? _player.position.inMilliseconds,
+        positionMs: overridePositionMs ?? _trackPosMs,
         timestamp: DateTime.now(),
       ),
     );
@@ -1294,9 +1971,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _progressTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       // Skip saves while buffering/loading — position is not yet settled and
       // saving it would create a false drift on the next resume.
-      if (!_player.playing || _player.processingState != ProcessingState.ready) {
-        return;
-      }
+      if (!_isPlaying || !_isReady) return;
       // Heals a platform session rebuilt mid-listen (see republishNowPlaying)
       // within one tick, before the user ever hits a dead button.
       republishNowPlaying();
@@ -1342,7 +2017,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       }
     }
 
-    final positionMs = _player.position.inMilliseconds;
+    final positionMs = _trackPosMs;
     final absolutePositionMs = _absolutePositionMs(positionMs);
 
     // Awaited so the write is durable before this future completes — the
@@ -1439,7 +2114,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   }
 
   PlexTrack? get _currentTrack {
-    final index = _player.currentIndex;
+    final index = _index;
     if (index == null || index >= _tracks.length) return null;
     return _tracks[index];
   }
@@ -1447,10 +2122,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   List<int> get _trackDurationsMs => [for (final t in _tracks) t.durationMs];
 
   int _absolutePositionMs(int currentTrackPositionMs) => absoluteFromTrack(
-      _trackDurationsMs, _player.currentIndex ?? 0, currentTrackPositionMs);
+      _trackDurationsMs, _index ?? 0, currentTrackPositionMs);
 
-  void _broadcastState(PlaybackEvent event) {
-    final playing = _player.playing;
+  void _broadcastState([PlaybackEvent? event]) {
+    final playing = _isPlaying;
+    final position = Duration(milliseconds: _trackPosMs);
     playbackState.add(playbackState.value.copyWith(
       controls: [
         MediaControl.rewind,
@@ -1467,18 +2143,20 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         MediaAction.skipToPrevious,
       },
       androidCompactActionIndices: const [0, 1, 2],
-      processingState: {
-        ProcessingState.idle: AudioProcessingState.idle,
-        ProcessingState.loading: AudioProcessingState.loading,
-        ProcessingState.buffering: AudioProcessingState.buffering,
-        ProcessingState.ready: AudioProcessingState.ready,
-        ProcessingState.completed: AudioProcessingState.completed,
-      }[_player.processingState]!,
+      processingState: _castActive
+          ? _castProcessing
+          : {
+              ProcessingState.idle: AudioProcessingState.idle,
+              ProcessingState.loading: AudioProcessingState.loading,
+              ProcessingState.buffering: AudioProcessingState.buffering,
+              ProcessingState.ready: AudioProcessingState.ready,
+              ProcessingState.completed: AudioProcessingState.completed,
+            }[_player.processingState]!,
       playing: playing,
-      updatePosition: _player.position,
-      bufferedPosition: _player.bufferedPosition,
+      updatePosition: position,
+      bufferedPosition: _castActive ? position : _player.bufferedPosition,
       speed: _player.speed,
-      queueIndex: event.currentIndex,
+      queueIndex: _index,
     ));
   }
 

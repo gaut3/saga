@@ -14,7 +14,6 @@ import '../../core/plex/models/plex_track.dart';
 import '../../core/providers.dart';
 import '../../core/storage/artwork_cache.dart';
 import '../../core/storage/book_download_store.dart';
-import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/download_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/storage/track_cache_store.dart';
@@ -69,82 +68,12 @@ void setPlayerServiceInstance(AudioPlayerService s) {
   _serviceInstance = s;
 }
 
-/// Lives here rather than beside [CastService]: the position writeback needs
-/// the player service and the stores, and it must belong to something that
-/// outlives the cast sheet — the sheet is usually long closed when a TV is
-/// switched off or the session drops, and the writeback used to live only
-/// under its Disconnect button, freezing the local bookmark at the moment
-/// casting started.
-///
-/// Read once at startup (main shell) so the native-call handler exists even
-/// when the sheet was never opened this process — the Cast SDK auto-resumes a
-/// live session across an app restart, and its callbacks were silently
-/// dropped until the sheet was reopened.
+/// The Cast bridge, owned by the audio handler: casting is a target the
+/// handler routes every control to, and the handler has to own it in a
+/// headless engine (widget, headset, car) that never builds providers. The
+/// position writeback lives there too, in its session-end path.
 final castServiceProvider = Provider<CastService>((ref) {
-  final service = CastService();
-  final player = ref.read(playerServiceProvider);
-
-  // Writes the cast position straight to the bookmark, keyed by the handoff
-  // identity — never by whatever the local player holds now. Runs on every
-  // 10 s poll tick, so an app killed mid-cast loses at most 10 s.
-  //
-  // Queue item 0: one file is cast today. The queue's status will name the
-  // current item, and the handoff already maps any item to its track.
-  Future<void> writeBack(CastHandoff h, int posMs) async {
-    final at = h.positionAt(0, posMs);
-    if (at == null || at.positionMs <= 0) return;
-    await BookmarkStore.save(
-      h.bookRatingKey,
-      BookPosition(
-        trackRatingKey: at.trackRatingKey,
-        positionMs: at.positionMs,
-        absolutePositionMs: at.absoluteMs,
-        totalDurationMs: h.totalDurationMs,
-        savedAt: DateTime.now(),
-      ),
-    );
-    ref.read(bookmarkRevisionProvider.notifier).state++;
-  }
-
-  service.onPositionUpdate = writeBack;
-  service.onSessionEnded = (h, posMs) async {
-    try {
-      await writeBack(h, posMs);
-      // Move the paused local player too, but only when it still holds the
-      // cast book and track — if another book was started meanwhile (or the
-      // pill was swiped away), the bookmark write above is the whole
-      // handback. Raw seek: no undo arming, no session-log skip event.
-      if (posMs > 0 &&
-          player.currentBookRatingKey == h.bookRatingKey &&
-          player.currentTrackInfo?.ratingKey ==
-              h.positionAt(0, posMs)?.trackRatingKey) {
-        await player.player.seek(Duration(milliseconds: posMs));
-      }
-      AppLog.log('cast', 'session ended — position handed back');
-    } catch (e) {
-      AppLog.log('cast', 'position writeback failed: $e');
-    } finally {
-      await SettingsStore.setActiveCastHandoff(null);
-    }
-  };
-
-  // A relaunch mid-cast: pick the persisted handoff back up and ask native
-  // whether the SDK resumed the session. If it didn't, the handoff is stale —
-  // the poll already saved everything up to the kill.
-  final stored = SettingsStore.activeCastHandoff;
-  if (stored != null) {
-    final h = CastHandoff.tryParse(stored);
-    if (h != null) {
-      service.beginSession(h);
-      unawaited(service.syncSessionState().then((connected) async {
-        if (!connected) await SettingsStore.setActiveCastHandoff(null);
-      }));
-    } else {
-      unawaited(SettingsStore.setActiveCastHandoff(null));
-    }
-  }
-  ref.onDispose(service.dispose);
-  return service;
+  return ref.read(playerServiceProvider).cast;
 });
 
 /// Seconds the finished panel counts down before the next book starts.
@@ -659,19 +588,11 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
   /// Listening time to the end of the current chapter at the current speed,
   /// or null when that end isn't known.
   Duration? _endOfChapterRemaining(List<M4bChapter>? m4bChapters) {
-    // The player's duration, else the track's own from Plex metadata — a
-    // stream still buffering (or one that never reports a length) has none,
-    // and refusing outright left no way to set the timer at all.
-    final playerMs = _service.player.duration?.inMilliseconds;
-    final index = _service.player.currentIndex;
-    final tracks = _service.currentTracks;
-    final metaMs = index != null && index < tracks.length
-        ? tracks[index].durationMs
-        : null;
-    final durationMs = (playerMs != null && playerMs > 0)
-        ? playerMs
-        : (metaMs != null && metaMs > 0 ? metaMs : null);
-    final positionMs = _service.player.position.inMilliseconds;
+    // The player's duration, else the track's own from Plex metadata (a
+    // stream still buffering, or a TV, reports none), and refusing outright
+    // left no way to set the timer at all.
+    final durationMs = _service.currentTrackDurationMs;
+    final positionMs = _service.trackPositionMs;
 
     int? targetMs;
     if (m4bChapters != null && m4bChapters.isNotEmpty) {
@@ -782,14 +703,14 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
     final r = remaining;
     if (r == null || r > _fadeBase) return;
     _faded = true;
-    _service.player.setVolume(
+    _service.setFadeLevel(
         (r.inMilliseconds / _fadeBase.inMilliseconds).clamp(0.05, 1.0));
   }
 
   void _restoreVolume() {
     if (!_faded) return;
     _faded = false;
-    _service.player.setVolume(1.0);
+    _service.setFadeLevel(1.0);
   }
 
   /// Pauses the countdown when playback pauses and resumes it when playback

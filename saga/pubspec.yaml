@@ -23,8 +23,12 @@ dependencies:
   just_audio: ^0.9.43
   audio_service: ^0.18.19
   audio_session: ^0.1.22
+  # Already in the tree through audio_service; named because the player's
+  # position stream switches between the phone and the TV with it.
+  rxdart: ^0.28.0
 
-  # Saga's own native code that must exist on every engine (the widget)
+  # Saga's own native code that must exist on every engine (the widget, the
+  # Cast bridge)
   saga_native:
     path: packages/saga_native
 

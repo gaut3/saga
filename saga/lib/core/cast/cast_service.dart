@@ -23,15 +23,20 @@ class CastHandoff {
 
   /// Every track handed to the device, in queue order, each with its start
   /// offset in the book, so a queue item's position converts to a place in
-  /// the book. One entry while a single file is cast; the queue hands over
-  /// the rest of the book.
+  /// the book. Every file of the book: it is cast as one queue.
   final List<({String trackRatingKey, int startMs})> tracks;
   final int? totalDurationMs;
+
+  /// Names the queue load this handoff describes; every receiver status
+  /// carries the load it belongs to. Null for a handoff written before load
+  /// ids (v1, v2): its statuses are taken as they come, as they always were.
+  final String? loadId;
 
   const CastHandoff({
     required this.bookRatingKey,
     required this.tracks,
     this.totalDurationMs,
+    this.loadId,
   });
 
   /// Where the device is, as a place in the book: queue item [itemIndex] at
@@ -50,16 +55,33 @@ class CastHandoff {
     );
   }
 
+  /// How long queue item [i] is, from the starts and the total; null when
+  /// the total isn't known for the last item.
+  int? itemDurationMs(int i) {
+    if (i < 0 || i >= tracks.length) return null;
+    if (i + 1 < tracks.length) return tracks[i + 1].startMs - tracks[i].startMs;
+    final total = totalDurationMs;
+    return total == null ? null : total - tracks[i].startMs;
+  }
+
   /// Round-trips through [SettingsStore] so a relaunch mid-cast can keep
   /// tracking the session the Cast SDK auto-resumes. Rating keys are numeric,
   /// so '|', ',' and ':' are safe separators.
-  String serialize() => 'v2|$bookRatingKey|${totalDurationMs ?? ''}|'
+  /// The load id is digits and a dash.
+  String serialize() => 'v3|$bookRatingKey|${totalDurationMs ?? ''}|'
+      '${loadId ?? ''}|'
       '${tracks.map((t) => '${t.trackRatingKey}:${t.startMs}').join(',')}';
 
-  /// Reads v2, and the v1 form (`book|track|startMs|total`) written before
-  /// the queue, so a cast running across the upgrade keeps its writeback.
+  /// Reads v3; v2, written before load ids; and the v1 form
+  /// (`book|track|startMs|total`) written before the queue, so a cast running
+  /// across an upgrade keeps its writeback.
   static CastHandoff? tryParse(String raw) {
-    final parts = raw.split('|');
+    var parts = raw.split('|');
+    String? loadId;
+    if (parts.length == 5 && parts[0] == 'v3') {
+      loadId = parts[3].isEmpty ? null : parts[3];
+      parts = ['v2', parts[1], parts[2], parts[4]];
+    }
     if (parts.length == 4 && parts[0] == 'v2') {
       if (parts[1].isEmpty || parts[3].isEmpty) return null;
       final tracks = <({String trackRatingKey, int startMs})>[];
@@ -74,6 +96,7 @@ class CastHandoff {
         bookRatingKey: parts[1],
         tracks: tracks,
         totalDurationMs: int.tryParse(parts[2]),
+        loadId: loadId,
       );
     }
     if (parts.length != 4 || parts[0].isEmpty || parts[1].isEmpty) return null;
@@ -87,34 +110,142 @@ class CastHandoff {
   }
 }
 
+/// The receiver's player state, as `RemoteMediaClient` reports it.
+enum CastPlayerState { idle, loading, buffering, playing, paused, unknown }
+
+/// One status push from the receiver: what it's doing, which queue item, and
+/// where in that item. Positions are the item's own (file-relative), never
+/// the book's: [CastHandoff.positionAt] converts.
+class CastStatus {
+  final CastPlayerState state;
+
+  /// `finished`, `cancelled`, `interrupted`, `error` or `none`; only
+  /// meaningful while [state] is idle.
+  final String idleReason;
+
+  /// The playing item's queue index, or -1 when the receiver didn't say
+  /// (between items, after the queue ends).
+  final int item;
+
+  /// The load this status belongs to ([CastHandoff.loadId]); empty when the
+  /// receiver didn't say.
+  final String loadId;
+  final int positionMs;
+  final double rate;
+
+  /// The device's own volume, 0–1 (what the TV's volume buttons move).
+  final double? deviceVolume;
+
+  /// When this status arrived, for extrapolating the position between pushes.
+  final DateTime receivedAt;
+
+  const CastStatus({
+    required this.state,
+    this.idleReason = 'none',
+    this.item = -1,
+    this.loadId = '',
+    this.positionMs = 0,
+    this.rate = 1.0,
+    this.deviceVolume,
+    required this.receivedAt,
+  });
+
+  static CastStatus? fromMap(Object? raw, {DateTime? now}) {
+    if (raw is! Map) return null;
+    final state = CastPlayerState.values.asNameMap()[raw['state']] ??
+        CastPlayerState.unknown;
+    return CastStatus(
+      state: state,
+      idleReason: raw['idleReason'] as String? ?? 'none',
+      item: (raw['item'] as num?)?.toInt() ?? -1,
+      loadId: raw['load'] as String? ?? '',
+      positionMs: (raw['positionMs'] as num?)?.toInt() ?? 0,
+      rate: (raw['rate'] as num?)?.toDouble() ?? 1.0,
+      deviceVolume: (raw['deviceVolume'] as num?)?.toDouble(),
+      receivedAt: now ?? DateTime.now(),
+    );
+  }
+
+  bool get playing =>
+      state == CastPlayerState.playing || state == CastPlayerState.buffering;
+
+  /// The receiver played the last of what it was given. Whether that was the
+  /// book's last file is the handler's call: it knows the last item it saw.
+  bool get finished =>
+      state == CastPlayerState.idle && idleReason == 'finished';
+
+  /// The position now, moved on by the time since the push while playing.
+  int positionNowMs([DateTime? now]) {
+    if (state != CastPlayerState.playing) return positionMs;
+    final elapsed = (now ?? DateTime.now()).difference(receivedAt);
+    return positionMs + (elapsed.inMilliseconds * rate).round();
+  }
+}
+
+/// Decides which receiver statuses may move the saved place.
+///
+/// A receiver reports position 0 while it loads, buffers a fresh item, or
+/// sits idle after an error, and the writeback used to trust whatever came
+/// back. Saving one of those over a real position is losing someone's place,
+/// so a status counts only when:
+/// - the receiver has settled since the last load: reported playing or paused
+///   at least once (loading and the first buffering report the item's start,
+///   not where the load asked to begin);
+/// - it is playing, paused or buffering (idle carries no position worth
+///   having);
+/// - it belongs to this handoff's load (a status from the previous book's
+///   queue, still playing while the next one loads, must never be read as a
+///   place in the new book);
+/// - it names a queue item the handoff knows, at a position inside that
+///   item.
+///
+/// Anything else keeps the last good place, which stays the one the handler
+/// saves.
+class CastPositionTracker {
+  final CastHandoff handoff;
+  bool _settled = false;
+  ({int item, int positionMs})? _last;
+
+  CastPositionTracker(this.handoff);
+
+  /// The last trustworthy place, or null before the first.
+  ({int item, int positionMs})? get last => _last;
+
+  /// Takes [s] into account; returns the place it reports when it counts.
+  ({int item, int positionMs})? accept(CastStatus s) {
+    final load = handoff.loadId;
+    if (load != null && s.loadId != load) return null;
+    if (s.state == CastPlayerState.playing ||
+        s.state == CastPlayerState.paused) {
+      _settled = true;
+    }
+    if (!_settled) return null;
+    if (s.state != CastPlayerState.playing &&
+        s.state != CastPlayerState.paused &&
+        s.state != CastPlayerState.buffering) {
+      return null;
+    }
+    if (s.item < 0 || s.item >= handoff.tracks.length) return null;
+    if (s.positionMs < 0) return null;
+    final dur = handoff.itemDurationMs(s.item);
+    // A little slack: the receiver's clock and Plex's duration disagree by
+    // a frame or two at the end of a file.
+    if (dur != null && s.positionMs > dur + 5000) return null;
+    return _last = (item: s.item, positionMs: s.positionMs);
+  }
+}
+
 class CastService {
   static const _channel = MethodChannel('com.gaut3.saga/cast');
 
   final _stateController = StreamController<CastState>.broadcast();
   final _devicesController = StreamController<List<CastDevice>>.broadcast();
   final _errorController = StreamController<String>.broadcast();
+  final _statusController = StreamController<CastStatus>.broadcast();
   CastState _state = CastState.idle;
   List<CastDevice> _devices = const [];
-
-  /// Fires once per session, on the connected→idle transition — TV switched
-  /// off, Wi-Fi drop, someone else casting over us, or a deliberate
-  /// Disconnect — with the handoff identity and the freshest position the
-  /// device reported (0 when it never answered). This is where the local
-  /// bookmark gets the cast position back; it used to live only under the
-  /// sheet's Disconnect button, and the sheet is usually long closed when a
-  /// session actually ends, so hours of listening were lost.
-  Future<void> Function(CastHandoff handoff, int positionMs)? onSessionEnded;
-
-  /// Fires on every position poll tick, so the position is durable *during*
-  /// the session — a bare in-memory field meant an app killed mid-cast lost
-  /// everything back to the moment casting started.
-  Future<void> Function(CastHandoff handoff, int positionMs)? onPositionUpdate;
-
-  // Freshest position seen this session, polled every 10 s (the same cadence
-  // as local saves) — the fallback when the device vanishes without
-  // answering a final query.
-  Timer? _positionPoll;
-  int? _lastKnownPositionMs;
+  CastStatus? _status;
+  String? _deviceName;
   CastHandoff? _handoff;
 
   CastService() {
@@ -129,21 +260,8 @@ class CastService {
     _handoff = h;
   }
 
-  /// Asks native whether a Cast session is already live — the SDK auto-resumes
-  /// one across a process restart, and its callbacks may fire before the Dart
-  /// handler exists. Moves to `connected` (starting the position poll) when it
-  /// is. Returns whether a session was found.
-  Future<bool> syncSessionState() async {
-    try {
-      final connected =
-          await _channel.invokeMethod<bool>('getSessionState') ?? false;
-      if (connected && _state != CastState.connected) {
-        _setState(CastState.connected);
-      }
-      return connected;
-    } on PlatformException {
-      return false;
-    }
+  void clearHandoff() {
+    _handoff = null;
   }
 
   CastState get state => _state;
@@ -151,9 +269,42 @@ class CastService {
   List<CastDevice> get devices => _devices;
   Stream<List<CastDevice>> get devicesStream => _devicesController.stream;
 
+  /// The latest receiver status, null before the first of a session.
+  CastStatus? get status => _status;
+  Stream<CastStatus> get statusStream => _statusController.stream;
+
+  /// The connected device's name, for the device sheet and the Device
+  /// button. Someone's room or their own name: never logged.
+  String? get deviceName => _deviceName;
+
   /// Human-readable Cast failures (session start/resume errors, abnormal
   /// session ends) for the UI to surface — e.g. "TIMEOUT (15)".
   Stream<String> get errorStream => _errorController.stream;
+
+  /// For failures found on the Dart side (no server, a refused load), so the
+  /// device sheet says them the same way.
+  void reportError(String message) {
+    if (!_errorController.isClosed) _errorController.add(message);
+  }
+
+  /// Asks native whether a Cast session is already live — the SDK auto-resumes
+  /// one across a process restart, and its callbacks may fire before the Dart
+  /// handler exists. Returns whether a session was found.
+  Future<bool> syncSessionState() async {
+    try {
+      final raw = await _channel.invokeMethod<Map>('getSessionState');
+      final connected = raw?['connected'] as bool? ?? false;
+      if (connected) {
+        _deviceName = raw?['deviceName'] as String? ?? _deviceName;
+        if (_state != CastState.connected) _setState(CastState.connected);
+        final s = await fetchStatus();
+        if (s != null) _onStatus(s);
+      }
+      return connected;
+    } on PlatformException {
+      return false;
+    }
+  }
 
   Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
@@ -171,10 +322,19 @@ class CastService {
             AppLog.log('cast', 'session ended: $reason');
           } else {
             AppLog.log('cast', 'session failed: $reason');
-            if (!_errorController.isClosed) _errorController.add(reason);
+            reportError(reason);
           }
         }
+        if (connected) {
+          _deviceName = call.arguments['deviceName'] as String? ?? _deviceName;
+        }
+        // Moving to another device: the old session's end lands while the
+        // new one connects, and isn't the new one failing.
+        if (!connected && ended && _state == CastState.connecting) return;
         _setState(connected ? CastState.connected : CastState.idle);
+      case 'onMediaStatus':
+        final s = CastStatus.fromMap(call.arguments);
+        if (s != null) _onStatus(s);
       case 'onRoutesChanged':
         final raw = call.arguments as List<dynamic>? ?? const [];
         _devices = raw
@@ -190,39 +350,19 @@ class CastService {
     }
   }
 
+  void _onStatus(CastStatus s) {
+    _status = s;
+    if (!_statusController.isClosed) _statusController.add(s);
+  }
+
   void _setState(CastState s) {
-    final was = _state;
+    if (s == _state) return;
     _state = s;
-    if (!_stateController.isClosed) _stateController.add(s);
-    if (s == CastState.connected) {
-      _startPositionPoll();
-    } else if (was == CastState.connected && s == CastState.idle) {
-      _stopPositionPoll();
-      final pos = _lastKnownPositionMs;
-      final h = _handoff;
-      _lastKnownPositionMs = null;
-      _handoff = null;
-      // Fires even with no position (pos 0): the handler also owns clearing
-      // the persisted handoff, which must happen however the session ends.
-      if (h != null) unawaited(onSessionEnded?.call(h, pos ?? 0));
+    if (s == CastState.idle) {
+      _status = null;
+      _deviceName = null;
     }
-  }
-
-  void _startPositionPoll() {
-    _positionPoll?.cancel();
-    _positionPoll = Timer.periodic(const Duration(seconds: 10), (_) async {
-      final pos = await getCastPosition();
-      if (pos != null && pos > 0) {
-        _lastKnownPositionMs = pos;
-        final h = _handoff;
-        if (h != null) unawaited(onPositionUpdate?.call(h, pos));
-      }
-    });
-  }
-
-  void _stopPositionPoll() {
-    _positionPoll?.cancel();
-    _positionPoll = null;
+    if (!_stateController.isClosed) _stateController.add(s);
   }
 
   /// Starts active Cast device discovery; device list updates arrive on
@@ -257,60 +397,107 @@ class CastService {
       await _channel.invokeMethod('selectRoute', {'id': device.id});
     } on PlatformException catch (e) {
       AppLog.log('cast', 'selectRoute failed: ${e.code} ${e.message}');
-      _errorController.add(e.message ?? e.code);
+      reportError(e.message ?? e.code);
       _setState(CastState.idle);
     }
   }
 
-  /// Loads a track onto the active Cast session. [url] must be fetchable by
-  /// the Cast device itself — never a `file://` path — and comes from
-  /// `PlexClient.buildCastMedia`, which decides which credential it carries.
-  /// Note that a Cast receiver's status, this URL included, is readable over
-  /// the network by anything that asks, so nothing else belongs in it.
-  Future<void> loadMedia({
-    required String url,
+  /// Loads the whole book onto the receiver as one queue, starting at item
+  /// [startIndex], [positionMs] into it, tagged [loadId]. Each item's `url` must be fetchable
+  /// by the Cast device itself — never a `file://` path — and comes from
+  /// `PlexClient.buildCastQueue`, which decides which credential it carries.
+  /// A receiver's status, these URLs included, is readable over the network
+  /// by anything that asks, so nothing else belongs in them. Returns whether
+  /// the receiver accepted the load.
+  Future<bool> loadQueue({
+    required List<CastQueueItem> items,
     required String title,
     required String artist,
     String artwork = '',
-    String contentType = 'audio/mpeg',
-    int positionMs = 0,
+    required int startIndex,
+    required int positionMs,
+    required bool autoplay,
+    required double rate,
+    required String loadId,
   }) async {
     try {
-      AppLog.log('cast', 'loadMedia $contentType pos=${positionMs}ms url=$url');
-      await _channel.invokeMethod('loadMedia', {
-        'url': url,
-        'title': title,
-        'artist': artist,
-        'artwork': artwork,
-        'contentType': contentType,
-        'positionMs': positionMs,
-      });
+      // Never the URLs: they carry a token.
+      AppLog.log('cast',
+          'load queue: ${items.length} item(s), start $startIndex at ${positionMs}ms');
+      return await _channel.invokeMethod<bool>('loadQueue', {
+            'items': [
+              for (final i in items)
+                {
+                  'url': i.url,
+                  'contentType': i.contentType,
+                  'durationMs': i.durationMs,
+                  'trackTitle': i.trackTitle,
+                },
+            ],
+            'title': title,
+            'artist': artist,
+            'artwork': artwork,
+            'startIndex': startIndex,
+            'positionMs': positionMs,
+            'autoplay': autoplay,
+            'rate': rate,
+            'loadId': loadId,
+          }) ??
+          false;
     } on PlatformException catch (e) {
-      // Session may have dropped; reset state
-      AppLog.log('cast', 'loadMedia failed: ${e.code} ${e.message}');
-      _setState(CastState.idle);
+      AppLog.log('cast', 'queue load failed: ${e.code} ${e.message}');
+      return false;
     }
   }
 
-  /// Current playback position on the Cast device in milliseconds. Null when
-  /// the device can't answer (session gone) — distinct from a genuine 0, so
-  /// an unreachable device falls back to the last polled value instead of
-  /// silently discarding the position.
-  Future<int?> getCastPosition() async {
+  Future<bool> _command(String method, [Map<String, Object?>? args]) async {
     try {
-      final pos = await _channel.invokeMethod<int>('getCastPosition');
-      return (pos != null && pos > 0) ? pos : null;
+      return await _channel.invokeMethod<bool>(method, args) ?? false;
+    } on PlatformException catch (e) {
+      AppLog.log('cast', '$method failed: ${e.code} ${e.message}');
+      return false;
+    }
+  }
+
+  Future<bool> play() => _command('play');
+  Future<bool> pause() => _command('pause');
+
+  /// Seeks within the current item.
+  Future<bool> seek(int positionMs) =>
+      _command('seek', {'positionMs': positionMs});
+
+  /// Jumps to queue item [index] at [positionMs]. False when the receiver's
+  /// queue doesn't know the item; the caller reloads the queue instead.
+  Future<bool> jump(int index, int positionMs) =>
+      _command('jump', {'index': index, 'positionMs': positionMs});
+
+  Future<bool> setRate(double rate) => _command('setRate', {'rate': rate});
+
+  /// The stream's own volume, 0–1: the sleep timer's fade. The device's
+  /// volume stays where the listener set it.
+  Future<bool> setStreamVolume(double volume) =>
+      _command('setStreamVolume', {'volume': volume});
+
+  /// The device's volume, 0–1: the device sheet's slider and the phone's
+  /// volume keys.
+  Future<void> setDeviceVolume(double volume) async {
+    try {
+      await _channel.invokeMethod('setDeviceVolume', {'volume': volume});
+    } on PlatformException {
+      // Session gone; the next status says so.
+    }
+  }
+
+  Future<CastStatus?> fetchStatus() async {
+    try {
+      return CastStatus.fromMap(await _channel.invokeMethod('getStatus'));
     } on PlatformException {
       return null;
     }
   }
 
+  /// Ends the session; the handler's session-end path writes the place back.
   Future<void> stopCasting() async {
-    // A deliberate disconnect can still ask the device — take one fresh
-    // reading before tearing the session down, so the session-end handler
-    // gets the exact position rather than one up to 10 s stale.
-    final pos = await getCastPosition();
-    if (pos != null && pos > 0) _lastKnownPositionMs = pos;
     try {
       await _channel.invokeMethod('stopCasting');
     } on PlatformException {
@@ -320,12 +507,20 @@ class CastService {
   }
 
   void dispose() {
-    _stopPositionPoll();
     _stateController.close();
     _devicesController.close();
     _errorController.close();
+    _statusController.close();
   }
 }
+
+/// One file of the queue as the receiver gets it.
+typedef CastQueueItem = ({
+  String url,
+  String contentType,
+  int durationMs,
+  String trackTitle,
+});
 
 /// MIME type for the Cast receiver, derived from the track's file name.
 /// The Default Media Receiver uses this to pick a decoder — `audio/mpeg`
