@@ -94,8 +94,19 @@ jobs:
           # published as latest would be offered to every stable user.
           prerelease: ${{ contains(github.ref_name, '-') }}
           make_latest: ${{ !contains(github.ref_name, '-') }}
+          # Releases are immutable: no files can be added once one is
+          # published. The action uploads a release's files while it is still
+          # a draft, but publishes a pre-release first, so v1.2.0-beta.1 went
+          # out with no APK. A beta stays a draft here and is published below.
+          draft: ${{ contains(github.ref_name, '-') }}
           files: |
             saga/dist/saga.apk
             saga/dist/saga.apk.sha256
             saga/dist/saga-arm64-v8a.apk
             saga/dist/saga-arm64-v8a.apk.sha256
+
+      - name: Publish the beta
+        if: contains(github.ref_name, '-')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false

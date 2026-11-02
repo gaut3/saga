@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [1.2.0-beta.1] - 2026-11-02
+## [1.2.0-beta.2] - 2026-11-02
 
 <!-- Beta only: delete this block for the final 1.2.0. -->
 > **This is a beta: a test version of 1.2.0, ahead of its release.** Most of all it needs trying on real phones and TVs: the home-screen widget, and casting, which has not yet been tried on a TV at all.
