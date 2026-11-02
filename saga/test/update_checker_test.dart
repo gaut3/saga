@@ -87,4 +87,76 @@ void main() {
       expect(failed.status, isNot(off.status));
     });
   });
+
+  // A beta build's version (1.2.0-beta.1) used to parse to nothing, so every
+  // check on a beta failed and a tester was never told the release was out.
+  group('pre-releases', () {
+    test('the release outranks its own betas', () {
+      expect(isNewerVersion('v1.2.0', '1.2.0-beta.3'), isTrue);
+      expect(isNewerVersion('v1.2.0-beta.3', '1.2.0'), isFalse);
+    });
+
+    test('a later beta is newer, counted as a number', () {
+      expect(isNewerVersion('v1.2.0-beta.2', '1.2.0-beta.1'), isTrue);
+      expect(isNewerVersion('v1.2.0-beta.10', '1.2.0-beta.9'), isTrue);
+      expect(isNewerVersion('v1.2.0-beta.1', '1.2.0-beta.1'), isFalse);
+    });
+
+    test('a beta of a later version beats an earlier release', () {
+      expect(isNewerVersion('v1.3.0-beta.1', '1.2.0'), isTrue);
+      expect(isNewerVersion('v1.1.3', '1.2.0-beta.1'), isFalse);
+    });
+
+    test('a -dev build ahead of the latest release is up to date', () {
+      expect(isNewerVersion('v1.1.3', '1.2.0-dev'), isFalse);
+      expect(isNewerVersion('v1.2.0', '1.2.0-dev'), isTrue);
+    });
+
+    test('an empty pre-release part is malformed', () {
+      expect(isNewerVersion('v1.2.0-', '1.1.0'), isFalse);
+      expect(isNewerVersion('v1.2.0-beta..1', '1.1.0'), isFalse);
+    });
+  });
+
+  // What a beta install reads from GitHub's releases listing.
+  group('newestReleaseTag', () {
+    test('picks the highest version, wherever it sits in the list', () {
+      expect(
+          newestReleaseTag([
+            {'tag_name': 'v1.2.0-beta.2'},
+            {'tag_name': 'v1.2.0'},
+            {'tag_name': 'v1.2.0-beta.1'},
+            {'tag_name': 'v1.1.3'},
+          ]),
+          'v1.2.0');
+    });
+
+    test('a newer beta wins while the release is still to come', () {
+      expect(
+          newestReleaseTag([
+            {'tag_name': 'v1.2.0-beta.2'},
+            {'tag_name': 'v1.2.0-beta.1'},
+            {'tag_name': 'v1.1.3'},
+          ]),
+          'v1.2.0-beta.2');
+    });
+
+    test('skips drafts, odd tags and odd entries', () {
+      expect(
+          newestReleaseTag([
+            {'tag_name': 'v9.0.0', 'draft': true},
+            {'tag_name': 'nightly'},
+            {'tag_name': 7},
+            'not a release',
+            null,
+            {'tag_name': 'v1.1.3'},
+          ]),
+          'v1.1.3');
+    });
+
+    test('nothing usable is null', () {
+      expect(newestReleaseTag([]), isNull);
+      expect(newestReleaseTag([{'tag_name': 'nightly'}]), isNull);
+    });
+  });
 }

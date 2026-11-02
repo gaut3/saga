@@ -50,13 +50,26 @@ class UpdateCheckResult {
   bool get isNewer => status == UpdateCheckStatus.available;
 }
 
-/// Version string → numeric parts, or null when it isn't a version number.
-/// Tolerant of a leading `v` and a `+build` suffix.
-List<int>? _parseVersion(String s) {
+/// A parsed version: its numbers, and the pre-release part after a `-`
+/// (`1.2.0-beta.2` → `[beta, 2]`), empty for a release.
+typedef _Version = ({List<int> core, List<String> pre});
+
+/// Version string → [_Version], or null when it isn't a version number.
+/// Tolerant of a leading `v` and a `+build` suffix. Pre-release builds
+/// (`-dev`, `-beta.N`) used to parse to null, so on a beta every check
+/// failed and a tester was never told the final release was out.
+_Version? _parseVersion(String s) {
   var v = s.trim();
   if (v.startsWith('v') || v.startsWith('V')) v = v.substring(1);
   final plus = v.indexOf('+');
   if (plus >= 0) v = v.substring(0, plus);
+  var pre = const <String>[];
+  final dash = v.indexOf('-');
+  if (dash >= 0) {
+    pre = v.substring(dash + 1).split('.');
+    if (pre.any((p) => p.isEmpty)) return null;
+    v = v.substring(0, dash);
+  }
   if (v.isEmpty) return null;
   final nums = <int>[];
   for (final part in v.split('.')) {
@@ -64,7 +77,36 @@ List<int>? _parseVersion(String s) {
     if (n == null || n < 0) return null;
     nums.add(n);
   }
-  return nums;
+  return (core: nums, pre: pre);
+}
+
+/// Semver order. Numbers first, missing ones counting as 0. With equal
+/// numbers a release outranks any pre-release of it (`2.0.0` >
+/// `2.0.0-beta.3`); pre-release parts compare as numbers when both are
+/// (`beta.10` > `beta.9`), a number below a word, otherwise as text.
+int _compareVersions(_Version a, _Version b) {
+  final len = a.core.length > b.core.length ? a.core.length : b.core.length;
+  for (var i = 0; i < len; i++) {
+    final x = i < a.core.length ? a.core[i] : 0;
+    final y = i < b.core.length ? b.core[i] : 0;
+    if (x != y) return x.compareTo(y);
+  }
+  if (a.pre.isEmpty || b.pre.isEmpty) {
+    return (a.pre.isEmpty ? 1 : 0) - (b.pre.isEmpty ? 1 : 0);
+  }
+  for (var i = 0; i < a.pre.length && i < b.pre.length; i++) {
+    final x = int.tryParse(a.pre[i]);
+    final y = int.tryParse(b.pre[i]);
+    final c = (x != null && y != null)
+        ? x.compareTo(y)
+        : (x != null)
+            ? -1
+            : (y != null)
+                ? 1
+                : a.pre[i].compareTo(b.pre[i]);
+    if (c != 0) return c;
+  }
+  return a.pre.length.compareTo(b.pre.length);
 }
 
 /// True when [latestTag] is strictly newer than [currentVersion]; any
@@ -75,13 +117,42 @@ bool isNewerVersion(String latestTag, String currentVersion) {
   final latest = _parseVersion(latestTag);
   final current = _parseVersion(currentVersion);
   if (latest == null || current == null) return false;
-  final len = latest.length > current.length ? latest.length : current.length;
-  for (var i = 0; i < len; i++) {
-    final a = i < latest.length ? latest[i] : 0;
-    final b = i < current.length ? current[i] : 0;
-    if (a != b) return a > b;
+  return _compareVersions(latest, current) > 0;
+}
+
+/// The highest version tag in a GitHub `releases` listing, betas included;
+/// drafts and tags that aren't versions are skipped. Null when none is left.
+@visibleForTesting
+String? newestReleaseTag(List<Object?> releases) {
+  String? best;
+  _Version? bestVersion;
+  for (final r in releases) {
+    if (r is! Map || r['draft'] == true) continue;
+    final tag = r['tag_name'];
+    if (tag is! String) continue;
+    final v = _parseVersion(tag);
+    if (v == null) continue;
+    if (bestVersion == null || _compareVersions(v, bestVersion) > 0) {
+      best = tag;
+      bestVersion = v;
+    }
   }
-  return false;
+  return best;
+}
+
+/// One log line for a failed request. A [DioException]'s own text runs to
+/// several lines, and the commonest failure, GitHub's hourly limit for
+/// anonymous requests, deserves to be named.
+String _describeFailure(Object e) {
+  if (e is! DioException) return 'check failed: $e';
+  final code = e.response?.statusCode;
+  if (code == 403 || code == 429) {
+    return 'GitHub refused the check (HTTP $code), most likely its hourly '
+        'limit for anonymous requests';
+  }
+  return code != null
+      ? 'check failed: HTTP $code'
+      : 'check failed: ${e.type.name}';
 }
 
 /// Runs the check and always says what happened — never null.
@@ -98,34 +169,54 @@ Future<UpdateCheckResult> checkForUpdate() async {
   try {
     final info = await PackageInfo.fromPlatform();
     installed = info.version;
+    final current = _parseVersion(installed);
+    if (current == null) {
+      AppLog.log('update', 'installed version "$installed" is not a version '
+          'number');
+      return UpdateCheckResult(
+          status: UpdateCheckStatus.failed, currentVersion: installed);
+    }
     final dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 5),
       receiveTimeout: const Duration(seconds: 5),
     ));
-    // `releases/latest` deliberately skips drafts and pre-releases, so a
-    // release published as either is invisible here and reads as "no update".
-    final resp = await dio.get<Map<String, dynamic>>(
-      'https://api.github.com/repos/gaut3/saga/releases/latest',
-      options: Options(headers: {'Accept': 'application/vnd.github+json'}),
-    );
-    final tag = resp.data?['tag_name'] as String?;
+    const headers = {'Accept': 'application/vnd.github+json'};
+    final String? tag;
+    if (current.pre.isEmpty) {
+      // `releases/latest` deliberately skips drafts and pre-releases, so a
+      // release install is never offered a beta.
+      final resp = await dio.get<Map<String, dynamic>>(
+        'https://api.github.com/repos/gaut3/saga/releases/latest',
+        options: Options(headers: headers),
+      );
+      tag = resp.data?['tag_name'] as String?;
+    } else {
+      // A beta (or a -dev build) is offered newer betas as well as the
+      // release that follows them, which `releases/latest` would hide. The
+      // listing is newest first; 20 reaches well past the latest release.
+      final resp = await dio.get<List<dynamic>>(
+        'https://api.github.com/repos/gaut3/saga/releases',
+        queryParameters: {'per_page': 20},
+        options: Options(headers: headers),
+      );
+      tag = newestReleaseTag(resp.data ?? const []);
+    }
     if (tag == null || tag.isEmpty) {
-      AppLog.log('update', 'no tag_name in the GitHub response');
+      AppLog.log('update', 'no release tag in the GitHub response');
       return UpdateCheckResult(
           status: UpdateCheckStatus.failed, currentVersion: installed);
     }
-    final newer = isNewerVersion(tag, installed);
-    // A side that parses to nothing is reported as "not newer" by
-    // isNewerVersion, which is the safe default but would otherwise pass for a
-    // successful check that found nothing.
-    if (!newer &&
-        (_parseVersion(tag) == null || _parseVersion(installed) == null)) {
+    final latest = _parseVersion(tag);
+    // isNewerVersion reports an unparseable tag as "not newer", the safe
+    // default, which would otherwise pass for a check that found nothing.
+    if (latest == null) {
       AppLog.log('update', 'tag "$tag" is not a version number');
       return UpdateCheckResult(
           status: UpdateCheckStatus.failed,
           currentVersion: installed,
           latestTag: tag);
     }
+    final newer = _compareVersions(latest, current) > 0;
     return UpdateCheckResult(
       status: newer ? UpdateCheckStatus.available : UpdateCheckStatus.current,
       currentVersion: installed,
@@ -135,7 +226,7 @@ Future<UpdateCheckResult> checkForUpdate() async {
     // Offline and rate-limited (60/hour per IP, unauthenticated) both land
     // here, and both are ordinary. Recorded so "it never says anything" can be
     // told apart from "it never runs".
-    AppLog.log('update', 'check failed: $e');
+    AppLog.log('update', _describeFailure(e));
     return UpdateCheckResult(
         status: UpdateCheckStatus.failed, currentVersion: installed);
   }

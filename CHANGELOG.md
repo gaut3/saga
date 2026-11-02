@@ -5,7 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [1.2.0-beta.1] - 2026-11-02
+
+<!-- Beta only: delete this block for the final 1.2.0. -->
+> **This is a beta: a test version of 1.2.0, ahead of its release.** Most of all it needs trying on real phones and TVs: the home-screen widget, and casting, which has not yet been tried on a TV at all.
+>
+> - **Before you install it, export a backup:** Settings → Data & backup → Export progress. Android won't put 1.1.3 back over a beta without uninstalling Saga first, and uninstalling erases your places. The final 1.2.0 installs over the beta and keeps everything.
+> - **Turn on "Check for updates automatically"** (Settings → About) to be told about the next beta and the final release.
+> - **If anything goes wrong, and above all if Saga loses your place,** please [open an issue](https://github.com/gaut3/saga/issues). Settings → Copy diagnostics puts a log on your clipboard, with your server address and sign-in removed, ready to paste in.
 
 **This update brings two big new things: a home-screen widget, and casting rebuilt.** Casting especially depends on your phone, your TV or speaker and your network, and only a few of those combinations have been tried. If something doesn't work as described here, and above all if Saga ever loses your place, please [open an issue](https://github.com/gaut3/saga/issues) and say what happened.
 
@@ -28,6 +35,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Sign out is either done or says it isn't.** If signing out failed partway, the screen could stay signed in with no message, or show you as signed in after your sign-in had already been removed from the phone. Now you're shown as signed out exactly when your Plex sign-in is gone from the phone. If removing it fails, Saga stays signed in and says to try again. Clearing the account's cached covers no longer stops a sign-out partway, and a failure there is recorded in the diagnostics log.
 - **Clear progress says when it didn't finish.** If clearing failed partway, it stopped without a word and the screens kept showing the old progress until Saga was restarted. Now the screens update with what was cleared, and a message says to try again.
 - **One damaged record no longer holds up the others.** Positions waiting to be sent to Plex are sent book by book, and a single unreadable entry stopped all of them. Unreadable entries are now skipped, here and in the records of downloaded files. Saving your place when you leave the app also records a failure in the diagnostics log, where it used to leave no trace.
+- **Beta versions are told about updates.** The update check couldn't read a version number like 1.2.0-beta.1, so on a beta it always said it couldn't reach GitHub. It now reads them: a beta is told about newer betas and about the release that follows, and the final release counts as newer than its betas. A regular version is still only told about regular releases.
 - **The update notice shows once.** Turning the update check off and on again in Settings showed "Update available" again each time.
 
 ---
