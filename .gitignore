@@ -8,9 +8,11 @@ saga.code-workspace
 # Internal development notes and codebase guide
 # (numbered so they group together; CLAUDE.md keeps its name — Claude Code loads it by that exact name)
 01-BACKLOG.md
-02-SAGA_NOTES.md
+/notes/
 03-SAGA_SECURITY_STANDARDS.md
 CLAUDE.md
+# Their history: a separate docs-only repo (git --git-dir=.docs.git …), never pushed with the code
+/.docs.git/
 
 # Archived Gen-1 (3-spine) design material
 Old design/
