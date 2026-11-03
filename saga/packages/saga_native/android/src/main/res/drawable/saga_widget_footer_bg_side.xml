@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The one-line strip's button block: it ends the row, so its right-hand
+     corners meet the card's edge. White, tinted like the footer. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FFFFFFFF" />
+    <corners android:topRightRadius="14dp" android:bottomRightRadius="14dp" />
+</shape>

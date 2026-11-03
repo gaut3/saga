@@ -129,6 +129,49 @@ void main() {
     expect(s['skipForward'], SettingsStore.skipForwardSeconds);
   });
 
+  // GitHub #17: with "Scrub within chapter" on, the widget's figures follow
+  // the chapter, as the player's seek bar does. Here the chapter is the file.
+  group('in chapter mode', () {
+    setUp(() => SettingsStore.setChapterScrub(true));
+
+    test("shows the chapter's time left, % and bar", () async {
+      // 1h 30m into the book: 30 min into the second one-hour file.
+      await book('1', 'Foundation', ms: 5400000, savedAt: DateTime(2026, 11, 1));
+
+      final s = widgetSnapshot(signedIn: true);
+      expect(s['timeLeft'], '30m left in chapter');
+      expect(s['percent'], '50%');
+      expect(s['progress'], 500);
+    });
+
+    test('moves once a minute, not on every 10 s save', () async {
+      // Each changed snapshot is a redraw. 29:20 and 29:30 into the chapter
+      // are both 29 whole minutes listened, so they must draw the same.
+      Future<Map<String, Object?>> at(int ms) async {
+        await book('1', 'Foundation',
+            ms: 3600000 + ms, savedAt: DateTime(2026, 11, 1));
+        return widgetSnapshot(signedIn: true);
+      }
+
+      final a = await at(29 * 60000 + 20000);
+      final b = await at(29 * 60000 + 30000);
+      expect(b['progress'], a['progress']);
+      expect(b['timeLeft'], a['timeLeft']);
+      expect(a['timeLeft'], '31m left in chapter');
+      expect(a['progress'], 483);
+    });
+
+    test('a chapter just begun draws an empty bar', () async {
+      // Rounding the time left instead drew a fresh chapter partly listened.
+      await book('1', 'Foundation',
+          ms: 3600000 + 20000, savedAt: DateTime(2026, 11, 1));
+      final s = widgetSnapshot(signedIn: true);
+      expect(s['progress'], 0);
+      expect(s['percent'], '0%');
+      expect(s['timeLeft'], '1h 0m left in chapter');
+    });
+  });
+
   test('never stores whether a book is playing', () async {
     // A stored "playing" outlives the process that set it: absorb and
     // AntennaPod both shipped a widget stuck on pause over silence.

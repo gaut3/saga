@@ -51,7 +51,22 @@ class PlayerScreen extends ConsumerWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: SagaColors.fg,
-        title: const Text('Now Playing', style: TextStyle(fontSize: 16)),
+        title: const Text(
+          'Now Playing',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+        ),
+        actions: [
+          // Its own StreamBuilder: the book key changes with the media item,
+          // and the body's builder doesn't reach the app bar.
+          StreamBuilder<MediaItem?>(
+            stream: service.mediaItem,
+            builder: (context, _) => _HeaderTiles(
+              service: service,
+              bookKey: service.currentBookRatingKey,
+            ),
+          ),
+          const SizedBox(width: 20),
+        ],
       ),
       body: StreamBuilder<MediaItem?>(
         stream: service.mediaItem,
@@ -78,66 +93,48 @@ class PlayerScreen extends ConsumerWidget {
             currentBook = localBook(bookKey);
           }
 
+          // 2.0's player (frame 02b) in today's flat material: cover and
+          // track info form one card, the controls sit in a pill. The cover
+          // is still the flexible part — the handoff draws a fixed 372px card,
+          // which would push the controls off a short phone.
+          final openDetail = currentBook != null
+              ? () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BookDetailScreen(book: currentBook!),
+                  ),
+                )
+              : null;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _TopPills(service: service, bookKey: bookKey),
               Expanded(
                 child: ValueListenableBuilder<String?>(
                   valueListenable: service.justFinishedBook,
                   builder: (context, finishedKey, _) {
                     if (finishedKey != null && finishedKey == bookKey) {
-                      return FinishedPanel(
-                          service: service, bookKey: bookKey!);
+                      return FinishedPanel(service: service, bookKey: bookKey!);
                     }
                     return Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 32, vertical: 8),
-                      child: Center(
-                        child: AspectRatio(
-                          aspectRatio: 1.0,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: _RevealCover(
-                              artUri: item?.artUri,
-                              book: currentBook,
-                              onFullDetails: currentBook != null
-                                  ? () => Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                            builder: (_) => BookDetailScreen(
-                                                book: currentBook!)),
-                                      )
-                                  : null,
-                            ),
-                          ),
-                        ),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: _NowPlayingCard(
+                        item: item,
+                        book: currentBook,
+                        onBookTap: openDetail,
                       ),
                     );
                   },
                 ),
               ),
-              _TrackInfo(
-                item: item,
-                onBookTap: currentBook != null
-                    ? () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  BookDetailScreen(book: currentBook!)),
-                        )
-                    : null,
-              ),
-              const SizedBox(height: 4),
               _ProgressBar(service: service),
-              // The time row sat flush on the play mark; chapter mode's
-              // centred "left in book" label made it look cramped. The cover
-              // (the flexible child) gives up the space.
-              const SizedBox(height: 8),
+              const SizedBox(height: 24),
               _Controls(service: service),
+              // The action buttons' own 8px top padding makes up the 12.
               const SizedBox(height: 4),
               _BottomActions(service: service, bookKey: bookKey),
-              const SizedBox(height: 20),
+              // The body runs under the gesture bar: 02b's 20px sit above it
+              // (less the buttons' own 8px bottom padding).
+              SizedBox(height: MediaQuery.paddingOf(context).bottom + 12),
             ],
           );
         },
@@ -146,13 +143,16 @@ class PlayerScreen extends ConsumerWidget {
   }
 }
 
-// ── Top pill buttons: Chapters | Bookmarks ────────────────────────────────────
+// ── Header tiles: Chapters | Bookmarks | Sessions ─────────────────────────────
 
-class _TopPills extends ConsumerWidget {
+/// Icon tiles in the app bar, not a row of labelled pills under it: three
+/// labels with counts ran off a narrow phone with large text (#23). The counts
+/// went with the labels; the chapter title under the cover says where you are.
+class _HeaderTiles extends ConsumerWidget {
   final AudioPlayerService service;
   final String? bookKey;
 
-  const _TopPills({required this.service, required this.bookKey});
+  const _HeaderTiles({required this.service, required this.bookKey});
 
   String? _m4bParam(List<PlexTrack> tracks) {
     if (tracks.length != 1) return null;
@@ -161,10 +161,6 @@ class _TopPills extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final bookmarkCount = bookKey != null
-        ? ref.watch(bookmarkNotifierProvider(bookKey!)).length
-        : 0;
-
     final tracks = service.currentTracks;
     final param = _m4bParam(tracks);
 
@@ -173,65 +169,62 @@ class _TopPills extends ConsumerWidget {
         : const AsyncData<List<M4bChapter>>([]);
 
     final m4bChapters = m4bAsync.valueOrNull ?? [];
-    // Don't show a count while M4B chapters are still being parsed — a single
-    // M4B track would otherwise briefly show "Chapters (1)" instead of e.g. "Chapters (22)".
+    // Hidden while M4B chapters are still being parsed — a single M4B track
+    // would otherwise briefly count as one chapter.
     final chapterCount = m4bChapters.isNotEmpty
         ? m4bChapters.length
         : (param != null && m4bAsync.isLoading ? 0 : tracks.length);
 
-    final sessionCount = bookKey != null
-        ? PlaybackLogStore.getLog(bookKey!).where((e) => e.type == 'play').length
-        : 0;
+    final hasSessions =
+        bookKey != null &&
+        PlaybackLogStore.getLog(bookKey!).any((e) => e.type == 'play');
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-      child: Row(
-        children: [
-          if (chapterCount > 1) ...[
-            _PillButton(
-              icon: Icons.list_rounded,
-              label: 'Chapters ($chapterCount)',
-              onTap: () =>
-                  showChaptersSheet(context, service: service, m4bKey: param),
-            ),
-            const SizedBox(width: 8),
-          ],
-          _PillButton(
-            icon: Icons.bookmarks_outlined,
-            label: bookmarkCount > 0
-                ? 'Bookmarks ($bookmarkCount)'
-                : 'Bookmarks',
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (chapterCount > 1) ...[
+          _HeaderTile(
+            icon: Icons.list_rounded,
+            label: 'Chapters',
+            onTap: () =>
+                showChaptersSheet(context, service: service, m4bKey: param),
+          ),
+          const SizedBox(width: 8),
+        ],
+        _HeaderTile(
+          icon: Icons.bookmarks_outlined,
+          label: 'Bookmarks',
+          onTap: () {
+            if (bookKey != null) {
+              showBookmarksListSheet(context, ref, bookKey!, service: service);
+            }
+          },
+        ),
+        if (hasSessions) ...[
+          const SizedBox(width: 8),
+          _HeaderTile(
+            icon: Icons.history_rounded,
+            label: 'Sessions',
             onTap: () {
               if (bookKey != null) {
-                showBookmarksListSheet(context, ref, bookKey!,
-                    service: service);
+                showSessionsSheet(context, bookKey!, overPlayer: true);
               }
             },
           ),
-          if (sessionCount > 0) ...[
-            const SizedBox(width: 8),
-            _PillButton(
-              icon: Icons.history_rounded,
-              label: 'Sessions ($sessionCount)',
-              onTap: () {
-                if (bookKey != null) {
-                  showSessionsSheet(context, bookKey!, overPlayer: true);
-                }
-              },
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 }
 
-class _PillButton extends StatelessWidget {
+/// 2.0's header tile: 38px, radius 10, 18px glyph. The tooltip is also the
+/// screen-reader label, since the tile has no text of its own.
+class _HeaderTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
 
-  const _PillButton({
+  const _HeaderTile({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -239,29 +232,24 @@ class _PillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: SagaColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: SagaColors.border),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 15, color: SagaColors.fgMuted),
-            const SizedBox(width: 6),
-            Text(label,
-                style: TextStyle(color: SagaColors.fgMuted, fontSize: 12)),
-          ],
+    return Tooltip(
+      message: label,
+      child: Material(
+        color: SagaColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 38,
+            height: 38,
+            child: Icon(icon, size: 18, color: SagaColors.fg),
+          ),
         ),
       ),
     );
   }
 }
-
 
 // ── Cover art ─────────────────────────────────────────────────────────────────
 
@@ -380,8 +368,9 @@ class _RevealCoverState extends ConsumerState<_RevealCover>
         label: canReveal
             ? (_detailsShown ? 'Show cover' : 'Show book details')
             : null,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+        // Square: the card rounds the outer corners, and the cover meets the
+        // panel beneath it in a straight line (02b).
+        child: ClipRect(
           child: AnimatedBuilder(
             animation: _reveal,
             // The glow is expensive (a full-size blur) and doesn't change
@@ -712,60 +701,130 @@ class _FadedSummary extends StatelessWidget {
   }
 }
 
-// ── Track info ────────────────────────────────────────────────────────────────
+// ── Now-playing card: cover + track info ──────────────────────────────────────
 
-class _TrackInfo extends StatelessWidget {
+/// The cover with the chapter and book title on a panel beneath it, as one
+/// card (2.0's frame 02b; no author — Book detail has the credits).
+///
+/// The cover is square, so the card's width follows the height left after the
+/// panel. [_paneHeight] gives that height before anything is laid out, which
+/// is why each line is a single line at a fixed line height.
+class _NowPlayingCard extends StatelessWidget {
   final MediaItem? item;
+  final PlexBook? book;
   final VoidCallback? onBookTap;
-  const _TrackInfo({this.item, this.onBookTap});
+
+  const _NowPlayingCard({this.item, this.book, this.onBookTap});
+
+  static const _padding = EdgeInsets.fromLTRB(18, 14, 18, 16);
+  static const _titleSize = 20.0;
+  static const _titleHeight = 1.25;
+  static const _bookSize = 14.5;
+  static const _bookHeight = 1.3;
+  static const _chevronSize = 16.0;
+
+  static double _paneHeight(TextScaler scaler) {
+    final title = scaler.scale(_titleSize) * _titleHeight;
+    final bookLine = scaler.scale(_bookSize) * _bookHeight;
+    return _padding.vertical +
+        title.ceilToDouble() +
+        3 +
+        (bookLine > _chevronSize ? bookLine : _chevronSize).ceilToDouble();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Column(
-        children: [
-          Text(
-            item?.title ?? '',
-            style: TextStyle(
-                color: SagaColors.fg,
-                fontSize: 18,
-                fontWeight: FontWeight.bold),
-            maxLines: 2,
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 2),
-          GestureDetector(
-            onTap: onBookTap,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Flexible(
-                  child: Text(
-                    item?.album ?? '',
-                    style:
-                        TextStyle(color: SagaColors.accentText, fontSize: 13),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+    final paneHeight = _paneHeight(MediaQuery.textScalerOf(context));
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // At least 10 above the card and 16 below it (02b's scrubber
+        // padding). The cover takes the rest, up to the screen's width; what
+        // a width-bound cover leaves goes 2:1 above and below the card,
+        // which on 02b's own frame lands on its 52px top.
+        const minAbove = 10.0, minBelow = 16.0;
+        final room = constraints.maxHeight - paneHeight - minAbove - minBelow;
+        final side = room.clamp(0.0, constraints.maxWidth);
+        final slack = room > side ? room - side : 0.0;
+        return Padding(
+          padding: EdgeInsets.only(top: minAbove + slack * 2 / 3),
+          child: Align(
+          alignment: Alignment.topCenter,
+          child: SizedBox(
+            width: side,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: ColoredBox(
+                color: SagaColors.surface,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: side,
+                      child: _RevealCover(
+                        artUri: item?.artUri,
+                        book: book,
+                        onFullDetails: onBookTap,
+                      ),
+                    ),
+                    SizedBox(
+                      height: paneHeight,
+                      child: Padding(
+                        padding: _padding,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item?.title ?? '',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: SagaColors.fg,
+                                fontSize: _titleSize,
+                                height: _titleHeight,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: onBookTap,
+                              child: Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      item?.album ?? '',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: SagaColors.fg,
+                                        fontSize: _bookSize,
+                                        height: _bookHeight,
+                                      ),
+                                    ),
+                                  ),
+                                  if (onBookTap != null)
+                                    Icon(
+                                      Icons.chevron_right,
+                                      color: SagaColors.fgSubtle,
+                                      size: _chevronSize,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                if (onBookTap != null) ...[
-                  const SizedBox(width: 2),
-                  Icon(Icons.chevron_right,
-                      color: SagaColors.fgSubtle, size: 12),
-                ],
-              ],
+              ),
             ),
           ),
-          if (item?.artist != null)
-            Text(item!.artist!,
-                style: TextStyle(color: SagaColors.fgMuted, fontSize: 12),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-        ],
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -895,15 +954,17 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
         final bookLeft = _remainingAtSpeed(Duration(milliseconds: displayAbsMs),
             Duration(milliseconds: totalMs), speed);
 
+        // The slider insets its track by the overlay radius (22, for a 44px
+        // touch area), so 2 more puts the track 4px inside the 20px gutter.
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.symmetric(horizontal: 2),
           child: Column(
             children: [
               LayoutBuilder(
                 builder: (context, constraints) {
-                  // Slider internal padding equals the overlay radius (14 px)
+                  // Slider internal padding equals the overlay radius (22 px)
                   // on each side — thumb center travels from edge to (width-edge).
-                  const edge = 14.0;
+                  const edge = 22.0;
                   final thumbX = edge +
                       displayValue * (constraints.maxWidth - 2 * edge);
                   const labelW = 62.0;
@@ -919,13 +980,13 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
                     children: [
                       SliderTheme(
                         data: SliderTheme.of(context).copyWith(
-                          trackHeight: 3,
+                          trackHeight: 4,
                           thumbShape:
-                              const RoundSliderThumbShape(enabledThumbRadius: 6),
+                              const RoundSliderThumbShape(enabledThumbRadius: 7),
                           overlayShape:
-                              const RoundSliderOverlayShape(overlayRadius: 14),
+                              const RoundSliderOverlayShape(overlayRadius: 22),
                           activeTrackColor: SagaColors.accent,
-                          inactiveTrackColor: SagaColors.surfaceAlt,
+                          inactiveTrackColor: SagaColors.fg.withValues(alpha: 0.12),
                           thumbColor: SagaColors.accent,
                         ),
                         child: Slider(
@@ -981,7 +1042,7 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
                 },
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 22),
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
@@ -990,7 +1051,7 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
                       children: [
                         Text(fmtDuration(displayPos),
                             style: TextStyle(
-                                color: SagaColors.fgMuted, fontSize: 12)),
+                                color: SagaColors.fgMuted, fontSize: 12.5)),
                         // Remaining listening time at the current playback speed
                         // (the audiobook convention: 2 h left at 1.5× is really
                         // 1 h 20 m of your evening). Tap to toggle to book total.
@@ -1007,7 +1068,7 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
                                   ? fmtDuration(displayDur)
                                   : '-${fmtDuration(_remainingAtSpeed(displayPos, displayDur, speed))}',
                               style: TextStyle(
-                                  color: SagaColors.fgMuted, fontSize: 12),
+                                  color: SagaColors.fgMuted, fontSize: 12.5),
                             ),
                           ),
                         ),
@@ -1032,7 +1093,7 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                color: SagaColors.fgSubtle, fontSize: 12),
+                                color: SagaColors.fgSubtle, fontSize: 12.5),
                           ),
                         ),
                       ),
@@ -1064,78 +1125,96 @@ class _Controls extends StatelessWidget {
             snap.data?.processingState == AudioProcessingState.loading ||
             snap.data?.processingState == AudioProcessingState.buffering;
 
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            IconButton(
-              iconSize: 36,
-              icon: const Icon(Icons.skip_previous_rounded),
+        // 2.0's transport pill. Equal slots rather than spaceBetween, like
+        // the action row: the mark sits over Device, and a narrow window
+        // squeezes the slots instead of overflowing the row.
+        final buttons = [
+          IconButton(
+            iconSize: 36,
+            icon: const Icon(Icons.skip_previous_rounded),
+            color: SagaColors.fgMuted,
+            tooltip: 'Skip to previous',
+            onPressed: service.skipToPrevious,
+          ),
+          IconButton(
+            iconSize: 28,
+            icon: _SkipIntervalIcon(
+              seconds: SettingsStore.skipBackwardSeconds,
+              forward: false,
+              size: 28,
               color: SagaColors.fgMuted,
-              tooltip: 'Skip to previous',
-              onPressed: service.skipToPrevious,
             ),
-            IconButton(
-              iconSize: 28,
-              icon: _SkipIntervalIcon(
-                seconds: SettingsStore.skipBackwardSeconds,
-                forward: false,
-                size: 28,
-                color: SagaColors.fgMuted,
-              ),
-              color: SagaColors.fgMuted,
-              tooltip:
-                  'Rewind ${SettingsStore.skipBackwardSeconds} seconds',
-              // The service's own handler — the same one the notification and
-              // headset buttons hit. This used to be a hand-rolled
-              // track-relative seek, so on a multi-file book the on-screen
-              // rewind stopped dead at the start of the current file while
-              // the notification's crossed into the previous one.
-              onPressed: service.rewind,
-            ),
-            const SizedBox(width: 8),
-            // Gesture outside, Semantics inside (like the view toggle in
-            // Browse): the other way round, excludeSemantics strips the
-            // GestureDetector's tap action and TalkBack gets a button that
-            // announces but can't be activated.
-            GestureDetector(
-              onTap: playing ? service.pause : service.play,
-              child: Semantics(
-                label: playing ? 'Pause' : 'Play',
-                button: true,
-                child: AnimatedSagaMark(
-                  size: 56,
-                  state: loading
-                      ? SagaMarkState.buffering
-                      : playing
-                          ? SagaMarkState.playing
-                          : SagaMarkState.paused,
+            color: SagaColors.fgMuted,
+            tooltip: 'Rewind ${SettingsStore.skipBackwardSeconds} seconds',
+            // The service's own handler — the same one the notification and
+            // headset buttons hit. This used to be a hand-rolled
+            // track-relative seek, so on a multi-file book the on-screen
+            // rewind stopped dead at the start of the current file while
+            // the notification's crossed into the previous one.
+            onPressed: service.rewind,
+          ),
+          // Gesture outside, Semantics inside (like the view toggle in
+          // Browse): the other way round, excludeSemantics strips the
+          // GestureDetector's tap action and TalkBack gets a button that
+          // announces but can't be activated.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: playing ? service.pause : service.play,
+            child: Semantics(
+              label: playing ? 'Pause' : 'Play',
+              button: true,
+              child: SizedBox(
+                width: 56,
+                height: 56,
+                child: Center(
+                  child: AnimatedSagaMark(
+                    size: 50,
+                    state: loading
+                        ? SagaMarkState.buffering
+                        : playing
+                        ? SagaMarkState.playing
+                        : SagaMarkState.paused,
+                  ),
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            IconButton(
-              iconSize: 28,
-              icon: _SkipIntervalIcon(
-                seconds: SettingsStore.skipForwardSeconds,
-                forward: true,
-                size: 28,
-                color: SagaColors.fgMuted,
-              ),
+          ),
+          IconButton(
+            iconSize: 28,
+            icon: _SkipIntervalIcon(
+              seconds: SettingsStore.skipForwardSeconds,
+              forward: true,
+              size: 28,
               color: SagaColors.fgMuted,
-              tooltip:
-                  'Skip forward ${SettingsStore.skipForwardSeconds} seconds',
-              // Same rule as the rewind button: one handler, shared with the
-              // notification (seekAbsolute clamps to the book bounds itself).
-              onPressed: service.fastForward,
             ),
-            IconButton(
-              iconSize: 36,
-              icon: const Icon(Icons.skip_next_rounded),
-              color: SagaColors.fgMuted,
-              tooltip: 'Skip to next',
-              onPressed: service.skipToNext,
-            ),
-          ],
+            color: SagaColors.fgMuted,
+            tooltip: 'Skip forward ${SettingsStore.skipForwardSeconds} seconds',
+            // Same rule as the rewind button: one handler, shared with the
+            // notification (seekAbsolute clamps to the book bounds itself).
+            onPressed: service.fastForward,
+          ),
+          IconButton(
+            iconSize: 36,
+            icon: const Icon(Icons.skip_next_rounded),
+            color: SagaColors.fgMuted,
+            tooltip: 'Skip to next',
+            onPressed: service.skipToNext,
+          ),
+        ];
+        return Container(
+          height: 72,
+          margin: const EdgeInsets.symmetric(horizontal: 22),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: SagaColors.surface,
+            borderRadius: BorderRadius.circular(36),
+          ),
+          child: Row(
+            children: [
+              for (final button in buttons)
+                Expanded(child: Center(child: button)),
+            ],
+          ),
         );
       },
     );
@@ -1159,6 +1238,9 @@ class _BottomActions extends ConsumerWidget {
     return ValueListenableBuilder<bool>(
       valueListenable: service.canUndoSeekNotifier,
       builder: (_, canUndo, _) => Padding(
+        // 8, not the 20px gutter: the buttons are centred in their slots, so
+        // the gutter doesn't show, and at large text "Bookmark" needs the
+        // width.
         padding: const EdgeInsets.symmetric(horizontal: 8),
         // Equal slots, not spaceEvenly: that spaces the gaps, so each button's
         // centre moved with its neighbours' label widths — Cast sat right of
@@ -1390,7 +1472,7 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // accentText, not accent: the 10px label below is body-sized text.
+    // accentText, not accent: the 11px label below is body-sized text.
     final color = active ? SagaColors.accentText : SagaColors.fgMuted;
     // Gesture outside, Semantics inside — see the play/pause control above.
     return InkWell(
@@ -1408,12 +1490,13 @@ class _ActionButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(icon, color: color, size: 22),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               // One line: the Device button carries a TV's name.
               Text(label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: color, fontSize: 10)),
+                  style: TextStyle(
+                      color: color, fontSize: 11, fontWeight: FontWeight.w600)),
             ],
           ),
         ),

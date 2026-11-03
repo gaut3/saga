@@ -80,10 +80,13 @@ internal object SagaWidget {
     // buttons beneath (10dp + two lines of text + a 48dp button row).
     private const val STRIP_TALL_MIN_HEIGHT_DP = 96
 
-    // A narrow card this tall (a 2x2 on most phones) takes the stacked small
-    // card: the 110dp one left a gap above its time left at this height. The
-    // stacked card is 190dp tall, centred in the space (see its layout).
-    private const val SMALL_TALL_MIN_HEIGHT_DP = 190
+    // The cover alone above the footer: a narrow widget this tall (a 2x2 on
+    // most phones), where the small card left a gap above its time left; and
+    // any widget this tall, where the 4x2 card's square cover, growing with
+    // its height, pushed the title out. Decoded at up to 320dp.
+    private const val POSTER_NARROW_MIN_HEIGHT_DP = 190
+    private const val POSTER_MIN_HEIGHT_DP = 250
+    private const val POSTER_COVER_DP = 320
 
     private val executor = Executors.newSingleThreadExecutor()
 
@@ -164,7 +167,7 @@ internal object SagaWidget {
         val palette = Palette(p)
         // Large draws at up to ~200dp (the card is as tall as the launcher
         // makes it), so decode for that, not the handoff's 124dp.
-        val source = if (withCovers) loadSquare(p.getString("cover", null), (LARGE_COVER_DP * density).toInt()) else null
+        val source = if (withCovers) loadSquare(p.getString("cover", null), (POSTER_COVER_DP * density).toInt()) else null
         // Small: inset cover, all corners at the 8dp cover radius. Large: flush
         // to the card's corner, so only the top-left is rounded, at the card's.
         // No cover: the mark stands in, in the theme's colours.
@@ -176,6 +179,8 @@ internal object SagaWidget {
             ?: mark(palette, (LARGE_COVER_DP * density).toInt())
         val strip = source?.let { rounded(it, (STRIP_COVER_DP * density).toInt(), 14 * density, Corners.LEFT) }
             ?: mark(palette, (STRIP_COVER_DP * density).toInt())
+        val poster = source?.let { rounded(it, (POSTER_COVER_DP * density).toInt(), 12 * density, Corners.ALL) }
+            ?: mark(palette, (POSTER_COVER_DP * density).toInt())
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 // The launcher draws the largest of these that fits, and the
@@ -186,9 +191,17 @@ internal object SagaWidget {
                     SizeF(110f, STRIP_TALL_MIN_HEIGHT_DP.toFloat()) to
                         bookViews(context, p, palette, R.layout.saga_widget_strip_tall, strip),
                     SizeF(110f, 110f) to bookViews(context, p, palette, R.layout.saga_widget_small, small),
-                    SizeF(110f, SMALL_TALL_MIN_HEIGHT_DP.toFloat()) to
-                        bookViews(context, p, palette, R.layout.saga_widget_small_tall, small),
                     SizeF(LARGE_MIN_WIDTH_DP.toFloat(), 150f) to bookViews(context, p, palette, R.layout.saga_widget_large, large),
+                    // Twice: the launcher picks the largest *area* that fits,
+                    // so the narrow key loses to the 4x2 card on a wide widget
+                    // until the wide key, from 250dp, outweighs it.
+                    // Narrow: no "Resume" beside the icon. Between two
+                    // 56dp arrows on a 2x2 it wrapped to three lines.
+                    SizeF(110f, POSTER_NARROW_MIN_HEIGHT_DP.toFloat()) to
+                        bookViews(context, p, palette, R.layout.saga_widget_poster, poster)
+                            .apply { setViewVisibility(R.id.saga_widget_play_label, View.GONE) },
+                    SizeF(LARGE_MIN_WIDTH_DP.toFloat(), POSTER_MIN_HEIGHT_DP.toFloat()) to
+                        bookViews(context, p, palette, R.layout.saga_widget_poster, poster),
                 ))
                 manager.updateAppWidget(ids, views)
             } else {
@@ -198,14 +211,17 @@ internal object SagaWidget {
                     // In portrait the launcher's height is the max one.
                     val maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
                     val views = when {
+                        maxHeight >= POSTER_MIN_HEIGHT_DP ->
+                            bookViews(context, p, palette, R.layout.saga_widget_poster, poster)
                         maxHeight in 1 until STRIP_TALL_MIN_HEIGHT_DP ->
                             bookViews(context, p, palette, R.layout.saga_widget_strip, strip)
                         maxHeight in 1 until STRIP_MAX_HEIGHT_DP ->
                             bookViews(context, p, palette, R.layout.saga_widget_strip_tall, strip)
                         minWidth >= LARGE_MIN_WIDTH_DP ->
                             bookViews(context, p, palette, R.layout.saga_widget_large, large)
-                        maxHeight >= SMALL_TALL_MIN_HEIGHT_DP ->
-                            bookViews(context, p, palette, R.layout.saga_widget_small_tall, small)
+                        maxHeight >= POSTER_NARROW_MIN_HEIGHT_DP ->
+                            bookViews(context, p, palette, R.layout.saga_widget_poster, poster)
+                                .apply { setViewVisibility(R.id.saga_widget_play_label, View.GONE) }
                         else -> bookViews(context, p, palette, R.layout.saga_widget_small, small)
                     }
                     manager.updateAppWidget(id, views)
@@ -252,10 +268,9 @@ internal object SagaWidget {
 
         val back = p.getInt("skipBack", 30)
         val forward = p.getInt("skipForward", 30)
-        // Skip is drawn as in the player: an arrow with the seconds inside.
-        // On the footer it takes the footer's ink; the one-line strip has no
-        // footer, so there it takes the card's muted text colour.
-        val ink = if (layout == R.layout.saga_widget_strip) palette.fgMuted else palette.accentFg
+        // Skip is drawn as in the player: an arrow with the seconds inside,
+        // in the footer's ink (every layout's buttons sit on the footer).
+        val ink = palette.accentFg
         v.setTextViewText(R.id.saga_widget_back_num, "$back")
         v.setTextViewText(R.id.saga_widget_forward_num, "$forward")
         for (id in intArrayOf(R.id.saga_widget_back_num, R.id.saga_widget_forward_num)) {
@@ -276,17 +291,13 @@ internal object SagaWidget {
             if (playing) R.drawable.saga_widget_pause else R.drawable.saga_widget_play)
         val label = context.getString(if (playing) R.string.saga_widget_pause else R.string.saga_widget_resume)
         v.setContentDescription(R.id.saga_widget_play_pause, label)
-        if (layout == R.layout.saga_widget_large) {
+        if (layout == R.layout.saga_widget_large || layout == R.layout.saga_widget_poster) {
             v.setTextViewText(R.id.saga_widget_play_label, label)
             v.setTextColor(R.id.saga_widget_play_label, palette.accentFg)
         }
-        // The one-line strip has no footer, so its play icon sits on the card
-        // in amber (the footer's ink would vanish on a dark theme). Views a
-        // layout lacks (footer, badge, time left, %, bar) ignore what's set on
-        // them above: a RemoteViews action on a missing id does nothing.
-        if (layout == R.layout.saga_widget_strip) {
-            v.setInt(R.id.saga_widget_play_icon, "setColorFilter", palette.bar)
-        }
+        // Views a layout lacks (title, chapter, badge, time left, %, bar)
+        // ignore what's set on them above: a RemoteViews action on a missing
+        // id does nothing.
 
         v.setOnClickPendingIntent(R.id.saga_widget_body, openApp(context))
         v.setOnClickPendingIntent(R.id.saga_widget_play_pause,

@@ -32,13 +32,15 @@
         <!-- Square at whatever height the launcher gives the card (124dp in
              the handoff, ~180dp on a Pixel 4×2): the bitmap is square, and
              adjustViewBounds sizes the width from the height. A fixed
-             width cropped the cover into a portrait strip. -->
+             width cropped the cover into a portrait strip. Capped at the
+             bitmap's 200dp; taller cards get the poster layout. -->
         <ImageView
             android:id="@+id/saga_widget_cover"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:adjustViewBounds="true"
             android:importantForAccessibility="no"
+            android:maxWidth="200dp"
             android:scaleType="fitCenter"
             android:src="@drawable/saga_widget_mark" />
 
@@ -103,6 +105,7 @@
                 <TextView
                     android:id="@+id/saga_widget_time_left"
                     android:layout_width="0dp"
+                    android:ellipsize="end"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:maxLines="1"
@@ -154,7 +157,8 @@
         <!-- The player's skip glyph: an arrow with the seconds inside. -->
         <FrameLayout
             android:id="@+id/saga_widget_back_btn"
-            android:layout_width="56dp"
+            android:layout_width="0dp"
+            android:layout_weight="1"
             android:layout_height="48dp">
 
             <ImageView
@@ -179,6 +183,8 @@
                 android:textStyle="bold" />
         </FrameLayout>
 
+        <!-- Thirds: −30 | play | +30 share the footer, as on every size,
+             rather than arrows pinned to the edges around a wide middle. -->
         <LinearLayout
             android:id="@+id/saga_widget_play_pause"
             android:layout_width="0dp"
@@ -189,8 +195,8 @@
 
             <ImageView
                 android:id="@+id/saga_widget_play_icon"
-                android:layout_width="20dp"
-                android:layout_height="20dp"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
                 android:importantForAccessibility="no"
                 android:src="@drawable/saga_widget_play" />
 
@@ -207,7 +213,8 @@
         <!-- The player's skip glyph: an arrow with the seconds inside. -->
         <FrameLayout
             android:id="@+id/saga_widget_forward_btn"
-            android:layout_width="56dp"
+            android:layout_width="0dp"
+            android:layout_weight="1"
             android:layout_height="48dp">
 
             <ImageView

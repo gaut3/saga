@@ -164,6 +164,19 @@ class _DeviceSheetState extends ConsumerState<_DeviceSheet> {
             if (i > 0) Divider(color: SagaColors.border, height: 1),
             rows[i],
           ],
+          // Said whether or not anything was found: the first tester's Nest
+          // speaker appeared and their Roku and LG TVs, which "cast" by their
+          // own systems, didn't (GitHub #17). Answered where it's asked.
+          if (!connected)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                'Shows Google Cast devices: Chromecasts, Google TV and Nest '
+                'speakers. TVs that use their own casting systems, like most '
+                'Roku and LG models, won\'t appear here.',
+                style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12),
+              ),
+            ),
           if (connected) ..._castControls(service),
         ],
       ),

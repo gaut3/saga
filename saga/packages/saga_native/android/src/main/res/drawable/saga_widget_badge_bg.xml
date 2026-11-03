@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Behind the mark where it sits on a cover: a dark, see-through backing so
+     the light mark reads on a light cover too (Spotify's white disc does the
+     same job). Fixed, not themed: it answers the cover, not the theme. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#73000000" />
+    <corners android:radius="8dp" />
+</shape>

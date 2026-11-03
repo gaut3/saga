@@ -291,6 +291,35 @@ class _ResumeCardState extends ConsumerState<ResumeCard> {
   );
 }
 
+/// Time left in the chapter at the saved position, and the chapter's length:
+/// the range the player's seek bar spans in "Scrub within chapter" mode
+/// ([chapterRangeAt] over the cached chapters of a single-file book, the file
+/// itself on a multi-file one). Null when the chapter isn't known, and the
+/// caller shows the book's figures instead. The home-screen widget uses it in
+/// that mode.
+({int remainingMs, int spanMs})? resumeChapterProgress(
+  List<PlexTrack>? tracks,
+  BookPosition? pos,
+) {
+  if (tracks == null || tracks.isEmpty || pos == null) return null;
+  ({int startMs, int endMs}) range;
+  if (tracks.length == 1) {
+    final chaps = ChapterStore.load(pos.trackRatingKey);
+    if (chaps == null || chaps.isEmpty) return null;
+    range = chapterRangeAt([
+      for (final c in chaps) c.start.inMilliseconds,
+    ], pos.positionMs, tracks[0].durationMs);
+  } else {
+    final idx = tracks.indexWhere((t) => t.ratingKey == pos.trackRatingKey);
+    if (idx < 0) return null;
+    range = (startMs: 0, endMs: tracks[idx].durationMs);
+  }
+  final span = range.endMs - range.startMs;
+  if (span <= 0) return null;
+  final listened = (pos.positionMs - range.startMs).clamp(0, span);
+  return (remainingMs: span - listened, spanMs: span);
+}
+
 /// The chapter title at the saved position, or null if unknown. Single-file
 /// M4B books use the cached embedded chapters; multi-track books use the
 /// track at the saved position. Reads only local stores, so it answers on a

@@ -27,7 +27,8 @@
 - Auto-play the next book in a collection, with a cancellable countdown (off by default)
 - Tap the cover on the player to look through it at the book's details
 - Always-visible mini player; swipe it away to dismiss, long-press for options
-- Chromecast support via native Cast SDK: the whole book is cast as one queue, the notification, lock screen, headset and widget drive the TV, the sleep timer and listening stats work on it, and your place is handed back when casting ends
+- Chromecast support via native Cast SDK: the whole book is cast as one queue, the notification, lock screen, headset and widget drive the TV, the sleep timer and listening stats work on it, and your place is handed back when casting ends. Google Cast devices only (Chromecasts, Google TV, Nest speakers): TVs with their own casting systems, like most Roku and LG models, don't appear
+- Bluetooth speakers, receivers and car stereos work like headphones: the book plays on the phone and is sent to them, so everything above applies, including the sleep timer, smart rewind and listening stats. The phone has to stay in range
 - Headphone unplug auto-pause; auto-resume after calls and brief interruptions (on by default, and never over another app's media)
 - Android Auto — Continue listening, Downloaded, and your collections in the order you dragged them; built from what's already on the phone, so a downloaded book plays in the car with no server involved. Asking for a book by name works too. The same browse tree backs the lock screen's media-resumption card
 

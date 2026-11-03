@@ -37,14 +37,37 @@ Map<String, Object?> widgetSnapshot({
   final book = key == null ? null : localBook(key);
   if (key == null || book == null) return {'state': 'empty', ...colors};
   final pos = BookmarkStore.load(key);
-  final (:remainingMs, :fraction) = resumeProgress(book, pos);
+  final tracks = TrackCacheStore.load(key);
+  // With "Scrub within chapter" on, the bar, time left and % follow the
+  // chapter, as the player's seek bar does (GitHub #17). From the time
+  // listened in whole minutes: a chapter's bar moves every few seconds, and
+  // the widget redraws whenever its snapshot changes, so it would redraw on
+  // every 10 s save rather than once a minute. Rounding what's listened, not
+  // what's left, keeps the bar from running ahead: rounding what's left drew
+  // a fresh 7.6-minute chapter at 8%.
+  final chapter =
+      SettingsStore.chapterScrub ? resumeChapterProgress(tracks, pos) : null;
+  final int? remainingMs;
+  final double fraction;
+  if (chapter != null) {
+    final listenedMs =
+        (chapter.spanMs - chapter.remainingMs) ~/ 60000 * 60000;
+    remainingMs = chapter.spanMs - listenedMs;
+    fraction = listenedMs / chapter.spanMs;
+  } else {
+    (:remainingMs, :fraction) = resumeProgress(book, pos);
+  }
   return {
     ...colors,
     'state': 'book',
     'bookKey': key,
     'title': book.title,
-    'chapter': resumeChapterLabel(TrackCacheStore.load(key), pos),
-    'timeLeft': remainingMs == null ? null : '${fmtListenedMs(remainingMs)} left',
+    'chapter': resumeChapterLabel(tracks, pos),
+    'timeLeft': remainingMs == null
+        ? null
+        : chapter != null
+            ? '${fmtListenedMs(remainingMs)} left in chapter'
+            : '${fmtListenedMs(remainingMs)} left',
     'percent': '${(fraction * 100).round()}%',
     'progress': (fraction * 1000).round().clamp(0, 1000),
     // A path to the app-private cover file, never a URL: the widget draws
