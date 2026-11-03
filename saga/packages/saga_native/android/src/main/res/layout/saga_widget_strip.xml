@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One row (4×1), after the app's mini player: cover flush left, title and
+     chapter, −30 · play/pause · +30 (48dp targets). For launchers that stack
+     only widgets of one size, beside one-row media players (GitHub #17). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipToOutline="true">
+
+    <ImageView
+        android:id="@+id/saga_widget_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/saga_widget_bg"
+        android:tint="@color/saga_widget_surface" />
+
+    <LinearLayout
+        android:id="@+id/saga_widget_body"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingEnd="4dp">
+
+        <!-- As tall as the row; adjustViewBounds makes it as wide. -->
+        <ImageView
+            android:id="@+id/saga_widget_cover"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:adjustViewBounds="true"
+            android:importantForAccessibility="no"
+            android:scaleType="fitCenter"
+            android:src="@drawable/saga_widget_mark" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/saga_widget_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/saga_widget_fg"
+                android:textSize="13.5sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/saga_widget_chapter"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/saga_widget_fg_muted"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- The player's skip glyph: an arrow with the seconds inside. -->
+        <FrameLayout
+            android:id="@+id/saga_widget_back_btn"
+            android:layout_width="48dp"
+            android:layout_height="match_parent">
+
+            <ImageView
+                android:id="@+id/saga_widget_back_icon"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:src="@drawable/saga_widget_skip"
+                android:tint="@color/saga_widget_fg_muted" />
+
+            <TextView
+                android:id="@+id/saga_widget_back_num"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:includeFontPadding="false"
+                android:paddingTop="3.5dp"
+                android:textColor="@color/saga_widget_fg_muted"
+                android:textSize="8.5dp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/saga_widget_play_pause"
+            android:layout_width="48dp"
+            android:layout_height="48dp">
+
+            <ImageView
+                android:id="@+id/saga_widget_play_icon"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:layout_gravity="center"
+                android:src="@drawable/saga_widget_play" />
+        </FrameLayout>
+
+        <!-- The player's skip glyph: an arrow with the seconds inside. -->
+        <FrameLayout
+            android:id="@+id/saga_widget_forward_btn"
+            android:layout_width="48dp"
+            android:layout_height="match_parent">
+
+            <ImageView
+                android:id="@+id/saga_widget_forward_icon"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:src="@drawable/saga_widget_skip_forward"
+                android:tint="@color/saga_widget_fg_muted" />
+
+            <TextView
+                android:id="@+id/saga_widget_forward_num"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:includeFontPadding="false"
+                android:paddingTop="3.5dp"
+                android:textColor="@color/saga_widget_fg_muted"
+                android:textSize="8.5dp"
+                android:textStyle="bold" />
+        </FrameLayout>
+    </LinearLayout>
+</FrameLayout>

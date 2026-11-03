@@ -123,7 +123,8 @@ void main() {
     expect(s['timeLeft'], '30m left');
     expect(s['percent'], '75%');
     expect(s['progress'], 750);
-    expect(s['chapter'], 'Ch. 2 · Part 1b');
+    // The title alone, as the player shows it (GitHub #17).
+    expect(s['chapter'], 'Part 1b');
     expect(s['skipBack'], SettingsStore.skipBackwardSeconds);
     expect(s['skipForward'], SettingsStore.skipForwardSeconds);
   });

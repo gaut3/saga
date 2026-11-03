@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One row (4×1) with room for two tiers (96dp and up): the strip's cover,
+     title and chapter at full width, and −30 · play/pause · +30 spread
+     beneath them on the card's amber footer. In one line the three buttons
+     took ~150dp and cut the title short. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipToOutline="true">
+
+    <ImageView
+        android:id="@+id/saga_widget_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/saga_widget_bg"
+        android:tint="@color/saga_widget_surface" />
+
+    <LinearLayout
+        android:id="@+id/saga_widget_body"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal">
+
+        <!-- As tall as the row; adjustViewBounds makes it as wide. -->
+        <ImageView
+            android:id="@+id/saga_widget_cover"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:adjustViewBounds="true"
+            android:importantForAccessibility="no"
+            android:scaleType="fitCenter"
+            android:src="@drawable/saga_widget_mark" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/saga_widget_title"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textColor="@color/saga_widget_fg"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <!-- The app badge, as Audible and Spotify carry theirs. -->
+                    <ImageView
+                        android:id="@+id/saga_widget_badge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="16dp"
+                        android:layout_marginStart="8dp"
+                        android:adjustViewBounds="true"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/saga_widget_mark_mono"
+                        android:tint="@color/saga_widget_fg" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/saga_widget_chapter"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/saga_widget_fg_muted"
+                    android:textSize="12.5sp" />
+            </LinearLayout>
+
+            <!-- The card's amber footer, cut to the width beside the cover. -->
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp">
+
+                <ImageView
+                    android:id="@+id/saga_widget_footer_bg"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/saga_widget_footer_bg_end"
+                    android:tint="@color/saga_widget_accent" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="horizontal">
+
+                    <!-- The player's skip glyph: an arrow with the seconds inside. -->
+                    <FrameLayout
+                        android:id="@+id/saga_widget_back_btn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1">
+
+                        <ImageView
+                            android:id="@+id/saga_widget_back_icon"
+                            android:layout_width="30dp"
+                            android:layout_height="30dp"
+                            android:layout_gravity="center"
+                            android:importantForAccessibility="no"
+                            android:src="@drawable/saga_widget_skip"
+                            android:tint="@color/saga_widget_accent_fg" />
+
+                        <TextView
+                            android:id="@+id/saga_widget_back_num"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:importantForAccessibility="no"
+                            android:includeFontPadding="false"
+                            android:paddingTop="4dp"
+                            android:textColor="@color/saga_widget_accent_fg"
+                            android:textSize="9.5dp"
+                            android:textStyle="bold" />
+                    </FrameLayout>
+
+                    <FrameLayout
+                        android:id="@+id/saga_widget_play_pause"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1">
+
+                        <ImageView
+                            android:id="@+id/saga_widget_play_icon"
+                            android:layout_width="28dp"
+                            android:layout_height="28dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/saga_widget_play" />
+                    </FrameLayout>
+
+                    <!-- The player's skip glyph: an arrow with the seconds inside. -->
+                    <FrameLayout
+                        android:id="@+id/saga_widget_forward_btn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1">
+
+                        <ImageView
+                            android:id="@+id/saga_widget_forward_icon"
+                            android:layout_width="30dp"
+                            android:layout_height="30dp"
+                            android:layout_gravity="center"
+                            android:importantForAccessibility="no"
+                            android:src="@drawable/saga_widget_skip_forward"
+                            android:tint="@color/saga_widget_accent_fg" />
+
+                        <TextView
+                            android:id="@+id/saga_widget_forward_num"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:importantForAccessibility="no"
+                            android:includeFontPadding="false"
+                            android:paddingTop="4dp"
+                            android:textColor="@color/saga_widget_accent_fg"
+                            android:textSize="9.5dp"
+                            android:textStyle="bold" />
+                    </FrameLayout>
+                </LinearLayout>
+            </FrameLayout>
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

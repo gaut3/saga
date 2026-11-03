@@ -50,15 +50,34 @@
                 android:orientation="vertical"
                 android:paddingTop="2dp">
 
-                <TextView
-                    android:id="@+id/saga_widget_title"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:ellipsize="end"
-                    android:maxLines="2"
-                    android:textColor="@color/saga_widget_fg"
-                    android:textSize="14.5sp"
-                    android:textStyle="bold" />
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/saga_widget_title"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="2"
+                        android:textColor="@color/saga_widget_fg"
+                        android:textSize="14.5sp"
+                        android:textStyle="bold" />
+
+                    <!-- The app badge, as Audible and Spotify carry theirs. -->
+                    <ImageView
+                        android:id="@+id/saga_widget_badge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="14dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_marginTop="3dp"
+                        android:adjustViewBounds="true"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/saga_widget_mark_mono"
+                        android:tint="@color/saga_widget_fg" />
+                </LinearLayout>
 
                 <TextView
                     android:id="@+id/saga_widget_chapter"
@@ -132,15 +151,33 @@
         android:paddingStart="6dp"
         android:paddingEnd="6dp">
 
-        <TextView
-            android:id="@+id/saga_widget_back"
+        <!-- The player's skip glyph: an arrow with the seconds inside. -->
+        <FrameLayout
+            android:id="@+id/saga_widget_back_btn"
             android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:fontFamily="monospace"
-            android:gravity="center"
-            android:textColor="@color/saga_widget_accent_fg"
-            android:textSize="12.5sp"
-            android:textStyle="bold" />
+            android:layout_height="48dp">
+
+            <ImageView
+                android:id="@+id/saga_widget_back_icon"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:src="@drawable/saga_widget_skip"
+                android:tint="@color/saga_widget_accent_fg" />
+
+            <TextView
+                android:id="@+id/saga_widget_back_num"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:includeFontPadding="false"
+                android:paddingTop="3.5dp"
+                android:textColor="@color/saga_widget_accent_fg"
+                android:textSize="9dp"
+                android:textStyle="bold" />
+        </FrameLayout>
 
         <FrameLayout
             android:id="@+id/saga_widget_play_pause"
@@ -156,15 +193,33 @@
                 android:src="@drawable/saga_widget_play" />
         </FrameLayout>
 
-        <TextView
-            android:id="@+id/saga_widget_forward"
+        <!-- The player's skip glyph: an arrow with the seconds inside. -->
+        <FrameLayout
+            android:id="@+id/saga_widget_forward_btn"
             android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:fontFamily="monospace"
-            android:gravity="center"
-            android:textColor="@color/saga_widget_accent_fg"
-            android:textSize="12.5sp"
-            android:textStyle="bold" />
+            android:layout_height="48dp">
+
+            <ImageView
+                android:id="@+id/saga_widget_forward_icon"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:src="@drawable/saga_widget_skip_forward"
+                android:tint="@color/saga_widget_accent_fg" />
+
+            <TextView
+                android:id="@+id/saga_widget_forward_num"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:includeFontPadding="false"
+                android:paddingTop="3.5dp"
+                android:textColor="@color/saga_widget_accent_fg"
+                android:textSize="9dp"
+                android:textStyle="bold" />
+        </FrameLayout>
     </LinearLayout>
     </FrameLayout>
 </LinearLayout>

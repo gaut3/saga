@@ -71,6 +71,20 @@ internal object SagaWidget {
     private const val LARGE_MIN_WIDTH_DP = 250
     private const val LARGE_COVER_DP = 200
 
+    // One row: anything shorter than the small card's 110dp. The cover is as
+    // tall as the row, which tops out near 100dp on a large phone.
+    private const val STRIP_MAX_HEIGHT_DP = 110
+    private const val STRIP_COVER_DP = 100
+
+    // A row this tall takes the two-tier strip: title at full width, the
+    // buttons beneath (10dp + two lines of text + a 48dp button row).
+    private const val STRIP_TALL_MIN_HEIGHT_DP = 96
+
+    // A narrow card this tall (a 2x2 on most phones) takes the stacked small
+    // card: the 110dp one left a gap above its time left at this height. The
+    // stacked card is 190dp tall, centred in the space (see its layout).
+    private const val SMALL_TALL_MIN_HEIGHT_DP = 190
+
     private val executor = Executors.newSingleThreadExecutor()
 
     @Volatile
@@ -113,8 +127,32 @@ internal object SagaWidget {
         val p = prefs(context)
         when (p.getString("state", "empty")) {
             "book" -> renderBook(context, manager, ids, p, withCovers = true)
-            "signedOut" -> manager.updateAppWidget(ids, emptyViews(context, Palette(p), signedOut = true))
-            else -> manager.updateAppWidget(ids, emptyViews(context, Palette(p), signedOut = false))
+            "signedOut" -> renderEmpty(context, manager, ids, Palette(p), signedOut = true)
+            else -> renderEmpty(context, manager, ids, Palette(p), signedOut = false)
+        }
+    }
+
+    /** The empty or signed-out card, as one row or as the full card. */
+    private fun renderEmpty(
+        context: Context, manager: AppWidgetManager, ids: IntArray,
+        palette: Palette, signedOut: Boolean,
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            manager.updateAppWidget(ids, RemoteViews(mapOf(
+                SizeF(110f, 40f) to emptyViews(context, palette, signedOut, R.layout.saga_widget_empty_strip),
+                SizeF(110f, 110f) to emptyViews(context, palette, signedOut, R.layout.saga_widget_empty),
+            )))
+            return
+        }
+        for (id in ids) {
+            val maxHeight = manager.getAppWidgetOptions(id)
+                .getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
+            val layout = if (maxHeight in 1 until STRIP_MAX_HEIGHT_DP) {
+                R.layout.saga_widget_empty_strip
+            } else {
+                R.layout.saga_widget_empty
+            }
+            manager.updateAppWidget(id, emptyViews(context, palette, signedOut, layout))
         }
     }
 
@@ -130,25 +168,45 @@ internal object SagaWidget {
         // Small: inset cover, all corners at the 8dp cover radius. Large: flush
         // to the card's corner, so only the top-left is rounded, at the card's.
         // No cover: the mark stands in, in the theme's colours.
-        val small = source?.let { rounded(it, (52 * density).toInt(), 8 * density, topLeftOnly = false) }
+        // Strip: flush to the row's left edge like the mini player's cover, so
+        // the left corners take the card's radius.
+        val small = source?.let { rounded(it, (52 * density).toInt(), 8 * density, Corners.ALL) }
             ?: mark(palette, (52 * density).toInt())
-        val large = source?.let { rounded(it, (LARGE_COVER_DP * density).toInt(), 14 * density, topLeftOnly = true) }
+        val large = source?.let { rounded(it, (LARGE_COVER_DP * density).toInt(), 14 * density, Corners.TOP_LEFT) }
             ?: mark(palette, (LARGE_COVER_DP * density).toInt())
+        val strip = source?.let { rounded(it, (STRIP_COVER_DP * density).toInt(), 14 * density, Corners.LEFT) }
+            ?: mark(palette, (STRIP_COVER_DP * density).toInt())
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // The launcher draws the largest of these that fits, and the
+                // smallest when none does: a one-row widget is under the
+                // small card's 110dp, so it gets the strip.
                 val views = RemoteViews(mapOf(
+                    SizeF(110f, 40f) to bookViews(context, p, palette, R.layout.saga_widget_strip, strip),
+                    SizeF(110f, STRIP_TALL_MIN_HEIGHT_DP.toFloat()) to
+                        bookViews(context, p, palette, R.layout.saga_widget_strip_tall, strip),
                     SizeF(110f, 110f) to bookViews(context, p, palette, R.layout.saga_widget_small, small),
+                    SizeF(110f, SMALL_TALL_MIN_HEIGHT_DP.toFloat()) to
+                        bookViews(context, p, palette, R.layout.saga_widget_small_tall, small),
                     SizeF(LARGE_MIN_WIDTH_DP.toFloat(), 150f) to bookViews(context, p, palette, R.layout.saga_widget_large, large),
                 ))
                 manager.updateAppWidget(ids, views)
             } else {
                 for (id in ids) {
-                    val minWidth = manager.getAppWidgetOptions(id)
-                        .getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
-                    val views = if (minWidth >= LARGE_MIN_WIDTH_DP) {
-                        bookViews(context, p, palette, R.layout.saga_widget_large, large)
-                    } else {
-                        bookViews(context, p, palette, R.layout.saga_widget_small, small)
+                    val options = manager.getAppWidgetOptions(id)
+                    val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
+                    // In portrait the launcher's height is the max one.
+                    val maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
+                    val views = when {
+                        maxHeight in 1 until STRIP_TALL_MIN_HEIGHT_DP ->
+                            bookViews(context, p, palette, R.layout.saga_widget_strip, strip)
+                        maxHeight in 1 until STRIP_MAX_HEIGHT_DP ->
+                            bookViews(context, p, palette, R.layout.saga_widget_strip_tall, strip)
+                        minWidth >= LARGE_MIN_WIDTH_DP ->
+                            bookViews(context, p, palette, R.layout.saga_widget_large, large)
+                        maxHeight >= SMALL_TALL_MIN_HEIGHT_DP ->
+                            bookViews(context, p, palette, R.layout.saga_widget_small_tall, small)
+                        else -> bookViews(context, p, palette, R.layout.saga_widget_small, small)
                     }
                     manager.updateAppWidget(id, views)
                 }
@@ -171,8 +229,6 @@ internal object SagaWidget {
         v.setTextColor(R.id.saga_widget_chapter, palette.fgMuted)
         v.setTextColor(R.id.saga_widget_time_left, palette.fg)
         v.setTextColor(R.id.saga_widget_percent, palette.fgSubtle)
-        v.setTextColor(R.id.saga_widget_back, palette.accentFg)
-        v.setTextColor(R.id.saga_widget_forward, palette.accentFg)
         v.setInt(R.id.saga_widget_play_icon, "setColorFilter", palette.accentFg)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             v.setColorStateList(R.id.saga_widget_bar, "setProgressTintList",
@@ -196,12 +252,24 @@ internal object SagaWidget {
 
         val back = p.getInt("skipBack", 30)
         val forward = p.getInt("skipForward", 30)
-        v.setTextViewText(R.id.saga_widget_back, "−$back")
-        v.setTextViewText(R.id.saga_widget_forward, "+$forward")
-        v.setContentDescription(R.id.saga_widget_back,
+        // Skip is drawn as in the player: an arrow with the seconds inside.
+        // On the footer it takes the footer's ink; the one-line strip has no
+        // footer, so there it takes the card's muted text colour.
+        val ink = if (layout == R.layout.saga_widget_strip) palette.fgMuted else palette.accentFg
+        v.setTextViewText(R.id.saga_widget_back_num, "$back")
+        v.setTextViewText(R.id.saga_widget_forward_num, "$forward")
+        for (id in intArrayOf(R.id.saga_widget_back_num, R.id.saga_widget_forward_num)) {
+            v.setTextColor(id, ink)
+        }
+        for (id in intArrayOf(R.id.saga_widget_back_icon, R.id.saga_widget_forward_icon)) {
+            v.setInt(id, "setColorFilter", ink)
+        }
+        v.setContentDescription(R.id.saga_widget_back_btn,
             context.getString(R.string.saga_widget_skip_back, back))
-        v.setContentDescription(R.id.saga_widget_forward,
+        v.setContentDescription(R.id.saga_widget_forward_btn,
             context.getString(R.string.saga_widget_skip_forward, forward))
+        // The app badge, as Audible and Spotify carry theirs.
+        v.setInt(R.id.saga_widget_badge, "setColorFilter", palette.fg)
 
         val playing = this.playing
         v.setImageViewResource(R.id.saga_widget_play_icon,
@@ -212,20 +280,31 @@ internal object SagaWidget {
             v.setTextViewText(R.id.saga_widget_play_label, label)
             v.setTextColor(R.id.saga_widget_play_label, palette.accentFg)
         }
+        // The one-line strip has no footer, so its play icon sits on the card
+        // in amber (the footer's ink would vanish on a dark theme). Views a
+        // layout lacks (footer, badge, time left, %, bar) ignore what's set on
+        // them above: a RemoteViews action on a missing id does nothing.
+        if (layout == R.layout.saga_widget_strip) {
+            v.setInt(R.id.saga_widget_play_icon, "setColorFilter", palette.bar)
+        }
 
         v.setOnClickPendingIntent(R.id.saga_widget_body, openApp(context))
         v.setOnClickPendingIntent(R.id.saga_widget_play_pause,
             if (playing) serviceAction(context, RC_PAUSE, "widgetPause", null, null)
             else serviceAction(context, RC_PLAY, "widgetPlay", book, null))
-        v.setOnClickPendingIntent(R.id.saga_widget_back,
+        v.setOnClickPendingIntent(R.id.saga_widget_back_btn,
             serviceAction(context, RC_BACK, "widgetSkip", book, forward = false))
-        v.setOnClickPendingIntent(R.id.saga_widget_forward,
+        v.setOnClickPendingIntent(R.id.saga_widget_forward_btn,
             serviceAction(context, RC_FORWARD, "widgetSkip", book, forward = true))
         return v
     }
 
-    private fun emptyViews(context: Context, palette: Palette, signedOut: Boolean): RemoteViews {
-        val v = RemoteViews(context.packageName, R.layout.saga_widget_empty)
+    private fun emptyViews(
+        context: Context, palette: Palette, signedOut: Boolean, layout: Int,
+    ): RemoteViews {
+        // The strip has no footer or action button; what's set on them here
+        // does nothing there (a RemoteViews action on a missing id is a no-op).
+        val v = RemoteViews(context.packageName, layout)
         palette.applyChrome(v)
         v.setTextColor(R.id.saga_widget_empty_title, palette.fg)
         v.setTextColor(R.id.saga_widget_empty_subtitle, palette.fgMuted)
@@ -336,17 +415,22 @@ internal object SagaWidget {
         }
     }
 
-    private fun rounded(src: Bitmap, sizePx: Int, radiusPx: Float, topLeftOnly: Boolean): Bitmap {
+    private enum class Corners { ALL, TOP_LEFT, LEFT }
+
+    private fun rounded(src: Bitmap, sizePx: Int, radiusPx: Float, corners: Corners): Bitmap {
         val scaled = Bitmap.createScaledBitmap(src, sizePx, sizePx, true)
         val out = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
             shader = BitmapShader(scaled, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
         }
         val rect = RectF(0f, 0f, sizePx.toFloat(), sizePx.toFloat())
-        val radii = if (topLeftOnly) {
-            floatArrayOf(radiusPx, radiusPx, 0f, 0f, 0f, 0f, 0f, 0f)
-        } else {
-            FloatArray(8) { radiusPx }
+        // Pairs, clockwise from top-left: top-left, top-right, bottom-right,
+        // bottom-left.
+        val r = radiusPx
+        val radii = when (corners) {
+            Corners.ALL -> FloatArray(8) { r }
+            Corners.TOP_LEFT -> floatArrayOf(r, r, 0f, 0f, 0f, 0f, 0f, 0f)
+            Corners.LEFT -> floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r)
         }
         Canvas(out).drawPath(Path().apply { addRoundRect(rect, radii, Path.Direction.CW) }, paint)
         return out

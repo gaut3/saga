@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The 4-spine mark in one colour (white, tinted at runtime), cropped to the
+     spines: the widget's app badge, like Audible's and Spotify's. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="19dp" android:height="20dp"
+    android:viewportWidth="118" android:viewportHeight="124">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M5,10 h12 a5,5 0 0 1 5,5 v94 a5,5 0 0 1 -5,5 h-12 a5,5 0 0 1 -5,-5 v-94 a5,5 0 0 1 5,-5 z M37,0 h12 a5,5 0 0 1 5,5 v114 a5,5 0 0 1 -5,5 h-12 a5,5 0 0 1 -5,-5 v-114 a5,5 0 0 1 5,-5 z M69,18 h12 a5,5 0 0 1 5,5 v78 a5,5 0 0 1 -5,5 h-12 a5,5 0 0 1 -5,-5 v-78 a5,5 0 0 1 5,-5 z M101,8 h12 a5,5 0 0 1 5,5 v98 a5,5 0 0 1 -5,5 h-12 a5,5 0 0 1 -5,-5 v-98 a5,5 0 0 1 5,-5 z" />
+</vector>

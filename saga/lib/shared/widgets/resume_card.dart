@@ -291,10 +291,15 @@ class _ResumeCardState extends ConsumerState<ResumeCard> {
   );
 }
 
-/// "Ch. N · Title" for the saved position, or null if unknown. Single-file
+/// The chapter title at the saved position, or null if unknown. Single-file
 /// M4B books use the cached embedded chapters; multi-track books use the
 /// track at the saved position. Reads only local stores, so it answers on a
 /// cold start — the home-screen widget's snapshot uses it too.
+///
+/// The title alone, like the player. This was "Ch. N · Title", and a book
+/// whose titles carry their own numbers read "Ch. 72 · 70. Setting People
+/// Straight": the 72nd entry, two after an intro, is the author's chapter 70
+/// (GitHub #17). "Ch. N" is only the fallback for an untitled chapter.
 String? resumeChapterLabel(List<PlexTrack>? tracks, BookPosition? pos) {
   if (tracks == null || tracks.isEmpty || pos == null) return null;
   if (tracks.length == 1) {
@@ -306,9 +311,12 @@ String? resumeChapterLabel(List<PlexTrack>? tracks, BookPosition? pos) {
     final ci = chapterIndexAt([
       for (final c in chaps) c.start.inMilliseconds,
     ], pos.positionMs);
-    return 'Ch. ${ci + 1} · ${chaps[ci].title}';
+    return _titleOrNumber(chaps[ci].title, ci);
   }
   final idx = tracks.indexWhere((t) => t.ratingKey == pos.trackRatingKey);
   if (idx < 0) return null;
-  return 'Ch. ${idx + 1} · ${tracks[idx].title}';
+  return _titleOrNumber(tracks[idx].title, idx);
 }
+
+String _titleOrNumber(String title, int index) =>
+    title.trim().isEmpty ? 'Ch. ${index + 1}' : title.trim();
