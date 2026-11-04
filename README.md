@@ -3,7 +3,7 @@
   <img alt="Saga" src="docs/assets/png/wordmark/saga-wordmark-cream.png" width="480">
 </picture>
 
-**Saga** is a native Android audiobook player for [Plex Media Server](https://www.plex.tv/), built with Flutter. It picks up where Plex's own app leaves off — a focused listening experience designed around how audiobooks are actually consumed.
+**Saga** is a native Android audiobook player for [Plex Media Server](https://www.plex.tv/), built with Flutter. Plex's own app plays an audiobook like an album. Saga plays it like a book: chapters, bookmarks, a sleep timer, and it remembers where you were.
 
 **[saga-app.no](https://saga-app.no)** — screenshots, themes, and the mark in motion.
 

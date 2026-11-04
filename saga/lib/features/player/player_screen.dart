@@ -113,7 +113,12 @@ class PlayerScreen extends ConsumerWidget {
                   valueListenable: service.justFinishedBook,
                   builder: (context, finishedKey, _) {
                     if (finishedKey != null && finishedKey == bookKey) {
-                      return FinishedPanel(service: service, bookKey: bookKey!);
+                      // Centred: with the track info gone from under it, a
+                      // top-aligned panel left a hole above the scrubber. It
+                      // still scrolls when it doesn't fit.
+                      return Center(
+                        child: FinishedPanel(service: service, bookKey: bookKey!),
+                      );
                     }
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -742,15 +747,24 @@ class _NowPlayingCard extends StatelessWidget {
         // a width-bound cover leaves goes 2:1 above and below the card,
         // which on 02b's own frame lands on its 52px top.
         const minAbove = 10.0, minBelow = 16.0;
+        // Below this the cover is a thumbnail nobody can see (landscape,
+        // split screen): drop it and keep the titles, at full width — a
+        // card as wide as a vanishing cover took the titles with it.
+        const minCover = 96.0;
+        // Not even the titles fit: show nothing rather than overflow.
+        if (constraints.maxHeight < paneHeight + minAbove) {
+          return const SizedBox.shrink();
+        }
         final room = constraints.maxHeight - paneHeight - minAbove - minBelow;
-        final side = room.clamp(0.0, constraints.maxWidth);
+        final showCover = room >= minCover;
+        final side = showCover ? room.clamp(0.0, constraints.maxWidth) : 0.0;
         final slack = room > side ? room - side : 0.0;
         return Padding(
           padding: EdgeInsets.only(top: minAbove + slack * 2 / 3),
           child: Align(
           alignment: Alignment.topCenter,
           child: SizedBox(
-            width: side,
+            width: showCover ? side : constraints.maxWidth,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
               child: ColoredBox(
@@ -759,6 +773,7 @@ class _NowPlayingCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (showCover)
                     SizedBox(
                       height: side,
                       child: _RevealCover(

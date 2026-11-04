@@ -131,6 +131,21 @@ void main() {
     expect(media.artUrl, isNull);
   });
 
+  test('a server that does not answer builds nothing, rather than the '
+      'account token', () async {
+    // #24: the saved address was unreachable from the phone, and the
+    // fallback handed the speaker account-token URLs it couldn't reach
+    // either. Null sends the caller to look for a working address.
+    final client = PlexClient.forTest(
+      serverUri: server,
+      token: accountToken,
+      dio: dioAnswering((options) => throw DioException.connectionTimeout(
+          timeout: const Duration(seconds: 10), requestOptions: options)),
+    );
+
+    expect(await client.buildCastMedia(partKeys: ['/p']), isNull);
+  });
+
   test('signed out or serverless builds nothing at all', () async {
     final noToken = PlexClient.forTest(
         serverUri: server,

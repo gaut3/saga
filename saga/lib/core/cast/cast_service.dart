@@ -266,6 +266,12 @@ class CastService {
 
   CastState get state => _state;
   Stream<CastState> get stateStream => _stateController.stream;
+
+  /// Counts sessions: a new one each time a device connects. Work that
+  /// outlasts its session (a slow server between connect and load) compares
+  /// this to tell whether the session it started for is still the one up.
+  int get session => _session;
+  int _session = 0;
   List<CastDevice> get devices => _devices;
   Stream<List<CastDevice>> get devicesStream => _devicesController.stream;
 
@@ -358,6 +364,7 @@ class CastService {
   void _setState(CastState s) {
     if (s == _state) return;
     _state = s;
+    if (s == CastState.connected) _session++;
     if (s == CastState.idle) {
       _status = null;
       _deviceName = null;

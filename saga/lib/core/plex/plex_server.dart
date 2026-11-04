@@ -155,7 +155,50 @@ class PlexServerDiscovery {
     }
   }
 
-  Future<void> selectServer(PlexServer server) async {
+  /// Picks the saved server's best reachable connection again, from a fresh
+  /// list from plex.tv. Returns whether one answered; with none, the saved
+  /// address is left as it was.
+  ///
+  /// One run at a time, shared by every caller: a network change, a cast that
+  /// couldn't reach the server and a failed library load can all land within
+  /// a second of each other, and each used to probe every connection itself.
+  ///
+  /// The answer can differ from the saved address without the server having
+  /// moved: an address chosen away from home is often unreachable from inside
+  /// it (most routers don't loop a request to their own public address back
+  /// in), and nothing else ever asks again while the app is running.
+  Future<bool> rediscover() {
+    return _rediscovering ??=
+        _rediscover().whenComplete(() => _rediscovering = null);
+  }
+
+  static Future<bool>? _rediscovering;
+
+  Future<bool> _rediscover() async {
+    // Without a token plex.tv answers 401, which reads as a revoked one.
+    if (!_client.isAuthenticated) return false;
+    final servers = await fetchServers();
+    final saved = _client.machineIdentifier;
+    final server = saved == null
+        ? servers.firstOrNull
+        : servers.where((s) => s.machineIdentifier == saved).firstOrNull;
+    if (server == null) {
+      if (servers.isNotEmpty) {
+        // The saved server is missing from the account's list. Plex lists
+        // other people's shared servers here too, so adopting whichever one
+        // comes first would silently re-point the app — and every per-server
+        // store behind ServerScope — at somebody else's library, possibly with
+        // a book still playing. Re-selecting a server is the user's call.
+        AppLog.log('server',
+            'saved server not in account list — not adopting another');
+      }
+      return false;
+    }
+    return selectServer(server);
+  }
+
+  /// Saves [server]'s best reachable connection. Returns whether one answered.
+  Future<bool> selectServer(PlexServer server) async {
     final uri = await findReachableUri(server);
     // Individual probe failures are expected noise (most connections lose),
     // so the log line lives here, at the decision: "can't reach my server" is
@@ -163,7 +206,7 @@ class PlexServerDiscovery {
     if (uri == null) {
       AppLog.log('server',
           'none of ${server.connections.length} connections reachable');
-      return;
+      return false;
     }
     final index = server.connections.indexWhere((c) => c.uri == uri);
     final conn = server.connections[index];
@@ -177,5 +220,6 @@ class PlexServerDiscovery {
     // reads it. Without this, this server's book 12345 would resume at the
     // previous server's book 12345 — see server_scope.dart.
     await ServerScope.configure(server.machineIdentifier);
+    return true;
   }
 }

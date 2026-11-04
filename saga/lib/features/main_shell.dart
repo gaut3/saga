@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import '../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,7 +18,14 @@ import 'authors/authors_screen.dart';
 import 'browse/browse_screen.dart';
 import 'collections/collections_screen.dart';
 import 'home/home_screen.dart';
-import '../core/providers.dart' show sagaThemeVariantProvider, tabIndexProvider;
+import '../core/providers.dart'
+    show
+        activeServerUriProvider,
+        connectivityProvider,
+        plexClientProvider,
+        plexServerDiscoveryProvider,
+        sagaThemeVariantProvider,
+        tabIndexProvider;
 import 'player/player_provider.dart';
 import 'player/player_service.dart';
 import 'settings/settings_screen.dart';
@@ -71,8 +82,35 @@ class _MainShellState extends ConsumerState<MainShell>
     ref.read(updateCheckProvider);
   }
 
+  Timer? _networkRecheck;
+
+  /// The network changed: the saved server address may no longer be the best
+  /// one, or reachable at all. One chosen away from home is often unreachable
+  /// from inside it, and with a downloaded book playing nothing else would
+  /// ask again until the next launch (#24). Waits a moment for the new
+  /// network to settle; the re-check is shared with every other caller.
+  void _onNetworkChanged() {
+    _networkRecheck?.cancel();
+    _networkRecheck = Timer(const Duration(seconds: 3), () async {
+      if (!mounted) return;
+      final client = ref.read(plexClientProvider);
+      final before = client.serverUri;
+      if (!client.isAuthenticated || before == null) return;
+      AppLog.log('server', 'network changed — re-checking the connection');
+      try {
+        await ref.read(plexServerDiscoveryProvider).rediscover();
+      } catch (e) {
+        AppLog.log('server', 're-check failed: $e');
+        return;
+      }
+      if (!mounted || client.serverUri == before) return;
+      ref.read(activeServerUriProvider.notifier).state = client.serverUri;
+    });
+  }
+
   @override
   void dispose() {
+    _networkRecheck?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -142,6 +180,14 @@ class _MainShellState extends ConsumerState<MainShell>
     // opening, and people missed it (GitHub #22). It comes back each launch
     // until it's closed or tapped for that release; once per session at most
     // (see [_announcedUpdate]).
+    ref.listen(connectivityProvider, (prev, next) {
+      final was = prev?.valueOrNull;
+      final now = next.valueOrNull;
+      if (was == null || now == null || listEquals(was, now)) return;
+      if (now.every((r) => r == ConnectivityResult.none)) return;
+      _onNetworkChanged();
+    });
+
     ref.listen(updateCheckProvider, (_, next) {
       final result = next.valueOrNull;
       final tag = result?.latestTag;

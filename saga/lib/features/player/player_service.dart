@@ -1185,14 +1185,19 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     if (_castActive) return;
     final index = _player.currentIndex ?? 0;
     final positionMs = _player.position.inMilliseconds;
+    final session = cast.session;
     // On disk before anything moves: the place the TV starts from.
     await savePositionForLifecycle();
     // A raw pause: the listen carries on, on the TV, so the session log and
     // History keep running.
     await _player.pause();
     final ok = await _castLoad(index, positionMs, autoplay: autoplay);
-    // No server to hand the TV: carry on here.
-    if (!ok && !_castActive && autoplay) unawaited(_player.play());
+    // No server to hand the TV, or the session gone before it could take the
+    // book: carry on here. Not when another session has come up meanwhile —
+    // its own start hands it the book.
+    if (!ok && !_castActive && autoplay && cast.session == session) {
+      unawaited(_player.play());
+    }
   }
 
   /// Loads the book onto the TV as one queue of its files, at file [index],
@@ -1203,12 +1208,27 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     final tracks = List.of(_tracks);
     if (key == null || index < 0 || index >= tracks.length) return false;
     final first = tracks.first;
+    final session = cast.session;
     final media = await castQueueFor(tracks);
     if (media == null) {
       cast.reportError('Casting needs your Plex server to be reachable.');
       return false;
     }
     if (key != _bookRatingKey) return false; // another book started meanwhile
+    // The session this was for ended while the server was asked. A new one
+    // runs its own start, from the phone's place then; this one would hand
+    // it a stale place, on top of that start's load (#24).
+    if (cast.session != session || cast.state != CastState.connected) {
+      return false;
+    }
+    // The phone was started while the server was being asked: nothing was
+    // casting yet, so that's what play did. The TV takes the book from where
+    // the phone got to, playing, and the phone stops (in [_enterCast]).
+    if (_player.playing) {
+      index = _player.currentIndex ?? index;
+      positionMs = _player.position.inMilliseconds;
+      autoplay = true;
+    }
     final durations = [for (final t in tracks) t.durationMs];
     final total = durations.fold<int>(0, (a, b) => a + b);
     final loadId =
@@ -1258,6 +1278,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   void _enterCast(CastHandoff h,
       {required ({int item, int positionMs}) place}) {
+    // The one way into a cast, so the one place that makes sure the phone
+    // isn't playing too; [play] keeps it that way after. Otherwise the
+    // action row names the TV while the book plays here (#24).
+    if (_player.playing) unawaited(_player.pause());
     cast.beginSession(h);
     _castTracker = CastPositionTracker(h);
     _castFinished = false;

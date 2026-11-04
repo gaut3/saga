@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -320,20 +321,29 @@ class PlexClient {
   /// [isDelegated] is false when the server wouldn't mint one and the caller is
   /// holding the account token instead. Callers must treat that as the weaker
   /// case and put it in as few places as possible — see [buildCastMedia].
+  ///
+  /// Null when the server didn't answer at all. That is not "wouldn't mint
+  /// one": the Cast device would be handed URLs at an address this phone just
+  /// failed to reach, and would sit loading forever (#24) — with the account
+  /// token in them, spent for nothing.
   Future<({String token, bool isDelegated})?> _urlSafeToken() async {
     final accountToken = _token;
     if (accountToken == null || _serverUri == null) return null;
     try {
       // Same endpoint Plex's own clients use to hand a stream to something that
       // can't authenticate. `scope=all` is Plex's only supported scope here.
-      final response = await _dio.get<Map<String, dynamic>>(
-        '$_serverUri/security/token',
-        queryParameters: {'type': 'delegation', 'scope': 'all'},
-        options: Options(
-          sendTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 5),
-        ),
-      );
+      final response = await _dio
+          .get<Map<String, dynamic>>(
+            '$_serverUri/security/token',
+            queryParameters: {'type': 'delegation', 'scope': 'all'},
+            options: Options(
+              sendTimeout: const Duration(seconds: 5),
+              receiveTimeout: const Duration(seconds: 5),
+            ),
+          )
+          // The client's connect timeout is 10 s; the listener is waiting on
+          // this with the book paused.
+          .timeout(const Duration(seconds: 5));
       // XML `<MediaContainer token="…">` becomes a nested key in JSON; older
       // servers have been seen putting it at the top level.
       final data = response.data;
@@ -343,6 +353,15 @@ class PlexClient {
         return (token: delegated, isDelegated: true);
       }
       AppLog.log('cast', 'delegation endpoint returned no token');
+    } on DioException catch (e) {
+      if (e.response == null) {
+        AppLog.log('cast', 'server unreachable for a cast token (${e.type.name})');
+        return null;
+      }
+      AppLog.log('cast', 'delegated token unavailable: $e');
+    } on TimeoutException {
+      AppLog.log('cast', 'server unreachable for a cast token (timeout)');
+      return null;
     } catch (e) {
       AppLog.log('cast', 'delegated token unavailable: $e');
     }

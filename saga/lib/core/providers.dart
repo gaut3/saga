@@ -69,9 +69,10 @@ final selectedLibraryKeyProvider = StateProvider<String?>((ref) {
 
 /// Connectivity transitions — flight mode on or off, Wi-Fi dropping to mobile.
 ///
-/// Only the fact that something changed is used; the value is ignored. Watching
-/// it is what lets a screen that fell back to local books recover on its own
-/// when the radios return.
+/// Only the fact that something changed is used, never as an "are we
+/// offline?" answer (see below). Watching it is what lets a screen that fell
+/// back to local books recover on its own when the radios return; the shell
+/// also re-checks the server address on it (`MainShell`, #24).
 final connectivityProvider = StreamProvider<List<ConnectivityResult>>(
   (ref) => Connectivity().onConnectivityChanged,
 );
@@ -96,24 +97,8 @@ final activeLibraryKeyProvider = FutureProvider<String?>((ref) async {
   final client = ref.read(plexClientProvider);
 
   Future<bool> discover() async {
-    final discovery = ref.read(plexServerDiscoveryProvider);
-    final servers = await discovery.fetchServers();
-    final saved = client.machineIdentifier;
-    final server = saved == null
-        ? servers.firstOrNull
-        : servers.where((s) => s.machineIdentifier == saved).firstOrNull;
-    if (server != null) {
-      await discovery.selectServer(server);
-      ref.read(activeServerUriProvider.notifier).state = client.serverUri;
-    } else if (servers.isNotEmpty) {
-      // The saved server is missing from the account's list. Plex lists other
-      // people's shared servers here too, so adopting whichever one comes
-      // first would silently re-point the app — and every per-server store
-      // behind ServerScope — at somebody else's library, possibly with a book
-      // still playing. Re-selecting a server is the user's call.
-      AppLog.log('server',
-          'saved server not in account list — not adopting another');
-    }
+    await ref.read(plexServerDiscoveryProvider).rediscover();
+    ref.read(activeServerUriProvider.notifier).state = client.serverUri;
     return client.serverUri != null;
   }
 
