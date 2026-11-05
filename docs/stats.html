@@ -165,15 +165,17 @@
       <h2>Per release</h2>
       <table id="rel-table" hidden>
         <thead>
-          <tr><th>Release</th><th>Published</th><th class="r">APK</th><th class="r">Verified</th></tr>
+          <tr><th>Release</th><th>Published</th><th class="r">APK</th><th class="r">Checksum</th></tr>
         </thead>
         <tbody id="rel-body"></tbody>
       </table>
       <p class="state-msg" id="rel-state">Loading releases&hellip;</p>
       <p class="note">
-        &ldquo;Verified&rdquo; counts downloads of the release's <code style="color:var(--amber)">.sha256</code>
-        checksum file &mdash; a floor on how many people checked their download, since
-        <code style="color:var(--amber)">gh attestation verify</code> leaves no trace here.
+        &ldquo;Checksum&rdquo; counts downloads of the release's <code style="color:var(--amber)">.sha256</code>
+        file. It isn't a count of people who verified: some are, some are automated fetchers,
+        and some are the maintainer checking a release, which is why a quiet release can show
+        more checksums than APKs. <code style="color:var(--amber)">gh attestation verify</code>
+        leaves no trace here at all.
       </p>
     </div>
 
@@ -184,7 +186,7 @@
         <div class="stat-card"><div class="n" id="f-velocity">&mdash;</div><div class="l">downloads/day, latest release</div></div>
         <div class="stat-card"><div class="n" id="f-beta">&mdash;</div><div class="l">pre-release (beta) downloads</div></div>
         <div class="stat-card"><div class="n" id="f-cadence">&mdash;</div><div class="l">avg days between releases</div></div>
-        <div class="stat-card"><div class="n" id="f-verify">&mdash;</div><div class="l">checksum verification rate</div></div>
+        <div class="stat-card"><div class="n" id="f-top">&mdash;</div><div class="l" id="f-top-l">most downloaded release</div></div>
       </div>
     </div>
 
@@ -259,12 +261,11 @@
     }
 
     // Newest first, as the API returns them.
-    var total = 0, shaTotal = 0, betaTotal = 0;
+    var total = 0, betaTotal = 0;
     var stable = [];
     rels.forEach(function (r) {
       var apk = sumAssets(r, isApk);
       total += apk;
-      shaTotal += sumAssets(r, isSha);
       if (r.prerelease) { betaTotal += apk; } else { stable.push(r); }
     });
 
@@ -287,7 +288,9 @@
     } else {
       $('f-cadence').textContent = '—';
     }
-    $('f-verify').textContent = total > 0 ? (100 * shaTotal / total).toFixed(0) + '%' : '—';
+    var top = rels.reduce(function (a, r) { return sumAssets(r, isApk) > sumAssets(a, isApk) ? r : a; });
+    $('f-top').textContent = top.tag_name;
+    $('f-top-l').textContent = 'most downloaded release (' + fmt(sumAssets(top, isApk)) + ')';
 
     // Table.
     var body = $('rel-body');
