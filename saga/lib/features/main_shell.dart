@@ -20,10 +20,8 @@ import 'collections/collections_screen.dart';
 import 'home/home_screen.dart';
 import '../core/providers.dart'
     show
-        activeServerUriProvider,
         connectivityProvider,
-        plexClientProvider,
-        plexServerDiscoveryProvider,
+        recheckServerProvider,
         sagaThemeVariantProvider,
         tabIndexProvider;
 import 'player/player_provider.dart';
@@ -91,20 +89,8 @@ class _MainShellState extends ConsumerState<MainShell>
   /// network to settle; the re-check is shared with every other caller.
   void _onNetworkChanged() {
     _networkRecheck?.cancel();
-    _networkRecheck = Timer(const Duration(seconds: 3), () async {
-      if (!mounted) return;
-      final client = ref.read(plexClientProvider);
-      final before = client.serverUri;
-      if (!client.isAuthenticated || before == null) return;
-      AppLog.log('server', 'network changed — re-checking the connection');
-      try {
-        await ref.read(plexServerDiscoveryProvider).rediscover();
-      } catch (e) {
-        AppLog.log('server', 're-check failed: $e');
-        return;
-      }
-      if (!mounted || client.serverUri == before) return;
-      ref.read(activeServerUriProvider.notifier).state = client.serverUri;
+    _networkRecheck = Timer(const Duration(seconds: 3), () {
+      if (mounted) ref.read(recheckServerProvider)('network changed');
     });
   }
 

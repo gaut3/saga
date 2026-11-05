@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Sign in with a code.** If signing in through the browser hasn't finished after 15 seconds, Saga offers a short code instead: enter it at plex.tv/link, on this phone or any other device, and Saga signs in. It helps when the browser doesn't open the Plex page or doesn't hand the result back to Saga. The browser sign-in keeps working alongside it; whichever finishes first wins. Idea from Chronicle Epilogue.
+
+### Fixed
+- **A streamed book picks up again after you leave home.** When the network changed under a streaming book, Saga reloaded it from the address that had just stopped working, so the reload failed and the book stayed paused. It now checks which address works first. Downloaded books were never affected.
+
 ## [1.2.0-beta.5] - 2026-11-04
 
 <!-- Beta only: delete this block for the final 1.2.0. -->

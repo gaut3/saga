@@ -11,6 +11,7 @@ import '../../core/audio/m4b_chapter_reader.dart';
 import '../../core/cast/cast_service.dart';
 import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_track.dart';
+import '../../core/plex/plex_client.dart';
 import '../../core/providers.dart';
 import '../../core/storage/artwork_cache.dart';
 import '../../core/storage/book_download_store.dart';
@@ -43,6 +44,15 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
           'auto-reload after stream error: book $bookRatingKey');
       final tracks = await ref.read(tracksProvider(bookRatingKey).future);
       if (tracks.isEmpty) return;
+      // A streamed file died, often because the network changed under it
+      // (leaving home), and the address it came from is the one that just
+      // stopped answering. Reloading straight away went back to that address,
+      // failed, and stayed paused. Re-check first: the same shared run as the
+      // shell's network-change one, so the two arriving together cost one.
+      // Not for a downloaded book, which the server has no part in.
+      if (tracks.any((t) => PlexClient.localTrackPath(t) == null)) {
+        await ref.read(recheckServerProvider)('stream error');
+      }
       await startBook(
         service: service,
         bookRatingKey: bookRatingKey,

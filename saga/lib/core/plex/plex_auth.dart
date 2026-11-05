@@ -26,11 +26,15 @@ class PlexAuth {
     receiveTimeout: const Duration(seconds: 15),
   );
 
-  Future<PlexPinResult> requestPin() async {
+  /// A sign-in PIN. [strong] is the browser flow's: a long code, which
+  /// app.plex.tv/auth takes from the URL. Not strong is the code to type at
+  /// plex.tv/link: four characters, and the only kind that page accepts
+  /// (Chronicle 83f81f5). It expires in 15 minutes rather than 30.
+  Future<PlexPinResult> requestPin({bool strong = true}) async {
     final response = await Dio(_dioOptions).post<Map<String, dynamic>>(
       '$_plexTvBase/api/v2/pins',
       queryParameters: {
-        'strong': true,
+        'strong': strong,
         'X-Plex-Client-Identifier': _client.clientId,
         // The name this install signs in under — it is what the device list in
         // a Plex account shows, and the privacy policy says that entry reads
@@ -62,13 +66,21 @@ class PlexAuth {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+  /// Where a non-strong PIN's code is typed, on this phone or any other
+  /// device: the way in when the browser sign-in won't finish.
+  Future<void> openLinkPage() => launchUrl(Uri.parse('https://plex.tv/link'),
+      mode: LaunchMode.externalApplication);
+
   /// Poll until the user completes auth or [timeout] elapses.
   /// Returns the auth token on success, null on timeout/cancel.
+  /// [isCancelled] is checked before each request: the sign-in screen runs
+  /// two polls once it offers a code, and the first to succeed stops the other.
   Future<String?> pollForToken(
     PlexPinResult pin, {
     Duration timeout = const Duration(minutes: 5),
     Duration interval = const Duration(seconds: 2),
     void Function()? onTick,
+    bool Function()? isCancelled,
   }) async {
     final deadline = DateTime.now().add(timeout);
     // One client for the whole poll rather than one per tick: at a 2 s
@@ -79,6 +91,7 @@ class PlexAuth {
 
     while (DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(interval);
+      if (isCancelled?.call() ?? false) break;
       onTick?.call();
 
       try {

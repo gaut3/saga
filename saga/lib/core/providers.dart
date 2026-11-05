@@ -57,6 +57,27 @@ final activeServerUriProvider = StateProvider<String?>((ref) {
   return ref.watch(plexClientProvider).serverUri;
 });
 
+/// Picks the server connection again ([PlexServerDiscovery.rediscover]) and,
+/// if it moved, tells everything that watches [activeServerUriProvider].
+/// [reason] is for the log. Never throws: with plex.tv out of reach the saved
+/// address stays, and the caller carries on with it.
+final recheckServerProvider =
+    Provider<Future<void> Function(String reason)>((ref) => (reason) async {
+          final client = ref.read(plexClientProvider);
+          final before = client.serverUri;
+          if (!client.isAuthenticated || before == null) return;
+          AppLog.log('server', '$reason — re-checking the connection');
+          try {
+            await ref.read(plexServerDiscoveryProvider).rediscover();
+          } catch (e) {
+            AppLog.log('server', 're-check failed: $e');
+            return;
+          }
+          if (client.serverUri != before) {
+            ref.read(activeServerUriProvider.notifier).state = client.serverUri;
+          }
+        });
+
 final librariesProvider = FutureProvider<List<PlexLibrary>>((ref) async {
   ref.watch(activeServerUriProvider);
   return ref.watch(plexApiProvider).fetchLibraries();
