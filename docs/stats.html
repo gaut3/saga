@@ -78,12 +78,6 @@
     }
     td.r, th.r { text-align: right; }
     td .tag { font-weight: 600; }
-    td .pre {
-      display: inline-block; margin-left: 8px; padding: 1px 8px;
-      font-size: 10.5px; font-weight: 600; letter-spacing: .06em;
-      color: var(--amber); border: 1px solid rgba(224,160,80,.4);
-      border-radius: 99px; vertical-align: 1px;
-    }
     td.sub { color: var(--sub); }
     tr.latest td { background: rgba(224,160,80,.05); }
 
@@ -182,11 +176,23 @@
       </p>
     </div>
 
+    <!-- BETA TABLE (kept apart so a run of betas can't push the releases out of view) -->
+    <div class="sec" id="beta-sec" hidden>
+      <h2>Betas</h2>
+      <table id="beta-table">
+        <thead>
+          <tr><th>Beta</th><th>Published</th><th class="r">APK</th><th class="r">Checksum</th></tr>
+        </thead>
+        <tbody id="beta-body"></tbody>
+      </table>
+      <button type="button" class="btn btn-ghost btn-sm" id="beta-more" hidden style="margin-top:16px"></button>
+    </div>
+
     <!-- FINE PRINT -->
     <div class="sec">
       <h2>Fine print</h2>
       <div class="stat-grid">
-        <div class="stat-card"><div class="n" id="f-velocity">&mdash;</div><div class="l">downloads/day, latest release</div></div>
+        <div class="stat-card"><div class="n" id="f-velocity">&mdash;</div><div class="l">downloads/day, latest stable release</div></div>
         <div class="stat-card"><div class="n" id="f-beta">&mdash;</div><div class="l">pre-release (beta) downloads</div></div>
         <div class="stat-card"><div class="n" id="f-cadence">&mdash;</div><div class="l">avg days between releases</div></div>
         <div class="stat-card"><div class="n" id="f-top">&mdash;</div><div class="l" id="f-top-l">most downloaded release</div></div>
@@ -281,9 +287,11 @@
     $('s-days').textContent = fmt(days);
 
     // Fine print.
-    var latest = rels[0];
-    var ldays = Math.max(1, Math.round((Date.now() - new Date(latest.published_at)) / 864e5));
-    $('f-velocity').textContent = (sumAssets(latest, isApk) / ldays).toFixed(1);
+    var latest = stable[0];
+    if (latest) {
+      var ldays = Math.max(1, Math.round((Date.now() - new Date(latest.published_at)) / 864e5));
+      $('f-velocity').textContent = (sumAssets(latest, isApk) / ldays).toFixed(1);
+    }
     $('f-beta').textContent = fmt(betaTotal);
     if (stable.length > 1) {
       var span = (new Date(stable[0].published_at) - new Date(stable[stable.length - 1].published_at)) / 864e5;
@@ -295,31 +303,37 @@
     $('f-top').textContent = top.tag_name;
     $('f-top-l').textContent = 'most downloaded release (' + fmt(sumAssets(top, isApk)) + ')';
 
-    // Table.
-    var body = $('rel-body');
-    // The latest SHOWN rows; the rest wait behind a button.
-    var SHOWN = 10;
-    rels.forEach(function (r, i) {
-      var tr = document.createElement('tr');
-      if (i === 0) { tr.className = 'latest'; }
-      if (i >= SHOWN) { tr.hidden = true; }
-      var sha = sumAssets(r, isSha);
-      tr.innerHTML =
-        '<td><span class="tag">' + r.tag_name + '</span>' +
-          (r.prerelease ? '<span class="pre">beta</span>' : '') + '</td>' +
-        '<td class="sub">' + (r.published_at || '').slice(0, 10) + '</td>' +
-        '<td class="r">' + fmt(sumAssets(r, isApk)) + '</td>' +
-        '<td class="r sub">' + (sha ? fmt(sha) : '·') + '</td>';
-      body.appendChild(tr);
-    });
-    if (rels.length > SHOWN) {
-      var more = $('rel-more');
-      more.textContent = 'Show all ' + rels.length + ' releases';
-      more.hidden = false;
-      more.addEventListener('click', function () {
-        Array.prototype.forEach.call(body.rows, function (row) { row.hidden = false; });
-        more.hidden = true;
+    // Tables: stable releases and betas apart, each showing its latest
+    // `shown` rows with the rest behind a button.
+    function fillTable(list, bodyId, moreId, shown, noun) {
+      var body = $(bodyId);
+      list.forEach(function (r, i) {
+        var tr = document.createElement('tr');
+        if (i === 0) { tr.className = 'latest'; }
+        if (i >= shown) { tr.hidden = true; }
+        var sha = sumAssets(r, isSha);
+        tr.innerHTML =
+          '<td><span class="tag">' + r.tag_name + '</span></td>' +
+          '<td class="sub">' + (r.published_at || '').slice(0, 10) + '</td>' +
+          '<td class="r">' + fmt(sumAssets(r, isApk)) + '</td>' +
+          '<td class="r sub">' + (sha ? fmt(sha) : '·') + '</td>';
+        body.appendChild(tr);
       });
+      if (list.length > shown) {
+        var more = $(moreId);
+        more.textContent = 'Show all ' + list.length + ' ' + noun;
+        more.hidden = false;
+        more.addEventListener('click', function () {
+          Array.prototype.forEach.call(body.rows, function (row) { row.hidden = false; });
+          more.hidden = true;
+        });
+      }
+    }
+    var betas = rels.filter(function (r) { return r.prerelease; });
+    fillTable(stable, 'rel-body', 'rel-more', 10, 'releases');
+    if (betas.length) {
+      fillTable(betas, 'beta-body', 'beta-more', 5, 'betas');
+      $('beta-sec').hidden = false;
     }
     $('rel-state').hidden = true;
     $('rel-table').hidden = false;
