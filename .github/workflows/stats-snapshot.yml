@@ -1,0 +1,96 @@
+# Weekly stats snapshot.
+#
+# GitHub's API tells you the download total *now* but keeps no history. This
+# workflow writes it down once a week:
+#
+#   docs/stats-data/downloads-history.json  — weekly download totals, per release
+#
+# It lands under docs/, so saga-app.no serves it same-origin and
+# docs/stats.html draws the curve without talking to anything but this
+# repository's own Pages. Release download counts are public, so the built-in
+# GITHUB_TOKEN is enough.
+#
+# Repo traffic (views, clones, referrers) is deliberately not collected here:
+# anything committed to this repo is public, and GitHub keeps traffic visible
+# to the owner only. That's kept privately, off GitHub.
+#
+# No [skip ci] on the commit: it would also skip the Pages build, leaving the
+# new data unpublished until the next push. CI is path-filtered to saga/**,
+# so a data commit doesn't run it anyway.
+
+name: Stats snapshot
+
+on:
+  schedule:
+    - cron: '41 4 * * 1'   # Mondays 04:41 UTC (off the hour, when scheduled runs bunch up)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Take snapshot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          from datetime import date
+
+          REPO  = os.environ['REPO']
+          TOKEN = os.environ['GH_TOKEN']
+          TODAY = date.today().isoformat()
+          PATH  = 'docs/stats-data/downloads-history.json'
+          os.makedirs(os.path.dirname(PATH), exist_ok=True)
+
+          req = urllib.request.Request(
+              f'https://api.github.com/repos/{REPO}/releases?per_page=100',
+              headers={'Authorization': 'Bearer ' + TOKEN,
+                       'Accept': 'application/vnd.github+json',
+                       'X-GitHub-Api-Version': '2022-11-28'})
+          with urllib.request.urlopen(req) as r:
+              releases = json.load(r)
+
+          per_release, total_apk, total_sha = {}, 0, 0
+          for r in releases:
+              apk = sum(a.get('download_count', 0) for a in r.get('assets', [])
+                        if a.get('name', '').lower().endswith('.apk'))
+              sha = sum(a.get('download_count', 0) for a in r.get('assets', [])
+                        if a.get('name', '').lower().endswith('.sha256'))
+              per_release[r['tag_name']] = {'apk': apk, 'sha256': sha,
+                                            'prerelease': r.get('prerelease', False)}
+              total_apk += apk
+              total_sha += sha
+
+          try:
+              with open(PATH) as f: hist = json.load(f)
+          except FileNotFoundError:
+              hist = {'snapshots': []}
+          # Idempotent: a re-run on the same day replaces that day's entry.
+          hist['snapshots'] = [s for s in hist['snapshots'] if s.get('date') != TODAY]
+          hist['snapshots'].append({'date': TODAY, 'total_apk': total_apk,
+                                    'total_sha256': total_sha, 'releases': per_release})
+          hist['snapshots'].sort(key=lambda s: s['date'])
+          with open(PATH, 'w') as f:
+              json.dump(hist, f, indent=2)
+              f.write('\n')
+          print(f'downloads: {total_apk} APK / {total_sha} sha256 across {len(releases)} releases')
+          PY
+
+      - name: Commit if changed
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/stats-data/
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+          else
+            git commit -m "chore: stats snapshot $(date -u +%F)"
+            git push
+          fi

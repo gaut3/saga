@@ -8,7 +8,7 @@ on:
     paths: ['saga/**', '.github/workflows/ci.yml']
 
 # CI only reads the tree. Stated explicitly so a fork PR can never inherit a
-# writable default token — release.yml is the only workflow that needs write.
+# writable default token — only release.yml and stats-snapshot.yml need write.
 permissions:
   contents: read
 

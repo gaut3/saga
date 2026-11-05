@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Stats — Saga</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Saga by the numbers — downloads, releases, and project activity, straight from GitHub's public API." />
+
+  <link rel="icon" type="image/svg+xml" href="assets/svg/mark/saga-mark-ink-bg.svg" />
+  <link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="favicon-192x192.png" />
+  <link rel="icon" href="favicon.ico" sizes="48x48" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+
+  <link rel="stylesheet" href="saga.css" />
+
+  <style>
+    /* ─── PAGE HEADER (same pattern as changelog.html) ─── */
+    .page-header { padding: 80px 56px 56px; border-bottom: 1px solid var(--border); }
+    .page-header-inner { max-width: 880px; margin: 0 auto; }
+    .eyebrow { margin-bottom: 14px; }
+    .page-h1 {
+      font-family: var(--ff-display);
+      font-size: clamp(40px, 5vw, 64px);
+      line-height: 1.0; letter-spacing: -.02em; font-weight: 400;
+    }
+    .page-sub { margin-top: 18px; font-size: 15px; line-height: 1.6; color: var(--sub); max-width: 620px; }
+    .page-sub a { color: var(--amber); text-decoration: none; }
+
+    .content { padding: 48px 56px 72px; }
+    .content-inner { max-width: 880px; margin: 0 auto; }
+
+    /* ─── STAT CARDS ─── */
+    .stat-grid {
+      display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+      gap: 14px; margin-bottom: 44px;
+    }
+    .stat-card {
+      border: 1px solid var(--border); border-radius: 14px;
+      background: rgba(244,234,216,.03);
+      padding: 20px 22px 18px;
+    }
+    .stat-card .n {
+      font-size: clamp(26px, 3vw, 34px); font-weight: 700;
+      letter-spacing: -.02em; color: var(--cream);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-card .n em { font-style: normal; color: var(--amber); }
+    .stat-card .l { margin-top: 4px; font-size: 12.5px; color: var(--sub); }
+
+    /* ─── SECTIONS ─── */
+    .sec { margin-bottom: 44px; }
+    .sec h2 {
+      font-size: 13px; font-weight: 600; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--amber);
+      margin-bottom: 16px;
+    }
+    .sec .note { font-size: 13px; color: var(--sub2); line-height: 1.6; margin-top: 12px; }
+
+    /* ─── CHART ─── */
+    .chart-wrap {
+      border: 1px solid var(--border); border-radius: 14px;
+      background: rgba(244,234,216,.03); padding: 22px 22px 14px;
+    }
+    .chart-wrap svg { width: 100%; height: auto; display: block; }
+    .chart-axis { font-size: 11px; fill: var(--sub2); font-family: var(--ff-body); }
+
+    /* ─── RELEASE TABLE ─── */
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th {
+      text-align: left; font-size: 11px; font-weight: 600;
+      letter-spacing: .12em; text-transform: uppercase; color: var(--sub2);
+      padding: 0 12px 10px; border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 11px 12px; border-bottom: 1px solid var(--border);
+      color: var(--cream); font-variant-numeric: tabular-nums;
+    }
+    td.r, th.r { text-align: right; }
+    td .tag { font-weight: 600; }
+    td .pre {
+      display: inline-block; margin-left: 8px; padding: 1px 8px;
+      font-size: 10.5px; font-weight: 600; letter-spacing: .06em;
+      color: var(--amber); border: 1px solid rgba(224,160,80,.4);
+      border-radius: 99px; vertical-align: 1px;
+    }
+    td.sub { color: var(--sub); }
+    tr.latest td { background: rgba(224,160,80,.05); }
+
+    .state-msg { font-size: 14px; color: var(--sub); padding: 8px 0; }
+
+    @media (max-width: 860px) {
+      .page-header, .content { padding-left: 24px; padding-right: 24px; }
+      .stat-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+    @media (max-width: 520px) {
+      th:nth-child(2), td:nth-child(2) { display: none; } /* date column */
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="index.html">
+    <svg viewBox="0 0 200 200" width="26" height="26" aria-hidden="true">
+      <rect x="41"  y="48" width="22" height="104" rx="5" fill="#F4EAD8"/>
+      <rect x="73"  y="38" width="22" height="124" rx="5" fill="#E0A050"/>
+      <rect x="105" y="56" width="22" height="88"  rx="5" fill="#F4EAD8"/>
+      <rect x="137" y="46" width="22" height="108" rx="5" fill="#F4EAD8"/>
+    </svg>
+    <span class="nav-wordmark">saga<svg width="9" height="9" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4 L34 20 L8 36 Z" fill="#E0A050"/></svg></span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="index.html#features">Features</a></li>
+    <li><a href="index.html#themes">Themes</a></li>
+    <li><a href="index.html#download">Download</a></li>
+    <li><a href="changelog.html">Changelog</a></li>
+    <li><a href="https://github.com/gaut3/saga" target="_blank" rel="noopener">GitHub</a></li>
+  </ul>
+  <a class="btn btn-amber btn-sm" href="https://github.com/gaut3/saga/releases/latest">&#8595; Download APK</a>
+</nav>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="page-header-inner">
+    <div class="eyebrow">By the numbers</div>
+    <h1 class="page-h1">The ledger.</h1>
+    <p class="page-sub">
+      Every figure on this page comes from
+      <a href="https://docs.github.com/en/rest/releases" target="_blank" rel="noopener">GitHub's public API</a>,
+      fetched by your own browser when you opened it &mdash; this site still runs no analytics
+      and keeps no visitor data. Counts are APK downloads, not installs or users: updates,
+      re-downloads and the curious all count once each.
+    </p>
+  </div>
+</div>
+
+<div class="content">
+  <div class="content-inner">
+
+    <!-- HERO STATS -->
+    <div class="stat-grid" id="hero-stats">
+      <div class="stat-card"><div class="n" id="s-total">&mdash;</div><div class="l">APK downloads, all releases</div></div>
+      <div class="stat-card"><div class="n" id="s-releases">&mdash;</div><div class="l">releases shipped</div></div>
+      <div class="stat-card"><div class="n" id="s-stars">&mdash;</div><div class="l">GitHub stars</div></div>
+      <div class="stat-card"><div class="n" id="s-days">&mdash;</div><div class="l">days since 1.0</div></div>
+    </div>
+    <p class="state-msg" id="api-state" hidden></p>
+
+    <!-- DOWNLOADS OVER TIME -->
+    <div class="sec">
+      <h2>Downloads over time</h2>
+      <div class="chart-wrap" id="chart-wrap">
+        <p class="state-msg" id="chart-state">Loading history&hellip;</p>
+      </div>
+      <p class="note">
+        Drawn from weekly snapshots committed to the repository by a scheduled workflow
+        (<code style="color:var(--amber)">stats-data/downloads-history.json</code>) &mdash;
+        GitHub's live API gives totals but keeps no curve, so the repo remembers for it.
+      </p>
+    </div>
+
+    <!-- PER-RELEASE TABLE -->
+    <div class="sec">
+      <h2>Per release</h2>
+      <table id="rel-table" hidden>
+        <thead>
+          <tr><th>Release</th><th>Published</th><th class="r">APK</th><th class="r">Verified</th></tr>
+        </thead>
+        <tbody id="rel-body"></tbody>
+      </table>
+      <p class="state-msg" id="rel-state">Loading releases&hellip;</p>
+      <p class="note">
+        &ldquo;Verified&rdquo; counts downloads of the release's <code style="color:var(--amber)">.sha256</code>
+        checksum file &mdash; a floor on how many people checked their download, since
+        <code style="color:var(--amber)">gh attestation verify</code> leaves no trace here.
+      </p>
+    </div>
+
+    <!-- FINE PRINT -->
+    <div class="sec">
+      <h2>Fine print</h2>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="n" id="f-velocity">&mdash;</div><div class="l">downloads/day, latest release</div></div>
+        <div class="stat-card"><div class="n" id="f-beta">&mdash;</div><div class="l">pre-release (beta) downloads</div></div>
+        <div class="stat-card"><div class="n" id="f-cadence">&mdash;</div><div class="l">avg days between releases</div></div>
+        <div class="stat-card"><div class="n" id="f-verify">&mdash;</div><div class="l">checksum verification rate</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <a href="index.html" style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;opacity:.4;">
+    <svg viewBox="0 0 200 200" width="18" height="18" aria-hidden="true">
+      <rect x="41"  y="48" width="22" height="104" rx="5" fill="#F4EAD8"/>
+      <rect x="73"  y="38" width="22" height="124" rx="5" fill="#E0A050"/>
+      <rect x="105" y="56" width="22" height="88"  rx="5" fill="#F4EAD8"/>
+      <rect x="137" y="46" width="22" height="108" rx="5" fill="#F4EAD8"/>
+    </svg>
+    <span style="display:inline-flex;align-items:center;gap:4px;font-family:var(--ff-body);font-weight:600;font-size:14px;letter-spacing:-0.025em;color:var(--cream)">saga<svg width="7" height="7" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 4 L34 20 L8 36 Z" fill="#E0A050"/></svg></span>
+  </a>
+  <div class="footer-links">
+    <a href="https://github.com/gaut3/saga" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/gaut3/saga/releases" target="_blank" rel="noopener">Releases</a>
+    <a href="changelog.html">Changelog</a>
+    <a href="stats.html">Stats</a>
+    <a href="https://github.com/gaut3/saga/blob/main/PRIVACY_POLICY.md" target="_blank" rel="noopener">Privacy Policy</a>
+    <a href="https://github.com/gaut3/saga/issues" target="_blank" rel="noopener">Issues</a>
+  </div>
+  <p class="footer-legal">
+    Saga is an independent, third-party client. It is not affiliated with, endorsed by,
+    or associated with Plex&nbsp;Inc. &ldquo;Plex&rdquo; is a trademark of Plex&nbsp;Inc.
+  </p>
+  <p class="footer-legal">&copy; 2026 gaut3 &middot; MIT License</p>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+  var REPO = 'gaut3/saga';
+  var fmt = function (n) { return n.toLocaleString('en-US'); };
+  var $ = function (id) { return document.getElementById(id); };
+
+  // Four outcomes, told apart (a check whose failure looks like success is broken
+  // regardless of which is happening): ok / rate-limited / network / unexpected.
+  function apiProblem(msg) {
+    var el = $('api-state');
+    el.hidden = false;
+    el.textContent = msg;
+    $('rel-state').textContent = msg;
+  }
+
+  function isApk(name)  { return /\.apk$/i.test(name); }
+  function isSha(name)  { return /\.sha256$/i.test(name); }
+  function sumAssets(rel, pred) {
+    return (rel.assets || []).reduce(function (s, a) {
+      return s + (pred(a.name || '') ? (a.download_count || 0) : 0);
+    }, 0);
+  }
+
+  // ── Releases + repo ────────────────────────────────────────────────────────
+  Promise.all([
+    fetch('https://api.github.com/repos/' + REPO + '/releases?per_page=100'),
+    fetch('https://api.github.com/repos/' + REPO)
+  ]).then(function (rs) {
+    if (rs[0].status === 403 || rs[0].status === 429) {
+      throw { limited: true };
+    }
+    if (!rs[0].ok || !rs[1].ok) { throw { status: rs[0].status || rs[1].status }; }
+    return Promise.all([rs[0].json(), rs[1].json()]);
+  }).then(function (data) {
+    var rels = data[0], repo = data[1];
+    if (!Array.isArray(rels) || rels.length === 0) {
+      apiProblem('No releases found.');
+      return;
+    }
+
+    // Newest first, as the API returns them.
+    var total = 0, shaTotal = 0, betaTotal = 0;
+    var stable = [];
+    rels.forEach(function (r) {
+      var apk = sumAssets(r, isApk);
+      total += apk;
+      shaTotal += sumAssets(r, isSha);
+      if (r.prerelease) { betaTotal += apk; } else { stable.push(r); }
+    });
+
+    // Hero cards.
+    $('s-total').innerHTML = '<em>' + fmt(total) + '</em>';
+    $('s-releases').textContent = fmt(rels.length);
+    $('s-stars').textContent = fmt(repo.stargazers_count || 0);
+    var first = rels[rels.length - 1];
+    var days = Math.max(1, Math.round((Date.now() - new Date(first.published_at)) / 864e5));
+    $('s-days').textContent = fmt(days);
+
+    // Fine print.
+    var latest = rels[0];
+    var ldays = Math.max(1, Math.round((Date.now() - new Date(latest.published_at)) / 864e5));
+    $('f-velocity').textContent = (sumAssets(latest, isApk) / ldays).toFixed(1);
+    $('f-beta').textContent = fmt(betaTotal);
+    if (stable.length > 1) {
+      var span = (new Date(stable[0].published_at) - new Date(stable[stable.length - 1].published_at)) / 864e5;
+      $('f-cadence').textContent = (span / (stable.length - 1)).toFixed(1);
+    } else {
+      $('f-cadence').textContent = '—';
+    }
+    $('f-verify').textContent = total > 0 ? (100 * shaTotal / total).toFixed(0) + '%' : '—';
+
+    // Table.
+    var body = $('rel-body');
+    rels.forEach(function (r, i) {
+      var tr = document.createElement('tr');
+      if (i === 0) { tr.className = 'latest'; }
+      var sha = sumAssets(r, isSha);
+      tr.innerHTML =
+        '<td><span class="tag">' + r.tag_name + '</span>' +
+          (r.prerelease ? '<span class="pre">beta</span>' : '') + '</td>' +
+        '<td class="sub">' + (r.published_at || '').slice(0, 10) + '</td>' +
+        '<td class="r">' + fmt(sumAssets(r, isApk)) + '</td>' +
+        '<td class="r sub">' + (sha ? fmt(sha) : '·') + '</td>';
+      body.appendChild(tr);
+    });
+    $('rel-state').hidden = true;
+    $('rel-table').hidden = false;
+  }).catch(function (e) {
+    if (e && e.limited) {
+      apiProblem("GitHub's API rate limit for your network is spent (60/hour, shared by IP). The numbers return within the hour — nothing is wrong with the project or your connection.");
+    } else if (e && e.status) {
+      apiProblem('GitHub answered ' + e.status + ' — try again in a minute.');
+    } else {
+      apiProblem("GitHub couldn't be reached — the numbers need a network connection.");
+    }
+  });
+
+  // ── History chart (same-origin snapshot file; absent until the workflow's
+  //    first run — that absence is a normal state, not an error) ──────────────
+  fetch('stats-data/downloads-history.json').then(function (r) {
+    if (r.status === 404) { throw { nofile: true }; }
+    if (!r.ok) { throw {}; }
+    return r.json();
+  }).then(function (hist) {
+    var pts = (hist.snapshots || []).map(function (s) {
+      return { d: s.date, t: s.total_apk };
+    }).filter(function (p) { return p.d && typeof p.t === 'number'; });
+
+    var wrap = $('chart-wrap');
+    if (pts.length === 0) { throw { nofile: true }; }
+    if (pts.length === 1) {
+      $('chart-state').textContent = 'One snapshot so far (' + pts[0].d + ': ' +
+        fmt(pts[0].t) + ' downloads). The curve starts at two.';
+      return;
+    }
+
+    // Zero-dependency SVG line chart.
+    var W = 820, H = 220, P = { l: 44, r: 14, t: 14, b: 28 };
+    var xs = pts.map(function (p) { return new Date(p.d).getTime(); });
+    var ys = pts.map(function (p) { return p.t; });
+    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+    var y1 = Math.max.apply(null, ys), y0 = 0;
+    var X = function (v) { return P.l + (W - P.l - P.r) * (x1 === x0 ? 0.5 : (v - x0) / (x1 - x0)); };
+    var Y = function (v) { return H - P.b - (H - P.t - P.b) * (y1 === y0 ? 0.5 : (v - y0) / (y1 - y0)); };
+
+    var line = pts.map(function (p, i) {
+      return (i ? 'L' : 'M') + X(new Date(p.d).getTime()).toFixed(1) + ' ' + Y(p.t).toFixed(1);
+    }).join(' ');
+    var dots = pts.map(function (p) {
+      return '<circle cx="' + X(new Date(p.d).getTime()).toFixed(1) + '" cy="' +
+        Y(p.t).toFixed(1) + '" r="3" fill="#F4EAD8"><title>' + p.d + ': ' + fmt(p.t) + '</title></circle>';
+    }).join('');
+
+    wrap.innerHTML =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Total APK downloads over time, from ' +
+        fmt(ys[0]) + ' on ' + pts[0].d + ' to ' + fmt(ys[ys.length - 1]) + ' on ' + pts[pts.length - 1].d + '">' +
+      '<line x1="' + P.l + '" y1="' + (H - P.b) + '" x2="' + (W - P.r) + '" y2="' + (H - P.b) + '" stroke="rgba(244,234,216,.15)"/>' +
+      '<text class="chart-axis" x="' + P.l + '" y="' + (H - 8) + '">' + pts[0].d + '</text>' +
+      '<text class="chart-axis" x="' + (W - P.r) + '" y="' + (H - 8) + '" text-anchor="end">' + pts[pts.length - 1].d + '</text>' +
+      '<text class="chart-axis" x="' + (P.l - 8) + '" y="' + (Y(y1) + 4) + '" text-anchor="end">' + fmt(y1) + '</text>' +
+      '<text class="chart-axis" x="' + (P.l - 8) + '" y="' + (H - P.b + 4) + '" text-anchor="end">0</text>' +
+      '<path d="' + line + '" fill="none" stroke="#E0A050" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+      dots + '</svg>';
+  }).catch(function (e) {
+    $('chart-state').textContent = (e && e.nofile)
+      ? 'No snapshots yet — the curve begins with the snapshot workflow’s first weekly run. Live totals above are unaffected.'
+      : 'The history file couldn’t be read — live totals above are unaffected.';
+  });
+})();
+</script>
+</body>
+</html>
