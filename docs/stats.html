@@ -137,7 +137,7 @@
     <!-- HERO STATS -->
     <div class="stat-grid" id="hero-stats">
       <div class="stat-card"><div class="n" id="s-total">&mdash;</div><div class="l">APK downloads, all releases</div></div>
-      <div class="stat-card"><div class="n" id="s-releases">&mdash;</div><div class="l">releases shipped</div></div>
+      <div class="stat-card"><div class="n" id="s-releases">&mdash;</div><div class="l">stable releases shipped</div></div>
       <div class="stat-card"><div class="n" id="s-stars">&mdash;</div><div class="l">GitHub stars</div></div>
       <div class="stat-card"><div class="n" id="s-days">&mdash;</div><div class="l">days since 1.0</div></div>
     </div>
@@ -280,7 +280,7 @@
 
     // Hero cards.
     $('s-total').innerHTML = '<em>' + fmt(total) + '</em>';
-    $('s-releases').textContent = fmt(rels.length);
+    $('s-releases').textContent = fmt(stable.length);
     $('s-stars').textContent = fmt(repo.stargazers_count || 0);
     var first = rels[rels.length - 1];
     var days = Math.max(1, Math.round((Date.now() - new Date(first.published_at)) / 864e5));
