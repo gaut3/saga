@@ -88,6 +88,8 @@
     tr.latest td { background: rgba(224,160,80,.05); }
 
     .state-msg { font-size: 14px; color: var(--sub); padding: 8px 0; }
+    /* .btn sets display, which would otherwise beat the hidden attribute. */
+    [hidden] { display: none !important; }
 
     @media (max-width: 860px) {
       .page-header, .content { padding-left: 24px; padding-right: 24px; }
@@ -169,6 +171,7 @@
         </thead>
         <tbody id="rel-body"></tbody>
       </table>
+      <button type="button" class="btn btn-ghost btn-sm" id="rel-more" hidden style="margin-top:16px"></button>
       <p class="state-msg" id="rel-state">Loading releases&hellip;</p>
       <p class="note">
         &ldquo;Checksum&rdquo; counts downloads of the release's <code style="color:var(--amber)">.sha256</code>
@@ -294,9 +297,12 @@
 
     // Table.
     var body = $('rel-body');
+    // The latest SHOWN rows; the rest wait behind a button.
+    var SHOWN = 10;
     rels.forEach(function (r, i) {
       var tr = document.createElement('tr');
       if (i === 0) { tr.className = 'latest'; }
+      if (i >= SHOWN) { tr.hidden = true; }
       var sha = sumAssets(r, isSha);
       tr.innerHTML =
         '<td><span class="tag">' + r.tag_name + '</span>' +
@@ -306,6 +312,15 @@
         '<td class="r sub">' + (sha ? fmt(sha) : '·') + '</td>';
       body.appendChild(tr);
     });
+    if (rels.length > SHOWN) {
+      var more = $('rel-more');
+      more.textContent = 'Show all ' + rels.length + ' releases';
+      more.hidden = false;
+      more.addEventListener('click', function () {
+        Array.prototype.forEach.call(body.rows, function (row) { row.hidden = false; });
+        more.hidden = true;
+      });
+    }
     $('rel-state').hidden = true;
     $('rel-table').hidden = false;
   }).catch(function (e) {
