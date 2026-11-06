@@ -52,12 +52,21 @@ class _MainShellState extends ConsumerState<MainShell>
   /// the same toast again.
   String? _announcedUpdate;
 
+  /// Cast failures (a session that won't start, no server for the TV, a
+  /// refused load). Here, not in the device sheet: the load can fail after
+  /// the sheet has closed, and the toast went with it.
+  StreamSubscription<String>? _castErrors;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _checkForUpdate();
+    });
+    _castErrors =
+        ref.read(playerServiceProvider).cast.errorStream.listen((reason) {
+      if (mounted) showSagaToast(context, 'Cast: $reason', isError: true);
     });
   }
 
@@ -96,6 +105,7 @@ class _MainShellState extends ConsumerState<MainShell>
 
   @override
   void dispose() {
+    _castErrors?.cancel();
     _networkRecheck?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();

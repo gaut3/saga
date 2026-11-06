@@ -12,6 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - **A streamed book picks up again after you leave home.** When the network changed under a streaming book, Saga reloaded it from the address that had just stopped working, so the reload failed and the book stayed paused. It now checks which address works first. Downloaded books were never affected.
+- **Casting without your Plex server says so, and lets the TV go.** A TV plays a book from your Plex server, even one you've downloaded to the phone. With the server out of reach, Saga used to stay "Connected" while the TV showed only the Cast logo, and pressing play started the book on the phone. It now ends the cast and tells you the server can't be reached, even if you've closed the "Play on" sheet by then.
+- **"This phone" stops the TV.** Choosing This phone while a book played on the TV carried on playing on the phone, but the TV kept playing too, until you next paused. The TV now stops as the phone takes over.
 
 ## [1.2.0-beta.5] - 2026-11-04
 

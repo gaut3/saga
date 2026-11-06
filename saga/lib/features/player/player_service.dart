@@ -1143,13 +1143,19 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// carries on playing there if the TV was ("This phone" in the device
   /// sheet). Otherwise the phone lands paused.
   Future<void> stopCasting({bool resumeHere = false}) async {
+    var resume = false;
     if (_castActive) {
       // One fresh reading, so the place handed back is the exact one.
       final s = await cast.fetchStatus();
       if (s != null) _onCastStatus(s);
-      await _leaveCast(resumeHere: resumeHere);
+      resume = resumeHere && _castWantsPlay;
+      await _leaveCast();
     }
     await cast.stopCasting();
+    // Only once the TV has been told to stop, and not awaited: play()
+    // awaits just_audio's, which returns at the next pause, and the TV
+    // played on under the phone until then.
+    if (resume) unawaited(play());
   }
 
   /// The TV's own volume, 0–1 (the device sheet's slider).
@@ -1212,6 +1218,16 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     final media = await castQueueFor(tracks);
     if (media == null) {
       cast.reportError('Casting needs your Plex server to be reachable.');
+      // Nothing reached the TV yet: let it go. Kept, the session left the
+      // TV on the receiver's Cast logo while the app said "Connected" and
+      // play went to the phone. A downloaded book doesn't help: the TV
+      // streams from the server, never from the phone. Not mid-cast: the
+      // TV is still playing the queue it has.
+      if (!_castActive &&
+          cast.session == session &&
+          cast.state == CastState.connected) {
+        unawaited(cast.stopCasting());
+      }
       return false;
     }
     if (key != _bookRatingKey) return false; // another book started meanwhile
@@ -1394,14 +1410,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   }
 
   /// The TV is done with the book: its place comes back to the phone's
-  /// player, paused there unless [resumeHere]. One path for Stop casting, a
-  /// TV switched off, a dropped network and someone else casting over us. A
-  /// lost connection never carries on playing on the phone (AntennaPod
-  /// #6539): the listener may be across the house from it. [saved]: the
-  /// caller has just saved the place.
-  Future<void> _leaveCast({bool resumeHere = false, bool saved = false}) async {
+  /// player, paused there ([stopCasting] resumes it for This phone). One
+  /// path for Stop casting, a TV switched off, a dropped network and someone
+  /// else casting over us. A lost connection never carries on playing on the
+  /// phone (AntennaPod #6539): the listener may be across the house from it.
+  /// [saved]: the caller has just saved the place.
+  Future<void> _leaveCast({bool saved = false}) async {
     if (!_castActive) return;
-    final wasPlaying = _castWantsPlay;
     final finished = _castFinished;
     _progressTimer?.cancel();
     // Still reading the TV: the session closes, and the place saves, at its
@@ -1436,7 +1451,6 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     if (_fadeLevel < 1) await _applyVolume();
     _broadcastState();
     AppLog.log('cast', 'cast ended — place handed back to the phone');
-    if (resumeHere && wasPlaying) await play();
   }
 
   /// A relaunch mid-cast: the Cast SDK resumes the session on its own, and

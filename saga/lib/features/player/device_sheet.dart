@@ -7,7 +7,6 @@ import '../../core/cast/cast_service.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_sheet.dart';
-import '../../shared/widgets/saga_toast.dart';
 import 'player_provider.dart';
 import 'player_service.dart';
 
@@ -46,14 +45,9 @@ class _DeviceSheetState extends ConsumerState<_DeviceSheet> {
     _subs
       ..add(_cast.stateStream.listen(rebuild))
       ..add(_cast.devicesStream.listen(rebuild))
-      ..add(_cast.statusStream.listen(rebuild))
-      // Session failures, and the handler's own (no server, a refused
-      // load): without this the sheet silently snaps back to the list.
-      ..add(_cast.errorStream.listen((reason) {
-        if (mounted) {
-          showSagaToast(context, 'Cast: $reason', isError: true);
-        }
-      }));
+      // Cast failures are shown by the shell ([MainShell]): a slow server
+      // can fail the load after this sheet has closed.
+      ..add(_cast.statusStream.listen(rebuild));
     widget.service.casting.addListener(_onCasting);
   }
 
