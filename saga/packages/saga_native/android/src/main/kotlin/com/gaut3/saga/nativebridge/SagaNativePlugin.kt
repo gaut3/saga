@@ -37,6 +37,7 @@ class SagaNativePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 SagaWidget.update(context, snapshot, playing)
                 result.success(null)
             }
+            "takeLog" -> result.success(SagaWidget.takeLog(context))
             else -> result.notImplemented()
         }
     }

@@ -126,6 +126,20 @@ class HomeWidgetSync {
         .listen((_) => refresh());
     service.progressChanged.listen((_) => refresh());
     refresh();
+    takeNativeLog();
+  }
+
+  /// Moves the widget sizes the launcher reported into the diagnostics log:
+  /// the layout follows them, and they arrive while Saga may not be running.
+  /// Each line keeps the time it was noted.
+  static Future<void> takeNativeLog() async {
+    try {
+      for (final line in await SagaWidgetBridge.takeLog()) {
+        AppLog.log('widget', line);
+      }
+    } catch (_) {
+      // Diagnostics only.
+    }
   }
 
   static Future<void> refresh() async {

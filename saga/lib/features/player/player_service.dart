@@ -578,6 +578,25 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     if (!isAutoReload) _jumped();
   }
 
+  /// Gives the current item its cover if it still has none. The fetch runs
+  /// once, at load, and skips when there's no server yet: a book restored
+  /// before one was chosen (signing back in) kept no cover in the player
+  /// and the notification until it was loaded again.
+  void refreshArtwork() {
+    final item = mediaItem.value;
+    if (item == null || item.artUri != null) return;
+    for (final t in _tracks) {
+      if (t.ratingKey != item.id) continue;
+      final local = ArtworkCache.getLocalUri(t.thumbPath);
+      if (local != null) {
+        mediaItem.add(item.copyWith(artUri: local));
+      } else {
+        _prefetchArtwork(t);
+      }
+      return;
+    }
+  }
+
   void _prefetchArtwork(PlexTrack track) {
     final thumbPath = track.thumbPath;
     if (thumbPath == null) return;

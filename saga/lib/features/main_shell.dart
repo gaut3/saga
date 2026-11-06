@@ -20,6 +20,7 @@ import 'collections/collections_screen.dart';
 import 'home/home_screen.dart';
 import '../core/providers.dart'
     show
+        activeServerUriProvider,
         connectivityProvider,
         recheckServerProvider,
         sagaThemeVariantProvider,
@@ -68,6 +69,9 @@ class _MainShellState extends ConsumerState<MainShell>
         ref.read(playerServiceProvider).cast.errorStream.listen((reason) {
       if (mounted) showSagaToast(context, 'Cast: $reason', isError: true);
     });
+    // The shell opens once there's a server, and the book in the player may
+    // have been restored before there was one to fetch its cover from.
+    ref.read(playerServiceProvider).refreshArtwork();
   }
 
   /// When the update check last ran this session; null before the first.
@@ -182,6 +186,12 @@ class _MainShellState extends ConsumerState<MainShell>
       if (was == null || now == null || listEquals(was, now)) return;
       if (now.every((r) => r == ConnectivityResult.none)) return;
       _onNetworkChanged();
+    });
+
+    // A new server address (chosen, or re-picked after a network change):
+    // a cover that couldn't be fetched before may be fetchable now.
+    ref.listen(activeServerUriProvider, (_, _) {
+      ref.read(playerServiceProvider).refreshArtwork();
     });
 
     ref.listen(updateCheckProvider, (_, next) {

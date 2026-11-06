@@ -29,12 +29,15 @@ import kotlin.math.min
 /** The home-screen widget. Everything it draws comes from [SagaWidget]. */
 class SagaWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        // Placed, after an app update, after a reboot (no periodic updates).
+        for (id in ids) SagaWidget.noteSize(context, manager, id, "update")
         SagaWidget.render(context)
     }
 
     override fun onAppWidgetOptionsChanged(
         context: Context, manager: AppWidgetManager, id: Int, options: Bundle,
     ) {
+        SagaWidget.noteSize(context, manager, id, "resize")
         // Below Android 12 the layout is picked by size, so a resize redraws.
         SagaWidget.render(context)
     }
@@ -122,6 +125,49 @@ internal object SagaWidget {
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    // The sizes launchers report, for the diagnostics log: on Android 12+ the
+    // launcher picks the layout from them, and one (Kvaesitso) was seen to
+    // change the layout over an app update with nothing else to go on. Kept
+    // apart from [PREFS], which every update clears. Sizes only, no names.
+    private const val LOG_PREFS = "saga_widget_log"
+    private const val LOG_MAX_LINES = 20
+
+    fun noteSize(context: Context, manager: AppWidgetManager, id: Int, reason: String) {
+        try {
+            val o = manager.getAppWidgetOptions(id)
+            fun dp(key: String) = o.getInt(key)
+            var line = "widget $id $reason: " +
+                "w ${dp(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)}–" +
+                "${dp(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH)} × " +
+                "h ${dp(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)}–" +
+                "${dp(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)}dp"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val sizes = o.getParcelableArrayList<SizeF>(AppWidgetManager.OPTION_APPWIDGET_SIZES)
+                if (sizes != null) {
+                    line += ", sizes " + sizes.joinToString(" ") {
+                        "${it.width.toInt()}×${it.height.toInt()}"
+                    }
+                }
+            }
+            val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
+                .format(java.util.Date())
+            val log = context.getSharedPreferences(LOG_PREFS, Context.MODE_PRIVATE)
+            val lines = log.getString("lines", "")!!.split('\n').filter { it.isNotEmpty() }
+            log.edit().putString("lines", (lines + "$time $line").takeLast(LOG_MAX_LINES)
+                .joinToString("\n")).apply()
+        } catch (e: Exception) {
+            Log.w(TAG, "noteSize failed: $e")
+        }
+    }
+
+    /** The size lines noted since the last call, oldest first; clears them. */
+    fun takeLog(context: Context): List<String> {
+        val log = context.getSharedPreferences(LOG_PREFS, Context.MODE_PRIVATE)
+        val lines = log.getString("lines", "")!!.split('\n').filter { it.isNotEmpty() }
+        if (lines.isNotEmpty()) log.edit().remove("lines").apply()
+        return lines
+    }
 
     private fun renderNow(context: Context) {
         val manager = AppWidgetManager.getInstance(context)

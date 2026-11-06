@@ -463,9 +463,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   title: 'Copy diagnostics',
                   subtitle: 'Recent errors, redacted — for bug reports',
                   onTap: () async {
+                    await HomeWidgetSync.takeNativeLog();
+                    if (!mounted) return;
                     final dump = AppLog.dump();
                     if (dump.isEmpty) {
-                      showSagaToast(context, 'No diagnostics recorded yet');
+                      showSagaToast(this.context, 'No diagnostics recorded yet');
                       return;
                     }
                     await Clipboard.setData(ClipboardData(text: dump));
@@ -678,6 +680,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         if (mounted) showSagaToast(context, "Couldn't sign out. Try again.");
         return;
       }
+      // clearAuth emptied the client, not this provider, which only reads
+      // it at start: the next sign-in routed straight to the shell with no
+      // server, instead of to server selection.
+      ref.read(activeServerUriProvider.notifier).state = null;
       ref.read(isAuthenticatedProvider.notifier).state = false;
       // The shell (and its lifecycle hook) is gone from here on: take the
       // book off the home-screen widget now.

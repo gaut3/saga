@@ -18,4 +18,10 @@ class SagaWidgetBridge {
   static Future<void> update(Map<String, Object?> snapshot,
           {required bool playing}) =>
       _channel.invokeMethod('update', {'snapshot': snapshot, 'playing': playing});
+
+  /// The widget sizes launchers reported since the last call ("HH:mm:ss
+  /// widget 23 update: w … × h …dp"), for the diagnostics log. Noted
+  /// natively, since they arrive while the app may not be running.
+  static Future<List<String>> takeLog() async =>
+      (await _channel.invokeListMethod<String>('takeLog')) ?? const [];
 }
