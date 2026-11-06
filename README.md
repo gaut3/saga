@@ -30,7 +30,7 @@
 - Chromecast support via native Cast SDK: the whole book is cast as one queue, the notification, lock screen, headset and widget drive the TV, the sleep timer and listening stats work on it, and your place is handed back when casting ends. Google Cast devices only (Chromecasts, Google TV, Nest speakers): TVs with their own casting systems, like most Roku and LG models, don't appear
 - Bluetooth speakers, receivers and car stereos work like headphones: the book plays on the phone and is sent to them, so everything above applies, including the sleep timer, smart rewind and listening stats. The phone has to stay in range
 - Headphone unplug auto-pause; auto-resume after calls and brief interruptions (on by default, and never over another app's media)
-- Android Auto — Continue listening, Downloaded, and your collections in the order you dragged them; built from what's already on the phone, so a downloaded book plays in the car with no server involved. Asking for a book by name works too. The same browse tree backs the lock screen's media-resumption card
+- Android Auto — Continue listening, Downloaded, and your collections in the order you dragged them; built from what's already on the phone, so a downloaded book plays in the car with no server involved. Asking for a book by name works too. The same browse tree backs the lock screen's media-resumption card. Android Auto hides apps that don't come from the Play Store until you allow them: see [Troubleshooting](#troubleshooting)
 
 **Library**
 - Browse your Plex audiobook library: search across titles and authors — narrators too, once the one-tap narrator index is built; sort by title, author, length or narrator (each reversible); grid or list toggle
@@ -178,6 +178,8 @@ The built manifest also carries `com.gaut3.saga.DYNAMIC_RECEIVER_NOT_EXPORTED_PE
 **Playback stops on its own after the screen has been off for a while** (common on Samsung, Xiaomi, OnePlus, and other heavily customized Android builds): the manufacturer's battery manager is killing Saga despite its playback service. Exclude Saga from battery optimization — **Android Settings → Apps → Saga → Battery → Unrestricted** (wording varies by brand). [dontkillmyapp.com](https://dontkillmyapp.com) has step-by-step instructions per manufacturer. Saga already does everything an app can do from its side (foreground playback service, wake and Wi-Fi locks); this last step is unfortunately in the system's hands.
 
 If playback was stopped this way, your position is safe — Saga saves it continuously — and the notification's play button or the app will resume where you left off.
+
+**Saga doesn't appear on the car's screen in Android Auto**, though audio may still play through the car: Android Auto only lists apps installed from the Play Store until you allow others. Open Android Auto's settings (on Pixels and most phones: **Android Settings → Connected devices → Connection preferences → Android Auto**; elsewhere search Settings for "Android Auto", or open **Settings → Apps → Android Auto** and its in-app settings), scroll to **Version** and tap it about ten times to turn on developer mode, then **⋮ → Developer settings → Unknown sources**. Reconnect to the car and Saga is in the app list.
 
 ---
 
