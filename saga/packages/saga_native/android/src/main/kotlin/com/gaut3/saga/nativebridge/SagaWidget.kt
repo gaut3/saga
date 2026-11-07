@@ -22,6 +22,7 @@ import android.util.Log
 import android.util.SizeF
 import android.view.View
 import android.widget.RemoteViews
+import androidx.core.os.BundleCompat
 import java.io.File
 import java.util.concurrent.Executors
 import kotlin.math.min
@@ -143,7 +144,8 @@ internal object SagaWidget {
                 "h ${dp(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)}–" +
                 "${dp(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)}dp"
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val sizes = o.getParcelableArrayList<SizeF>(AppWidgetManager.OPTION_APPWIDGET_SIZES)
+                val sizes = BundleCompat.getParcelableArrayList(
+                    o, AppWidgetManager.OPTION_APPWIDGET_SIZES, SizeF::class.java)
                 if (sizes != null) {
                     line += ", sizes " + sizes.joinToString(" ") {
                         "${it.width.toInt()}×${it.height.toInt()}"

@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **A cast with nothing playing lets the TV go after 10 minutes.** Once a book on your TV or speaker has been paused for 10 minutes, finished, or faded out by the sleep timer, Saga ends the cast, and your place comes back to the phone as it does when you stop casting. Before, the speaker stayed connected until you disconnected it yourself, all night after a sleep timer. Suggested by [@cscott0108](https://github.com/cscott0108) ([#24](https://github.com/gaut3/saga/issues/24)).
+
 ## [1.2.0-beta.6] - 2026-11-06
 
 <!-- Beta only: delete this block for the final 1.2.0. -->

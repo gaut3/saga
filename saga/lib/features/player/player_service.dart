@@ -1056,6 +1056,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   CastHandoff? _castPendingAdopt;
   Timer? _castAdoptTimeout;
   bool _castAdopting = false;
+  // A session up with nothing playing ends after [_castIdleLimit] (#24).
+  Timer? _castIdleTimer;
+  static const _castIdleLimit = Duration(minutes: 10);
   DateTime? _handoffWrittenAt;
   int? _remoteVolume;
 
@@ -1180,6 +1183,32 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// The TV's own volume, 0–1 (the device sheet's slider).
   Future<void> setCastVolume(double volume) => cast.setDeviceVolume(volume);
 
+  /// A session nothing plays on lets the TV go after [_castIdleLimit]:
+  /// paused, finished, faded out by the sleep timer, or connected with no
+  /// book. The receiver's own idle timeout only covers a TV with no media at
+  /// all, so a paused book held a speaker all night (#24). Re-checked on
+  /// every state broadcast and session change, so any play cancels it.
+  void _watchCastIdle() {
+    final idle = cast.state == CastState.connected &&
+        !_isPlaying &&
+        !_castLoading &&
+        !_castOnConnect;
+    if (!idle) {
+      _castIdleTimer?.cancel();
+      _castIdleTimer = null;
+    } else {
+      _castIdleTimer ??= Timer(_castIdleLimit, () {
+        _castIdleTimer = null;
+        if (cast.state != CastState.connected || _isPlaying || _castLoading) {
+          return;
+        }
+        AppLog.log('cast',
+            'nothing played for ${_castIdleLimit.inMinutes} min, ending the cast');
+        unawaited(stopCasting());
+      });
+    }
+  }
+
   void _onCastState(CastState s) {
     if (s == CastState.connected) {
       _castAdoptTimeout?.cancel();
@@ -1200,6 +1229,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         unawaited(_writeBackHandoff(ended: true));
       }
     }
+    _watchCastIdle();
   }
 
   /// Hands the loaded book to the TV that just connected, from where the
@@ -2215,6 +2245,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       speed: _player.speed,
       queueIndex: _index,
     ));
+    _watchCastIdle();
   }
 
   MediaItem _trackToMediaItem(PlexTrack track) {
