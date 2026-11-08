@@ -75,10 +75,13 @@ internal object SagaWidget {
     private const val LARGE_MIN_WIDTH_DP = 250
     private const val LARGE_COVER_DP = 200
 
-    // One row: anything shorter than the small card's 110dp. The cover is as
-    // tall as the row, which tops out near 100dp on a large phone.
-    private const val STRIP_MAX_HEIGHT_DP = 110
-    private const val STRIP_COVER_DP = 100
+    // One row: anything shorter than this takes a strip, not the small card.
+    // A row is ~100dp on a large phone, but Kvaesitso sometimes draws the
+    // widget over its frame's padding too, ~116dp, and at 110 that flipped the
+    // row to the small card, cut off. The small card needs more than that
+    // anyway. The cover is as tall as the row.
+    private const val STRIP_MAX_HEIGHT_DP = 130
+    private const val STRIP_COVER_DP = 130
 
     // A row this tall takes the two-tier strip: title at full width, the
     // buttons beneath (10dp + two lines of text + a 48dp button row).
@@ -191,7 +194,8 @@ internal object SagaWidget {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             manager.updateAppWidget(ids, RemoteViews(mapOf(
                 SizeF(110f, 40f) to emptyViews(context, palette, signedOut, R.layout.saga_widget_empty_strip),
-                SizeF(110f, 110f) to emptyViews(context, palette, signedOut, R.layout.saga_widget_empty),
+                SizeF(110f, STRIP_MAX_HEIGHT_DP.toFloat()) to
+                    emptyViews(context, palette, signedOut, R.layout.saga_widget_empty),
             )))
             return
         }
@@ -232,13 +236,14 @@ internal object SagaWidget {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 // The launcher draws the largest of these that fits, and the
-                // smallest when none does: a one-row widget is under the
-                // small card's 110dp, so it gets the strip.
+                // smallest when none does: a one-row widget is under
+                // STRIP_MAX_HEIGHT_DP, so it gets a strip.
                 val views = RemoteViews(mapOf(
                     SizeF(110f, 40f) to bookViews(context, p, palette, R.layout.saga_widget_strip, strip),
                     SizeF(110f, STRIP_TALL_MIN_HEIGHT_DP.toFloat()) to
                         bookViews(context, p, palette, R.layout.saga_widget_strip_tall, strip),
-                    SizeF(110f, 110f) to bookViews(context, p, palette, R.layout.saga_widget_small, small),
+                    SizeF(110f, STRIP_MAX_HEIGHT_DP.toFloat()) to
+                        bookViews(context, p, palette, R.layout.saga_widget_small, small),
                     SizeF(LARGE_MIN_WIDTH_DP.toFloat(), 150f) to bookViews(context, p, palette, R.layout.saga_widget_large, large),
                     // Twice: the launcher picks the largest *area* that fits,
                     // so the narrow key loses to the 4x2 card on a wide widget

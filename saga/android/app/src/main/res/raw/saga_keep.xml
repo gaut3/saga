@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Release builds shrink unused resources, and these are used only by name
+     from Dart (MediaControl.androidIcon, the car tabs' android.resource://
+     URIs), which the shrinker can't see. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/saga_skip_*,@drawable/saga_car_*,@drawable/ic_launcher_monochrome" />

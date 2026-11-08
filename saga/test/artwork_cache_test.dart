@@ -104,4 +104,40 @@ void main() {
     await dir.delete(recursive: true);
     await expectLater(ArtworkCache.prune(), completes);
   });
+
+  group('shared URIs — what Android Auto opens', () {
+    // `CoverProvider.kt` serves only names of one shape, under the authority
+    // the manifest declares. Drift on either side is a car full of blank
+    // tiles, visible nowhere but the car.
+    const thumb = '/library/metadata/1/thumb/9';
+
+    test('none for a cover that isn\'t cached', () {
+      expect(ArtworkCache.getSharedUri(thumb), isNull);
+      expect(ArtworkCache.getSharedUri(null), isNull);
+    });
+
+    test('a cached cover is named the way CoverProvider accepts', () async {
+      await ArtworkCache.debugFileFor(thumb).writeAsBytes([0]);
+      final uri = ArtworkCache.getSharedUri(thumb)!;
+      expect(uri.scheme, 'content');
+      expect(uri.host, ArtworkCache.sharedAuthority);
+      expect(uri.pathSegments, hasLength(1));
+      // CoverProvider.COVER_NAME.
+      expect(uri.pathSegments.single, matches(RegExp(r'^[0-9a-f]{1,8}\.art$')));
+    });
+
+    test('the authority is the one the manifest gives CoverProvider', () {
+      final manifest =
+          File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+      final provider = RegExp(r'<provider[^>]*android:name="\.CoverProvider"[^>]*>')
+          .stringMatch(manifest);
+      expect(provider, isNotNull);
+      expect(provider,
+          contains('android:authorities="${ArtworkCache.sharedAuthority}"'));
+      final kotlin = File(
+              'android/app/src/main/kotlin/com/gaut3/saga/CoverProvider.kt')
+          .readAsStringSync();
+      expect(kotlin, contains(r'Regex("^[0-9a-f]{1,8}\\.art$")'));
+    });
+  });
 }

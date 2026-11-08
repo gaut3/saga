@@ -1,9 +1,12 @@
 import 'package:audio_service/audio_service.dart';
 
+import '../../core/book_progress.dart';
 import '../../core/local_library.dart';
+import '../../core/plex/models/plex_book.dart';
 import '../../core/storage/artwork_cache.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/custom_collection_store.dart';
+import 'player_provider.dart' show isBookFullyDownloaded;
 import 'session_restore.dart';
 import '../../core/book_status.dart';
 
@@ -79,10 +82,13 @@ const _continueLimit = 25;
 List<MediaItem> browseChildren(String parentMediaId) {
   switch (parentMediaId) {
     case BrowseId.root:
+      // Android Auto shows these as tabs, the selected one filled with the
+      // car theme's accent (`res/values/car.xml`), and wants a white icon each.
       return [
-        _category(BrowseId.continuing, 'Continue listening'),
-        _category(BrowseId.downloaded, 'Downloaded'),
-        _category(BrowseId.collections, 'Collections'),
+        _category(BrowseId.continuing, 'Continue listening',
+            'saga_car_continue'),
+        _category(BrowseId.downloaded, 'Downloaded', 'saga_car_downloaded'),
+        _category(BrowseId.collections, 'Collections', 'saga_car_collections'),
       ];
 
     case BrowseId.recent:
@@ -145,7 +151,34 @@ MediaItem? bookItem(String bookRatingKey) {
     duration: durationMs != null ? Duration(milliseconds: durationMs) : null,
     artUri: _artUri(book.thumbPath),
     playable: true,
+    extras: _bookIndicators(book),
   );
+}
+
+/// What Android Auto draws on a book's tile besides the cover: a progress bar
+/// (or a "finished" mark) and a downloaded icon.
+///
+/// The keys are androidx `MediaConstants` / `MediaMetadataCompat` names.
+/// Download status goes in under the *metadata* key: audio_service builds each
+/// row from a `MediaMetadataCompat`, which turns that key into the description's
+/// `EXTRA_DOWNLOAD_STATUS` as the long Auto reads — a Dart int sent straight
+/// to the description arrives as an Integer, and Auto's `getLong` sees nothing.
+Map<String, dynamic> _bookIndicators(PlexBook book) {
+  final key = book.ratingKey;
+  final finished = isBookFinished(key);
+  final fraction =
+      finished ? 1.0 : bookProgressFraction(book, BookmarkStore.load(key));
+  final started = fraction != null && fraction > 0;
+  return {
+    'android.media.extra.PLAYBACK_STATUS': finished
+        ? 2 // fully played
+        : started
+            ? 1 // partially played
+            : 0, // not played
+    if (started)
+      'androidx.media.MediaItem.Extras.COMPLETION_PERCENTAGE': fraction,
+    if (isBookFullyDownloaded(key)) 'android.media.metadata.DOWNLOAD_STATUS': 2,
+  };
 }
 
 /// Books matching [query] in title or author, most recently listened first.
@@ -179,10 +212,15 @@ List<MediaItem> _books(Iterable<String> bookRatingKeys) => [
         if (bookItem(key) case final item?) item,
     ];
 
-MediaItem _category(String id, String title) =>
-    MediaItem(id: id, title: title, playable: false);
+MediaItem _category(String id, String title, String icon) => MediaItem(
+      id: id,
+      title: title,
+      playable: false,
+      artUri: Uri.parse('android.resource://com.gaut3.saga/drawable/$icon'),
+    );
 
-/// The cached cover for [thumbPath], or null — **never an authenticated URL.**
+/// The cached cover for [thumbPath] as a `content://` URI served by
+/// `CoverProvider`, or null — **never an authenticated URL.**
 ///
 /// Everything this function returns leaves the app. Android's browse API is
 /// served by an exported `MediaBrowserService`, and `audio_service` hands a
@@ -192,14 +230,15 @@ MediaItem _category(String id, String title) =>
 /// no permission at all.
 ///
 /// A URL carrying a credential must not appear here — the Plex token is
-/// account-wide, not audiobook-scoped. A `file://` URI into app-private
-/// storage is safe by contrast: another app can read the path and not the
-/// bytes.
+/// account-wide, not audiobook-scoped. A cover is not a credential: the
+/// provider serves the cache's covers and nothing else, read-only, to callers
+/// who already hold the name — which is this list. A `file://` path was safer
+/// still, and useless: Android Auto reads artwork only through a content
+/// resolver, so every tile in the car was blank.
 ///
 /// The cost is a cover missing from a car list until that book has been played
 /// once ([AudioPlayerService._prefetchArtwork] caches it with header auth on
 /// load). A row still browses and plays without one. Fetching it here isn't an
 /// option regardless — see [browseChildren] on why this stays local and
 /// synchronous.
-Uri? _artUri(String? thumbPath) =>
-    thumbPath == null ? null : ArtworkCache.getLocalUri(thumbPath);
+Uri? _artUri(String? thumbPath) => ArtworkCache.getSharedUri(thumbPath);

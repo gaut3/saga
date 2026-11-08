@@ -136,11 +136,36 @@ class ArtworkCache {
     return '${h.toRadixString(16)}.art';
   }
 
+  /// Where [thumbPath]'s cover lives, cached or not — so a test can put one
+  /// there without a server.
+  @visibleForTesting
+  static File debugFileFor(String thumbPath) =>
+      File('${_dir!.path}/${_filename(thumbPath)}');
+
   /// Returns a local [file://] URI if the artwork is already on disk.
   static Uri? getLocalUri(String? thumbPath) {
     if (thumbPath == null || _dir == null) return null;
     final f = File('${_dir!.path}/${_filename(thumbPath)}');
     return f.existsSync() ? f.uri : null;
+  }
+
+  /// Where `CoverProvider.kt` serves this directory to other processes — the
+  /// `android:authorities` of its `<provider>` in the manifest
+  /// (`media_browse_test` holds the two together).
+  static const sharedAuthority = 'com.gaut3.saga.covers';
+
+  /// The cached cover as a `content://` URI another app can open, or null.
+  ///
+  /// For what Android draws in its own process — Android Auto's shelves, the
+  /// resumption card. A [getLocalUri] path names a file in Saga's private
+  /// storage that those processes can't read, so it showed as a blank tile.
+  /// Saga's own MediaSession art doesn't need this: audio_service decodes the
+  /// `file://` itself and hands over the bitmap.
+  static Uri? getSharedUri(String? thumbPath) {
+    if (thumbPath == null || _dir == null) return null;
+    final name = _filename(thumbPath);
+    if (!File('${_dir!.path}/$name').existsSync()) return null;
+    return Uri(scheme: 'content', host: sharedAuthority, path: '/$name');
   }
 
   /// Downloads artwork using header-based auth (no token in URL).

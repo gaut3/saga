@@ -67,6 +67,24 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc"/>
+
+        <!-- Android Auto draws its own screens; these are the parts of them
+             that are Saga's. The theme's colorAccent fills the selected tab and
+             the play button (amber, as on the ink theme); the attribution icon
+             marks Saga's media card. -->
+        <meta-data
+            android:name="com.google.android.gms.car.application.theme"
+            android:resource="@style/CarTheme"/>
+        <meta-data
+            android:name="androidx.car.app.TintableAttributionIcon"
+            android:resource="@drawable/ic_launcher_monochrome"/>
+
+        <!-- Covers for the car's shelves, read-only. Auto can't open a file://
+             in Saga's private storage; CoverProvider.kt says what it exposes. -->
+        <provider
+            android:name=".CoverProvider"
+            android:authorities="com.gaut3.saga.covers"
+            android:exported="true"/>
     </application>
 
     <queries>

@@ -119,16 +119,17 @@ Future<void> _run() async {
         androidStopForegroundOnPause: false,
         androidResumeOnClick: true,
         androidNotificationIcon: 'drawable/ic_launcher_monochrome',
-        // How Android Auto lays the browse tree out. Lists, not grids, on both
-        // levels: an audiobook title is long and a grid tile truncates it to
-        // the point of being unreadable at a glance, which is the only kind of
-        // look a driver gets.
+        // How Android Auto lays the browse tree out: books as a grid of
+        // covers, title and author under each (the 2.0 handoff's car frame) —
+        // the cover is what a glance finds, and a long title truncates to the
+        // part a listener recognises. Collections stay a list: a name, not a
+        // picture, is what tells them apart.
         androidBrowsableRootExtras: {
           AndroidContentStyle.supportedKey: true,
           AndroidContentStyle.browsableHintKey:
               AndroidContentStyle.listItemHintValue,
           AndroidContentStyle.playableHintKey:
-              AndroidContentStyle.listItemHintValue,
+              AndroidContentStyle.gridItemHintValue,
         },
       ),
     );

@@ -114,6 +114,20 @@ void main() {
       expect(root.every((i) => i.playable == false), isTrue);
     });
 
+    test('each shelf carries a tab icon that exists as a drawable', () {
+      // Auto draws the root as tabs with a white icon each; a name that
+      // doesn't resolve is a blank tab, and only the car would show it.
+      for (final shelf in browseChildren(BrowseId.root)) {
+        final uri = shelf.artUri!;
+        expect(uri.scheme, 'android.resource');
+        expect(uri.host, 'com.gaut3.saga');
+        expect(uri.pathSegments.first, 'drawable');
+        final file = File(
+            'android/app/src/main/res/drawable/${uri.pathSegments[1]}.xml');
+        expect(file.existsSync(), isTrue, reason: '${file.path} missing');
+      }
+    });
+
     test('an unknown parent is empty, not an error', () {
       expect(browseChildren('nonsense/id'), isEmpty);
       expect(browseChildren(BrowseId.collection('gone')), isEmpty);
@@ -222,6 +236,90 @@ void main() {
       expect(browseChildren(BrowseId.continuing), isEmpty);
       expect(browseChildren(BrowseId.recent), isEmpty);
     });
+  });
+
+  group('what a book tile shows besides the cover', () {
+    const status = 'android.media.extra.PLAYBACK_STATUS';
+    const percent = 'androidx.media.MediaItem.Extras.COMPLETION_PERCENTAGE';
+    const download = 'android.media.metadata.DOWNLOAD_STATUS';
+
+    PlexTrack track(String book, int n) => PlexTrack(
+          ratingKey: '$book-$n',
+          key: '/library/metadata/$book-$n',
+          title: 'Part $n',
+          durationMs: 60000,
+          index: n,
+          partKey: '/parts/$n',
+        );
+
+    test('an unstarted book is "not played", with no bar', () async {
+      await saveBook('1', title: 'Fresh');
+      final extras = bookItem('1')!.extras!;
+      expect(extras[status], 0);
+      expect(extras.containsKey(percent), isFalse);
+    });
+
+    test('a book in progress carries how far through it is', () async {
+      await saveBook('1', title: 'Halfway');
+      await BookmarkStore.save(
+        '1',
+        BookPosition(
+          trackRatingKey: '1-1',
+          positionMs: 3000,
+          absolutePositionMs: 3000,
+          totalDurationMs: 12000,
+          savedAt: DateTime(2026, 8, 1),
+        ),
+      );
+      final extras = bookItem('1')!.extras!;
+      expect(extras[status], 1);
+      expect(extras[percent], 0.25);
+      // A double, or Auto's getDouble reads nothing.
+      expect(extras[percent], isA<double>());
+    });
+
+    test('a finished book is "fully played"', () async {
+      await saveBook('1', title: 'Done', listenedAt: DateTime(2026, 8, 1));
+      await CompletedBooksStore.markCompleted('1');
+      final extras = bookItem('1')!.extras!;
+      expect(extras[status], 2);
+      expect(extras[percent], 1.0);
+    });
+
+    test('only a fully downloaded book is marked downloaded', () async {
+      await saveBook('1', title: 'Two files');
+      await TrackCacheStore.save('1', [track('1', 1), track('1', 2)]);
+      BookDownloadStore.recordDownload('1', '1-1');
+      expect(bookItem('1')!.extras!.containsKey(download), isFalse);
+      BookDownloadStore.recordDownload('1', '1-2');
+      expect(bookItem('1')!.extras![download], 2);
+    });
+  });
+
+  test('every skip interval Settings offers has its drawn button', () {
+    // The notification / lock screen / car skip buttons show the interval
+    // (`AudioPlayerService._skipControl`). An option without its drawable
+    // falls back to the stock glyph — not broken, but not what was chosen.
+    final settings = File('lib/features/settings/settings_screen.dart')
+        .readAsStringSync();
+    final options = RegExp(r'_skipOptions = \[([^\]]*)\]')
+        .firstMatch(settings)!
+        .group(1)!
+        .split(',')
+        .map((s) => int.parse(s.trim()));
+    final service = File('lib/features/player/player_service.dart')
+        .readAsStringSync();
+    for (final s in options) {
+      for (final dir in ['back', 'forward']) {
+        expect(
+            File('android/app/src/main/res/drawable/saga_skip_${dir}_$s.xml')
+                .existsSync(),
+            isTrue,
+            reason: 'no drawable for $dir $s s');
+      }
+      expect(service, contains(RegExp('const \\{[^}]*\\b$s\\b')),
+          reason: '_skipControl does not list $s');
+    }
   });
 
   group('downloaded', () {

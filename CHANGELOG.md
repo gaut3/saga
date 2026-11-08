@@ -7,7 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **A one-row widget keeps its layout.** Some launchers, Kvaesitso among them, sometimes draw a widget over the padding around it, which makes one row a little taller. That was enough for Saga to switch a one-row widget to the wide card, which doesn't fit one row: the cover was cut off and the title wrapped. A widget now has to be clearly two rows tall before it gets the wide card.
+
 ### Changed
+- **Android Auto looks like Saga.** Your books are a grid of covers with the title and author under each, and each cover shows how far you are, or that you've finished, and whether the book is downloaded. The three shelves have icons, and the selected shelf and the play button are Saga's amber. Covers were missing in the car before: Android Auto can't open files in Saga's private storage, so Saga now shares its covers with it (the covers only, read-only).
+- **The skip buttons show your skip length.** In the notification, on the lock screen and in Android Auto, the skip buttons are arrows with your skip back and forward times inside, like the player's and the widget's, instead of rewind and fast-forward arrows.
 - **A cast with nothing playing lets the TV go after 10 minutes.** Once a book on your TV or speaker has been paused for 10 minutes, finished, or faded out by the sleep timer, Saga ends the cast, and your place comes back to the phone as it does when you stop casting. Before, the speaker stayed connected until you disconnected it yourself, all night after a sleep timer. Suggested by [@cscott0108](https://github.com/cscott0108) ([#24](https://github.com/gaut3/saga/issues/24)).
 
 ## [1.2.0-beta.6] - 2026-11-06

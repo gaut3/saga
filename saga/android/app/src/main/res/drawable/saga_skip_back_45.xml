@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated: skip back 45 s (the -45 button). White strokes; Android Auto and the system media controls tint them. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M5,12 a7,7 0 1,0 7,-7 H9" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000"/>
+    <path android:pathData="M11,2 L8,5 L11,8" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000"/>
+    <group android:translateX="9.2" android:translateY="10.9">
+        <path android:pathData="M1.6,4.6 L1.6,0 L0,3.1 L2.2,3.1" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.2" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000"/>
+    </group>
+    <group android:translateX="12.6" android:translateY="10.9">
+        <path android:pathData="M2.0,0 L0.35,0 L0.15,2.0 C0.45,1.8 0.75,1.75 1.05,1.75 C1.75,1.75 2.2,2.3 2.2,3.15 C2.2,4.0 1.7,4.6 1.0,4.6 C0.6,4.6 0.25,4.45 0,4.15" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.2" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000"/>
+    </group>
+</vector>

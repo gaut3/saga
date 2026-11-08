@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android Auto's colours for Saga (the manifest's
+         com.google.android.gms.car.application.theme). Auto's surfaces are
+         dark whatever the phone's theme, so this is the ink theme: ink
+         behind, amber accent. Both spellings of each attribute, since hosts
+         differ in which one they resolve. -->
+    <style name="CarTheme" parent="Theme.AppCompat">
+        <item name="colorPrimary">#1E1410</item>
+        <item name="colorPrimaryDark">#1E1410</item>
+        <item name="colorAccent">#E0A050</item>
+        <item name="android:colorPrimary">#1E1410</item>
+        <item name="android:colorPrimaryDark">#1E1410</item>
+        <item name="android:colorAccent">#E0A050</item>
+    </style>
+</resources>

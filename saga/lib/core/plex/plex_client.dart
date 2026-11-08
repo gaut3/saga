@@ -303,9 +303,9 @@ class PlexClient {
   /// the user signed out. A URL that never holds a token can't be cached into
   /// one.
   ///
-  /// Nothing that leaves the app may use this either: for a [MediaItem] or the
-  /// browse tree use `ArtworkCache.getLocalUri`, and for a Cast device use
-  /// [buildCastMedia].
+  /// Nothing that leaves the app may use this either: for a [MediaItem] use
+  /// `ArtworkCache.getLocalUri`, for the browse tree
+  /// `ArtworkCache.getSharedUri`, and for a Cast device [buildCastMedia].
   String? buildThumbUrl(String? thumbPath) {
     if (thumbPath == null || _serverUri == null) return null;
     return '$_serverUri$thumbPath';

@@ -2211,14 +2211,37 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   int _absolutePositionMs(int currentTrackPositionMs) => absoluteFromTrack(
       _trackDurationsMs, _index ?? 0, currentTrackPositionMs);
 
+  /// The skip buttons Android draws — notification, lock screen, Android
+  /// Auto's player — each showing the listener's own interval. audio_service's
+  /// stock rewind / fast-forward glyphs read as "scrub", which a 30-second jump
+  /// isn't.
+  ///
+  /// One drawable per interval Settings offers (`_skipOptions`); a value from
+  /// anywhere else (a restored backup) keeps the stock glyph rather than a
+  /// number that lies.
+  static MediaControl _skipControl({required bool forward}) {
+    final seconds = forward
+        ? SettingsStore.skipForwardSeconds
+        : SettingsStore.skipBackwardSeconds;
+    if (!const {15, 30, 45, 60}.contains(seconds)) {
+      return forward ? MediaControl.fastForward : MediaControl.rewind;
+    }
+    return MediaControl(
+      androidIcon:
+          'drawable/saga_skip_${forward ? 'forward' : 'back'}_$seconds',
+      label: forward ? 'Forward $seconds seconds' : 'Back $seconds seconds',
+      action: forward ? MediaAction.fastForward : MediaAction.rewind,
+    );
+  }
+
   void _broadcastState([PlaybackEvent? event]) {
     final playing = _isPlaying;
     final position = Duration(milliseconds: _trackPosMs);
     playbackState.add(playbackState.value.copyWith(
       controls: [
-        MediaControl.rewind,
+        _skipControl(forward: false),
         if (playing) MediaControl.pause else MediaControl.play,
-        MediaControl.fastForward,
+        _skipControl(forward: true),
       ],
       systemActions: const {
         MediaAction.seek,
