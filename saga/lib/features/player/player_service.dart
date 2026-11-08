@@ -94,6 +94,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   double _duckLevel = 1.0;
   double _fadeLevel = 1.0;
   int _lastChapterIndex = -1; // for chapter-aware notification title (single M4B)
+  bool _queueIsChapters = false; // the queue holds a single M4B's chapters
   bool _completedThisSession = false; // guards the per-listen completion count
   int _previousAbsolutePositionMs = -1; // -1 = no saved position for undo
   final ValueNotifier<bool> canUndoSeekNotifier = ValueNotifier(false);
@@ -508,7 +509,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // Publish queue/notification metadata before the (potentially slow) network
     // load, so the media notification has real content the moment the service
     // goes foreground below — not a blank "Saga" card until buffering finishes.
+    // One item per file: a multi-file book's chapters. A single M4B's are
+    // only known once its chapter list is cached; [_updateChapterMediaItem]
+    // swaps them in then.
     queue.add(tracks.map(_trackToMediaItem).toList());
+    _queueIsChapters = false;
     mediaItem.add(_trackToMediaItem(tracks[startTrackIndex]));
     _prefetchArtwork(tracks[startTrackIndex]);
 
@@ -587,9 +592,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     if (item == null || item.artUri != null) return;
     for (final t in _tracks) {
       if (t.ratingKey != item.id) continue;
-      final local = ArtworkCache.getLocalUri(t.thumbPath);
-      if (local != null) {
-        mediaItem.add(item.copyWith(artUri: local));
+      final shared = ArtworkCache.getSharedUri(t.thumbPath);
+      if (shared != null) {
+        mediaItem.add(item.copyWith(artUri: shared));
       } else {
         _prefetchArtwork(t);
       }
@@ -607,10 +612,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
     ArtworkCache.prefetch(thumbPath, serverUri, client.authHeaders)
         .then((fileUri) {
-      if (fileUri == null) return;
+      final shared = fileUri == null ? null : ArtworkCache.getSharedUri(thumbPath);
+      if (shared == null) return;
       final current = mediaItem.value;
       if (current?.id == track.ratingKey) {
-        mediaItem.add(current!.copyWith(artUri: fileUri));
+        mediaItem.add(current!.copyWith(artUri: shared));
       }
     });
   }
@@ -893,6 +899,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       // Last, so listeners never see a half-cleared session. main_shell hides
       // the pill on a null mediaItem, and audio_service drops the notification.
       queue.add([]);
+      _queueIsChapters = false;
       mediaItem.add(null);
       AppLog.log('playback', 'session cleared by user');
     } finally {
@@ -998,15 +1005,47 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     final idx = chapterIndexAt(
         [for (final c in chapters) c.start.inMilliseconds],
         position.inMilliseconds);
+    if (!_queueIsChapters) _publishChapterQueue(chapters);
     if (idx == _lastChapterIndex) return;
     _lastChapterIndex = idx;
     final current = mediaItem.value;
     if (current == null) return;
     mediaItem.add(current.copyWith(title: chapters[idx].title));
+    _broadcastState(); // the queue's current chapter is [queueIndex]
   }
 
+  /// Makes the session queue — Android Auto's "Chapters" list — a single
+  /// M4B's chapters instead of its one file, so the car can jump to one.
+  void _publishChapterQueue(List<M4bChapter> chapters) {
+    final track = _tracks.single;
+    final artUri = ArtworkCache.getSharedUri(track.thumbPath);
+    queue.add([
+      for (var i = 0; i < chapters.length; i++)
+        MediaItem(
+          id: '${track.ratingKey}/chapter/$i',
+          title: chapters[i].title,
+          album: track.bookTitle,
+          artist: track.authorName,
+          duration: (i + 1 < chapters.length
+                  ? chapters[i + 1].start
+                  : Duration(milliseconds: track.durationMs)) -
+              chapters[i].start,
+          artUri: artUri,
+        ),
+    ]);
+    _queueIsChapters = true;
+  }
+
+  /// A tap in Android Auto's chapter list: the same jump as the player's
+  /// chapter sheet.
   @override
   Future<void> skipToQueueItem(int index) async {
+    final chapters = _queueIsChapters ? _chaptersIfSingleTrack() : null;
+    if (chapters != null) {
+      if (index < 0 || index >= chapters.length) return;
+      await seek(chapters[index].start);
+      return;
+    }
     await _seekTo(0, index: index);
     _jumped();
   }
@@ -1662,8 +1701,44 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<List<MediaItem>> getChildren(String parentMediaId,
-          [Map<String, dynamic>? options]) async =>
-      browseChildren(parentMediaId);
+      [Map<String, dynamic>? options]) async {
+    final children = browseChildren(parentMediaId);
+    final missing = takeMissingCovers();
+    if (missing.isNotEmpty) unawaited(_fetchCovers(parentMediaId, missing));
+    return children;
+  }
+
+  /// One per browse node Android has subscribed to; an emission makes it ask
+  /// for that node's children again.
+  final _childrenChanged = <String, BehaviorSubject<Map<String, dynamic>>>{};
+
+  @override
+  ValueStream<Map<String, dynamic>> subscribeToChildren(
+          String parentMediaId) =>
+      _childrenChanged.putIfAbsent(
+          parentMediaId, () => BehaviorSubject.seeded(const {}));
+
+  /// Fetches the covers a shelf showed placeholders for, then has Android
+  /// redraw it. One at a time — a collection can be dozens of books — and
+  /// given up after two misses in a row, which is a server out of reach, not
+  /// a missing cover: the next time the shelf is opened tries again.
+  Future<void> _fetchCovers(String parentMediaId, Set<String> thumbPaths) async {
+    final client = PlexClient.instance;
+    final serverUri = client.serverUri;
+    if (serverUri == null) return;
+    var fetched = false;
+    var misses = 0;
+    for (final path in thumbPaths) {
+      if (await ArtworkCache.prefetch(path, serverUri, client.authHeaders) ==
+          null) {
+        if (++misses == 2) break;
+      } else {
+        misses = 0;
+        fetched = true;
+      }
+    }
+    if (fetched) _childrenChanged[parentMediaId]?.add(const {});
+  }
 
   @override
   Future<MediaItem?> getMediaItem(String mediaId) async {
@@ -2266,20 +2341,26 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       updatePosition: position,
       bufferedPosition: _castActive ? position : _player.bufferedPosition,
       speed: _player.speed,
-      queueIndex: _index,
+      queueIndex:
+          _queueIsChapters && _lastChapterIndex >= 0 ? _lastChapterIndex : _index,
     ));
     _watchCastIdle();
   }
 
   MediaItem _trackToMediaItem(PlexTrack track) {
     final thumbPath = track.thumbPath;
-    // Cached file or nothing — never a URL carrying a credential. This item
+    // Cached cover or nothing — never a URL carrying a credential. This item
     // becomes the platform MediaSession's metadata, which any app holding
     // notification access can read, and the Plex token is account-wide.
     // Leaving it null costs nothing: [_prefetchArtwork] downloads the cover
-    // with header auth and re-emits this item with the local `file://` URI a
-    // moment later.
-    final artUri = ArtworkCache.getLocalUri(thumbPath);
+    // with header auth and re-emits this item with it a moment later.
+    //
+    // `content://`, as in the browse tree, not the cache's `file://`: Android
+    // Auto's small now-playing card reads the URI, can't open a path in Saga's
+    // private storage, and drew no cover. audio_service still decodes it into
+    // the session's bitmap, through `CoverProvider`, and Saga's own screens
+    // map it back to the file ([ArtworkCache.fileOf]).
+    final artUri = ArtworkCache.getSharedUri(thumbPath);
 
     return MediaItem(
       id: track.ratingKey,

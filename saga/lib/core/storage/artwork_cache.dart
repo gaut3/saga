@@ -168,6 +168,22 @@ class ArtworkCache {
     return Uri(scheme: 'content', host: sharedAuthority, path: '/$name');
   }
 
+  /// The file behind a cover URI this cache handed out — a [getLocalUri]
+  /// `file://` or a [getSharedUri] `content://` — so Saga's own screens can
+  /// draw the now-playing cover without a content resolver. Null for any other
+  /// URI.
+  static File? fileOf(Uri uri) {
+    if (uri.scheme == 'file') return File(uri.toFilePath());
+    final dir = _dir;
+    if (uri.scheme != 'content' ||
+        uri.host != sharedAuthority ||
+        uri.pathSegments.length != 1 ||
+        dir == null) {
+      return null;
+    }
+    return File('${dir.path}/${uri.pathSegments.single}');
+  }
+
   /// Downloads artwork using header-based auth (no token in URL).
   /// Returns the local [file://] URI on success, null on failure.
   static Future<Uri?> prefetch(

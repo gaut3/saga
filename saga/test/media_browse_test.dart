@@ -1,7 +1,9 @@
 import 'dart:io';
 
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saga/core/plex/models/plex_track.dart';
+import 'package:saga/core/storage/artwork_cache.dart';
 import 'package:saga/core/storage/book_download_store.dart';
 import 'package:saga/core/storage/book_metadata_store.dart';
 import 'package:saga/core/storage/bookmark_store.dart';
@@ -351,6 +353,54 @@ void main() {
       expect(titles(browseChildren(BrowseId.collections)), ['Wheel of Time']);
       expect(titles(browseChildren(BrowseId.collection(col.id))),
           ['Book Three', 'Book One', 'Book Two']);
+    });
+  });
+
+  group('covers', () {
+    // Auto draws a warning sign on a tile with no artwork, and a cover is only
+    // cached once something on the phone fetched it: a book never played had
+    // none. It gets the mark instead, and the handler fetches the real one.
+    const thumb = '/library/metadata/1/thumb/9';
+    late Directory art;
+
+    setUp(() async {
+      art = await Directory.systemTemp.createTemp('saga_art_');
+      ArtworkCache.debugSetDirectory(art);
+      await BookMetadataStore.save('1', {
+        'ratingKey': 1,
+        'title': 'Never played',
+        'parentTitle': 'An author',
+        'thumb': thumb,
+      });
+      final col = await CustomCollectionStore.create('Shelf');
+      await CustomCollectionStore.addBook(col.id, '1');
+      takeMissingCovers(); // nothing from other tests
+    });
+
+    tearDown(() async {
+      ArtworkCache.debugSetDirectory(null);
+      await art.delete(recursive: true);
+    });
+
+    MediaItem only() => browseChildren(BrowseId.collection(
+            CustomCollectionStore.getAll().single.id))
+        .single;
+
+    test('an uncached cover is the mark, and is asked for once', () {
+      final uri = only().artUri!;
+      expect(uri.scheme, 'android.resource');
+      final file = File(
+          'android/app/src/main/res/drawable/${uri.pathSegments[1]}.xml');
+      expect(file.existsSync(), isTrue, reason: '${file.path} missing');
+      expect(takeMissingCovers(), {thumb});
+      expect(takeMissingCovers(), isEmpty);
+    });
+
+    test('a cached cover is the shared one, and nothing is asked for',
+        () async {
+      await ArtworkCache.debugFileFor(thumb).writeAsBytes([0]);
+      expect(only().artUri!.scheme, 'content');
+      expect(takeMissingCovers(), isEmpty);
     });
   });
 

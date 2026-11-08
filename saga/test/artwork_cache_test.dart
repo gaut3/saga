@@ -126,6 +126,23 @@ void main() {
       expect(uri.pathSegments.single, matches(RegExp(r'^[0-9a-f]{1,8}\.art$')));
     });
 
+    test('Saga\'s own screens find the file behind either URI', () async {
+      // The now-playing item carries the content URI; the player and the
+      // mini player draw it from the file.
+      final file = ArtworkCache.debugFileFor(thumb);
+      await file.writeAsBytes([0]);
+      expect(ArtworkCache.fileOf(ArtworkCache.getSharedUri(thumb)!)!.path,
+          file.path);
+      expect(ArtworkCache.fileOf(ArtworkCache.getLocalUri(thumb)!)!.path,
+          file.path);
+      expect(ArtworkCache.fileOf(Uri.parse('content://elsewhere/a.art')),
+          isNull);
+      expect(
+          ArtworkCache.fileOf(Uri.parse(
+              'content://${ArtworkCache.sharedAuthority}/a/b.art')),
+          isNull);
+    });
+
     test('the authority is the one the manifest gives CoverProvider', () {
       final manifest =
           File('android/app/src/main/AndroidManifest.xml').readAsStringSync();

@@ -327,6 +327,9 @@ public class AudioService extends MediaBrowserServiceCompat {
         mediaSession.setCallback(mediaSessionCallback = new MediaSessionCallback());
         setSessionToken(mediaSession.getSessionToken());
         mediaSession.setQueue(queue);
+        // SAGA PATCH: Android Auto names the queue by this, and audio_service
+        // never sends one. Saga's queue is always the book's chapters.
+        mediaSession.setQueueTitle("Chapters");
 
         PowerManager pm = (PowerManager)getSystemService(Context.POWER_SERVICE);
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, AudioService.class.getName());

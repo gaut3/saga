@@ -1,6 +1,4 @@
-﻿import 'dart:io';
-
-import 'package:audio_service/audio_service.dart';
+﻿import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +8,7 @@ import 'saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../core/audio/m4b_chapter_reader.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/providers.dart';
+import '../../core/storage/artwork_cache.dart';
 import '../../features/player/player_screen.dart';
 import '../../features/player/player_service.dart';
 import '../../features/player/track_position_math.dart';
@@ -169,9 +168,10 @@ class MiniPlayerPill extends ConsumerWidget {
   }
 
   Widget _artwork(Uri uri) {
-    if (uri.scheme == 'file') {
+    final file = ArtworkCache.fileOf(uri);
+    if (file != null) {
       return Image.file(
-        File(uri.toFilePath()),
+        file,
         fit: BoxFit.cover,
         // Without this the pill decodes the cover at its native resolution
         // for a thumbnail — wasted memory that can evict other covers.

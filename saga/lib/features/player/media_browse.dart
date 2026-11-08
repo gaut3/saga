@@ -219,8 +219,25 @@ MediaItem _category(String id, String title, String icon) => MediaItem(
       artUri: Uri.parse('android.resource://com.gaut3.saga/drawable/$icon'),
     );
 
+/// The tile for a book whose cover isn't cached: the mark on ink. With no
+/// artwork at all Android Auto drew a warning sign.
+final _placeholderCover =
+    Uri.parse('android.resource://com.gaut3.saga/drawable/saga_car_cover');
+
+/// Covers a browse answer wanted and didn't have, by thumb path.
+final _missingCovers = <String>{};
+
+/// The thumb paths [browseChildren] has handed out the placeholder for since
+/// the last call, and forgets them: the handler fetches them, off this
+/// synchronous path, and tells Android the shelf changed.
+Set<String> takeMissingCovers() {
+  final missing = {..._missingCovers};
+  _missingCovers.clear();
+  return missing;
+}
+
 /// The cached cover for [thumbPath] as a `content://` URI served by
-/// `CoverProvider`, or null — **never an authenticated URL.**
+/// `CoverProvider`, else the placeholder — **never an authenticated URL.**
 ///
 /// Everything this function returns leaves the app. Android's browse API is
 /// served by an exported `MediaBrowserService`, and `audio_service` hands a
@@ -236,9 +253,13 @@ MediaItem _category(String id, String title, String icon) => MediaItem(
 /// still, and useless: Android Auto reads artwork only through a content
 /// resolver, so every tile in the car was blank.
 ///
-/// The cost is a cover missing from a car list until that book has been played
-/// once ([AudioPlayerService._prefetchArtwork] caches it with header auth on
-/// load). A row still browses and plays without one. Fetching it here isn't an
-/// option regardless — see [browseChildren] on why this stays local and
-/// synchronous.
-Uri? _artUri(String? thumbPath) => ArtworkCache.getSharedUri(thumbPath);
+/// A cover is only cached once something on the phone has fetched it, so a
+/// book never played shows the placeholder at first. Fetching it here isn't an
+/// option — see [browseChildren] on why this stays local and synchronous — so
+/// the path goes on [takeMissingCovers]'s list instead.
+Uri _artUri(String? thumbPath) {
+  final shared = ArtworkCache.getSharedUri(thumbPath);
+  if (shared != null) return shared;
+  if (thumbPath != null) _missingCovers.add(thumbPath);
+  return _placeholderCover;
+}

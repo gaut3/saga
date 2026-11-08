@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui' show ImageFilter;
 
 import 'package:audio_service/audio_service.dart';
@@ -12,6 +11,7 @@ import '../../core/book_progress.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../library/book_detail_screen.dart';
 import '../../core/plex/models/plex_track.dart';
+import '../../core/storage/artwork_cache.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/providers.dart';
@@ -355,8 +355,9 @@ class _RevealCoverState extends ConsumerState<_RevealCover>
     // uncapped FileImage decodes whatever the file holds — a 3000×3000 cover
     // is ~36 MB decoded, enough to evict every list thumbnail behind this
     // screen and greet the pop with a row of placeholders.
-    return uri.scheme == 'file'
-        ? ResizeImage(FileImage(File(uri.toFilePath())), width: 900)
+    final file = ArtworkCache.fileOf(uri);
+    return file != null
+        ? ResizeImage(FileImage(file), width: 900)
         : ResizeImage(NetworkImage(uri.toString()), width: 600);
   }
 

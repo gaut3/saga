@@ -1,5 +1,5 @@
 diff --git a/android/src/main/java/com/ryanheise/audioservice/AudioService.java b/android/src/main/java/com/ryanheise/audioservice/AudioService.java
-index a4afa37..6a81e05 100644
+index a4afa37..46d7950 100644
 --- a/android/src/main/java/com/ryanheise/audioservice/AudioService.java
 +++ b/android/src/main/java/com/ryanheise/audioservice/AudioService.java
 @@ -38,7 +38,6 @@ import androidx.media.app.NotificationCompat.MediaStyle;
@@ -36,7 +36,17 @@ index a4afa37..6a81e05 100644
                      return null;
                  }
              }
-@@ -344,14 +350,63 @@ public class AudioService extends MediaBrowserServiceCompat {
+@@ -321,6 +327,9 @@ public class AudioService extends MediaBrowserServiceCompat {
+         mediaSession.setCallback(mediaSessionCallback = new MediaSessionCallback());
+         setSessionToken(mediaSession.getSessionToken());
+         mediaSession.setQueue(queue);
++        // SAGA PATCH: Android Auto names the queue by this, and audio_service
++        // never sends one. Saga's queue is always the book's chapters.
++        mediaSession.setQueueTitle("Chapters");
+ 
+         PowerManager pm = (PowerManager)getSystemService(Context.POWER_SERVICE);
+         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, AudioService.class.getName());
+@@ -344,14 +353,63 @@ public class AudioService extends MediaBrowserServiceCompat {
  
          flutterEngine = AudioServicePlugin.getFlutterEngine(this);
          System.out.println("flutterEngine warmed up");
@@ -100,7 +110,7 @@ index a4afa37..6a81e05 100644
      public void stop() {
          deactivateMediaSession();
          stopSelf();
-@@ -360,6 +415,7 @@ public class AudioService extends MediaBrowserServiceCompat {
+@@ -360,6 +418,7 @@ public class AudioService extends MediaBrowserServiceCompat {
      @Override
      public void onDestroy() {
          super.onDestroy();
@@ -108,7 +118,7 @@ index a4afa37..6a81e05 100644
          if (listener != null) {
              listener.onDestroy();
              listener = null;
-@@ -703,6 +759,8 @@ public class AudioService extends MediaBrowserServiceCompat {
+@@ -703,6 +762,8 @@ public class AudioService extends MediaBrowserServiceCompat {
      }
  
      private void enterPlayingState() {

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android Auto's tile for a book whose cover Saga hasn't fetched yet: the
+     mark on ink, in place of Auto's warning sign. Square; Auto rounds tiles.
+     Geometry from brand/assets/svg/mark/saga-mark-ink-bg.svg, at 60%. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+    <path android:fillColor="#1E1410" android:pathData="M0,0 h200 v200 h-200 z"/>
+    <group android:pivotX="100" android:pivotY="100" android:scaleX="0.6" android:scaleY="0.6">
+        <path android:fillColor="#F4EAD8" android:pathData="M46,48 h12 a5,5 0 0 1 5,5 v94 a5,5 0 0 1 -5,5 h-12 a5,5 0 0 1 -5,-5 v-94 a5,5 0 0 1 5,-5 z"/>
+        <path android:fillColor="#E0A050" android:pathData="M78,38 h12 a5,5 0 0 1 5,5 v114 a5,5 0 0 1 -5,5 h-12 a5,5 0 0 1 -5,-5 v-114 a5,5 0 0 1 5,-5 z"/>
+        <path android:fillColor="#F4EAD8" android:pathData="M110,56 h12 a5,5 0 0 1 5,5 v78 a5,5 0 0 1 -5,5 h-12 a5,5 0 0 1 -5,-5 v-78 a5,5 0 0 1 5,-5 z"/>
+        <path android:fillColor="#F4EAD8" android:pathData="M142,46 h12 a5,5 0 0 1 5,5 v98 a5,5 0 0 1 -5,5 h-12 a5,5 0 0 1 -5,-5 v-98 a5,5 0 0 1 5,-5 z"/>
+    </group>
+</vector>
