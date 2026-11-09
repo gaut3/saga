@@ -24,7 +24,7 @@ import java.io.FileNotFoundException
  * read already. Nothing else is reachable: one path segment, the cache's own
  * filename shape, no `..`, no other directory, no writes.
  *
- * The authority is `ArtworkCache.carAuthority` on the Dart side.
+ * The authority is `ArtworkCache.sharedAuthority` on the Dart side.
  */
 class CoverProvider : ContentProvider() {
 
@@ -35,9 +35,11 @@ class CoverProvider : ContentProvider() {
         val name = uri.pathSegments.singleOrNull()
         if (name == null || !COVER_NAME.matches(name)) throw FileNotFoundException()
         // path_provider's getApplicationDocumentsDirectory() on Android.
-        val dir = context!!.getDir("flutter", Context.MODE_PRIVATE)
-        val file = File(dir, "artwork_cache/$name")
-        if (!file.isFile) throw FileNotFoundException()
+        val dir = File(context!!.getDir("flutter", Context.MODE_PRIVATE), "artwork_cache")
+        // Open what the cache holds, not a path built from the caller's name:
+        // a second guard behind the regex, and the one CodeQL can see.
+        val file = dir.listFiles { f -> f.isFile && f.name == name }?.singleOrNull()
+            ?: throw FileNotFoundException()
         return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 
