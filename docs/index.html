@@ -220,6 +220,22 @@
     }
     .feature-copy p { font-size: 14px; line-height: 1.62; color: var(--sub); }
 
+    .features-more {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 28px 36px; margin-top: 64px; padding-top: 40px;
+      border-top: 1px solid var(--border); text-align: left;
+    }
+    .features-more h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .features-more p { font-size: 14px; line-height: 1.62; color: var(--sub); }
+    .beta-tag {
+      display: inline-block; margin-left: 6px; padding: 1px 7px;
+      border: 1px solid var(--amber); border-radius: 999px;
+      font-size: 10px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--amber); vertical-align: 2px;
+    }
+    .beta-note { margin-top: 28px; font-size: 13px; color: var(--sub); text-align: center; }
+    .beta-note a { color: var(--amber); text-decoration: none; }
+
     /* ─── THEMES ─── */
     .themes-grid {
       display: grid; grid-template-columns: repeat(4,1fr);
@@ -469,7 +485,7 @@
         <div class="feature-copy">
           <div class="feature-eyebrow">01 &middot; Library</div>
           <h3>Your Plex,<br>beautifully.</h3>
-          <p>Browse your library, see what&rsquo;s in progress, and jump back in instantly. Continue Listening and Up Next in Series, always in reach.</p>
+          <p>Browse your library, see what&rsquo;s in progress, and jump back in instantly. Continue Listening, Up Next in Series and Want to Read, always in reach.</p>
         </div>
       </div>
 
@@ -487,7 +503,7 @@
         <div class="feature-copy">
           <div class="feature-eyebrow">03 &middot; Stats</div>
           <h3>Every session,<br>logged.</h3>
-          <p>Streaks, heatmaps, and a full session log. Three tabs &mdash; Day, Month, Total &mdash; so you can see exactly how much you&rsquo;ve been listening.</p>
+          <p>Streaks, heatmaps, and every session: where it started and ended. Fell asleep listening? Tap a session to hear where it ended, then resume from there.</p>
         </div>
       </div>
 
@@ -501,6 +517,25 @@
       </div>
 
     </div>
+    <div class="features-more">
+      <div>
+        <h4>Home-screen widget<span class="beta-tag">Beta</span></h4>
+        <p>Your book on the home screen: cover, chapter, progress, resume and skip. Resize it from one row to a cover poster. It works with Saga closed.</p>
+      </div>
+      <div>
+        <h4>Cast to your TV or speaker<span class="beta-tag">Beta</span></h4>
+        <p>The whole book goes to a Chromecast, Google TV or Nest speaker, and your place comes back to the phone when you stop.</p>
+      </div>
+      <div>
+        <h4>Offline</h4>
+        <p>Downloaded books open and play with no connection at all, on a plane or far from your server.</p>
+      </div>
+      <div>
+        <h4>Skip silence &amp; volume boost</h4>
+        <p>Long pauses in the narration go by faster, and quiet narrators get up to +9&nbsp;dB, applied on the phone without touching your files.</p>
+      </div>
+    </div>
+    <p class="beta-note"><span class="beta-tag" style="margin-left:0">Beta</span> New in 1.2.0, out now as a <a href="https://github.com/gaut3/saga/releases">beta for testing</a>. The Download button gets the stable release, which doesn&rsquo;t have it yet.</p>
   </div>
 </section>
 
@@ -567,14 +602,14 @@
             <div class="step-num">2</div>
             <div class="step-body">
               <h4>Download the APK</h4>
-              <p>Tap the button to open the latest GitHub Release, then download the <code style="font-family:monospace;color:var(--amber);font-size:12px">saga.apk</code> file directly to your device.</p>
+              <p>Tap the button to open the latest GitHub Release, then download the <code style="font-family:monospace;color:var(--amber);font-size:12px">saga.apk</code> file directly to your device. The smaller <code style="font-family:monospace;color:var(--amber);font-size:12px">saga-arm64-v8a.apk</code> beside it suits nearly every recent phone. Either works, but pick one and keep to it: Android won't install <code style="font-family:monospace;color:var(--amber);font-size:12px">saga.apk</code> over the arm64 one.</p>
             </div>
           </div>
           <div class="step">
             <div class="step-num">3</div>
             <div class="step-body">
               <h4>Install and sign in</h4>
-              <p>Open the downloaded file, tap Install, then sign in with your Plex account. Saga auto-discovers your server on the local network. Remote access works too.</p>
+              <p>Open the downloaded file, tap Install, then sign in with your Plex account, in the browser or (from 1.2.0) with a code at plex.tv/link. Saga finds your servers through your Plex account and picks the best address: on your home network when it can, remote or relay when you&rsquo;re away.</p>
             </div>
           </div>
         </div>
@@ -583,15 +618,17 @@
       <div class="download-aside">
         <a class="btn btn-amber btn-lg" href="https://github.com/gaut3/saga/releases/latest">&#8595; Download latest APK</a>
         <p class="download-note download-note--important">
-          To update without losing your data, download the new APK and tap Install &mdash; Android
-          preserves your data as long as the app is signed with the same key. Or use
+          To update without losing your data, download the same APK as last time
+          (<code>saga.apk</code> or <code>saga-arm64-v8a.apk</code>) and tap Install &mdash; Android
+          preserves your data as long as the app is signed with the same key. Never uninstall
+          to get past an install error: that erases your places. Or use
           <code>adb install -r saga.apk</code> from a desktop.
         </p>
         <details class="download-details">
           <summary>Good to know</summary>
           <p class="download-note">Requires Android 7.0+. A running Plex Media Server with an audiobook library is required.</p>
           <p class="download-note">Prefer not to use mobile data? Enable Wi-Fi-only downloads in Settings &mdash; Saga checks your connection before each job and downloads only on Wi-Fi or ethernet.</p>
-          <p class="download-note">Using Android Auto? It only lists apps from the Play Store until you allow others: in Android Auto's settings, tap <em>Version</em> about ten times, then &#8942; &rarr; Developer settings &rarr; Unknown sources. <a href="https://github.com/gaut3/saga#troubleshooting" style="color:var(--amber);text-decoration:none">Step by step &rarr;</a></p>
+          <p class="download-note">Using Android Auto? It only lists apps from the Play Store until you allow others: in Android Auto's settings, tap <em>Version</em> about ten times, then &#8942; &rarr; Developer settings &rarr; Unknown sources. Without it, Saga&rsquo;s audio still plays through the car; you just can&rsquo;t pick books on the car&rsquo;s screen. <a href="https://github.com/gaut3/saga#troubleshooting" style="color:var(--amber);text-decoration:none">Step by step &rarr;</a></p>
           <p class="download-note">
             Prefer to build from source?<br>
             <a href="https://github.com/gaut3/saga" style="color:var(--amber);text-decoration:none">See the README &rarr;</a>

@@ -156,11 +156,12 @@ class ArtworkCache {
 
   /// The cached cover as a `content://` URI another app can open, or null.
   ///
-  /// For what Android draws in its own process — Android Auto's shelves, the
-  /// resumption card. A [getLocalUri] path names a file in Saga's private
-  /// storage that those processes can't read, so it showed as a blank tile.
-  /// Saga's own MediaSession art doesn't need this: audio_service decodes the
-  /// `file://` itself and hands over the bitmap.
+  /// For what Android draws in its own process — Android Auto's shelves and
+  /// small player card, the resumption card. A [getLocalUri] path names a file
+  /// in Saga's private storage that those processes can't read, so it showed
+  /// as a blank tile. The now-playing item uses it too
+  /// (`_trackToMediaItem`): audio_service still decodes it into the session's
+  /// bitmap, through `CoverProvider`.
   static Uri? getSharedUri(String? thumbPath) {
     if (thumbPath == null || _dir == null) return null;
     final name = _filename(thumbPath);

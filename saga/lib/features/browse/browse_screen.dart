@@ -532,7 +532,7 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
     // _applySortAndFilter, so the list must rebuild when they change —
     // otherwise a finished download never appears and a deleted one never
     // leaves (its card would even drop its badge while staying in the list).
-    // Same pairing as wantToReadRevisionProvider above for the "Saved" chip.
+    // Same pairing as wantToReadRevisionProvider above for the "Want to read" chip.
     ref.watch(downloadNotifierProvider);
     // Narrator sort and search read the index in _applySortAndFilter, so the
     // list must rebuild when the one-time build finishes — otherwise it would
@@ -664,19 +664,31 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                               // mutually-exclusive sort collapses into one chip
                               // opening a sheet — no more scrolling row mixing
                               // two kinds of control with identical styling.
-                              _SortChip(
-                                label: 'Saved',
-                                selected: _onlyWanted,
-                                onTap: () => setState(
-                                    () => _onlyWanted = !_onlyWanted),
+                              // The filters scroll rather than overflow: on a
+                              // narrow phone or with large text, two filters,
+                              // a "Narrator Z→A" sort and the toggle don't fit.
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: [
+                                      _SortChip(
+                                        label: 'Want to read',
+                                        selected: _onlyWanted,
+                                        onTap: () => setState(() =>
+                                            _onlyWanted = !_onlyWanted),
+                                      ),
+                                      _SortChip(
+                                        label: 'Downloaded',
+                                        selected: _onlyDownloaded,
+                                        onTap: () => setState(() =>
+                                            _onlyDownloaded =
+                                                !_onlyDownloaded),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                              _SortChip(
-                                label: 'Downloaded',
-                                selected: _onlyDownloaded,
-                                onTap: () => setState(() =>
-                                    _onlyDownloaded = !_onlyDownloaded),
-                              ),
-                              const Spacer(),
                               _SortChip(
                                 label: _sortChipLabel(),
                                 selected: _sort != _SortOption.defaultOrder,
