@@ -2,6 +2,7 @@ package com.gaut3.saga
 
 import android.app.AlertDialog
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import androidx.annotation.RequiresApi
@@ -23,7 +24,17 @@ class MainActivity : AudioServiceActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            AlertDialog.Builder(this)
+            // The phone's own dialog style, light or dark with the system. Unthemed,
+            // the builder inherits the activity's Theme.Black/Theme.Light (kept only
+            // so the window is ink before Flutter's first frame) and draws a
+            // 2010-era dialog.
+            val night = (resources.configuration.uiMode and
+                Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            AlertDialog.Builder(
+                this,
+                if (night) android.R.style.Theme_DeviceDefault_Dialog_Alert
+                else android.R.style.Theme_DeviceDefault_Light_Dialog_Alert,
+            )
                 .setTitle("Playback controls")
                 .setMessage(
                     "Saga shows a notification with playback controls so you can pause, " +

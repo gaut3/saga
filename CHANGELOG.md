@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **The notification permission prompt looks like the rest of your phone.** On Android 13 and newer, Saga asks once at start whether it may show its playback notification. That prompt was drawn in an Android style from around 2010: grey square buttons on black. It now uses your phone's own dialog style, light or dark to match the system.
+
 ## [1.2.0-beta.7] - 2026-11-09
 
 <!-- Beta only: delete this block for the final 1.2.0. -->
