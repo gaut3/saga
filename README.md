@@ -22,7 +22,7 @@ Anything marked *(1.2.0 beta)* is new in 1.2.0, which is out now as a [beta](htt
 - Variable speed playback (0.75×–3×) with per-book speed memory and configurable default
 - Skip silence — quiet stretches in the narration go by faster, audio untouched (off by default)
 - Volume boost (+3/+6/+9 dB) for quiet narrators, applied on the phone after decoding — works on any book without touching your server's files (off by default)
-- Background playback with lock-screen and notification controls (rewind / play-pause / fast-forward)
+- Background playback with lock-screen and notification controls: skip back, play-pause and skip forward, the skip buttons showing your skip lengths *(1.2.0 beta)*
 - Skip back and skip forward set separately (15 / 30 / 45 / 60 s each), used by the player, the notification, the lock screen, the widget and Android Auto
 - Undo after a scrub or a jump to a chapter, bookmark or session
 - Sleep timer — fixed duration or end-of-current-chapter, easing the volume down over the last fifteen seconds instead of cutting off mid-word
