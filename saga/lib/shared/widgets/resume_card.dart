@@ -48,7 +48,6 @@ class _ResumeCardState extends ConsumerState<ResumeCard> {
     });
 
     final savedPos = BookmarkStore.load(widget.book.ratingKey);
-    final (:remainingMs, fraction: pct) = resumeProgress(widget.book, savedPos);
 
     final nowPlayingKey = ref.watch(nowPlayingKeyProvider).valueOrNull;
     final isNowPlaying = nowPlayingKey == widget.book.ratingKey;
@@ -57,6 +56,11 @@ class _ResumeCardState extends ConsumerState<ResumeCard> {
     // chapter; the result is cached and reused when the player opens.
     final tracks = ref.watch(tracksProvider(widget.book.ratingKey)).valueOrNull;
     final chapterLabel = resumeChapterLabel(tracks, savedPos);
+    // Watched, not read: Home stays built under Settings, and the card has to
+    // follow the toggle the moment you come back, as the widget does.
+    final (:timeLeft, fraction: pct) = resumeFigures(
+        widget.book, tracks, savedPos,
+        chapterScrub: ref.watch(chapterScrubProvider));
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
@@ -120,9 +124,9 @@ class _ResumeCardState extends ConsumerState<ResumeCard> {
                                 const Spacer(),
                                 Row(
                                   children: [
-                                    if (remainingMs != null)
+                                    if (timeLeft != null)
                                       Text(
-                                        '${fmtListenedMs(remainingMs)} left',
+                                        timeLeft,
                                         style: TextStyle(
                                           color: SagaColors.fg,
                                           fontSize: 13,
@@ -288,6 +292,43 @@ class _ResumeCardState extends ConsumerState<ResumeCard> {
   return (
     remainingMs: total != null ? (total - absolute).clamp(0, total) : null,
     fraction: bookProgressFraction(book, pos) ?? 0.0,
+  );
+}
+
+/// What a resume card's progress row says: the time-left text and the
+/// fraction its bar and % show. Home's card and the home-screen widget both
+/// draw from here, so they can't disagree. They did: the widget followed
+/// "Scrub within chapter" and the card didn't, so with the setting on the
+/// same book read "5m left in chapter · 48%" on the home screen and
+/// "11h 59m left · 29%" in the app.
+///
+/// With [chapterScrub] on (and the chapter known) the figures follow the
+/// chapter, as the player's seek bar does (GitHub #17), in whole minutes
+/// listened: a chapter's bar moves every few seconds, and the widget redraws
+/// whenever its snapshot changes, so it would redraw on every 10 s save rather
+/// than once a minute. Rounding what's listened, not what's left, keeps the
+/// bar from running ahead: rounding what's left drew a fresh 7.6-minute
+/// chapter at 8%. Otherwise the book's figures from [resumeProgress]; the time
+/// left is null when the book's length is unknown.
+({String? timeLeft, double fraction}) resumeFigures(
+  PlexBook book,
+  List<PlexTrack>? tracks,
+  BookPosition? pos, {
+  required bool chapterScrub,
+}) {
+  final chapter = chapterScrub ? resumeChapterProgress(tracks, pos) : null;
+  if (chapter != null) {
+    final listenedMs = (chapter.spanMs - chapter.remainingMs) ~/ 60000 * 60000;
+    return (
+      timeLeft:
+          '${fmtListenedMs(chapter.spanMs - listenedMs)} left in chapter',
+      fraction: listenedMs / chapter.spanMs,
+    );
+  }
+  final (:remainingMs, :fraction) = resumeProgress(book, pos);
+  return (
+    timeLeft: remainingMs == null ? null : '${fmtListenedMs(remainingMs)} left',
+    fraction: fraction,
   );
 }
 

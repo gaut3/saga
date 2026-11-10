@@ -11,7 +11,9 @@ import 'package:saga/core/storage/server_scope.dart';
 import 'package:saga/core/storage/settings_store.dart';
 import 'package:saga/core/storage/track_cache_store.dart';
 import 'package:saga/core/theme/saga_theme.dart';
+import 'package:saga/core/local_library.dart';
 import 'package:saga/features/widget/home_widget_sync.dart';
+import 'package:saga/shared/widgets/resume_card.dart';
 
 import 'helpers/hive_test_env.dart';
 
@@ -183,6 +185,34 @@ void main() {
             'com/gaut3/saga/nativebridge/SagaWidget.kt')
         .readAsStringSync();
     expect(kotlin, isNot(contains('putBoolean("playing"')));
+  });
+
+  // The widget followed "Scrub within chapter" and Home's card didn't, so with
+  // the setting on one book read "5m left in chapter · 48%" on the home screen
+  // and "11h 59m left · 29%" in the app. One function draws both now.
+  group("Home's card and the widget show the same figures", () {
+    Future<void> check({required bool chapterScrub}) async {
+      await SettingsStore.setChapterScrub(chapterScrub);
+      await book('1', 'Foundation', ms: 5400000, savedAt: DateTime(2026, 11, 1));
+      final s = widgetSnapshot(signedIn: true);
+      final card = resumeFigures(localBook('1')!, TrackCacheStore.load('1'),
+          BookmarkStore.load('1'),
+          chapterScrub: chapterScrub);
+      expect(card.timeLeft, s['timeLeft']);
+      expect('${(card.fraction * 100).round()}%', s['percent']);
+    }
+
+    test('in book mode', () => check(chapterScrub: false));
+    test('in chapter mode', () => check(chapterScrub: true));
+
+    test('the card draws from the shared figures and follows the toggle', () {
+      final src = File('lib/shared/widgets/resume_card.dart').readAsStringSync();
+      final build = src.substring(src.indexOf('Widget build('),
+          src.indexOf('Future<void> _openPlayerView'));
+      expect(build, contains('resumeFigures('));
+      expect(build, contains('ref.watch(chapterScrubProvider)'));
+      expect(build, isNot(contains('resumeProgress(')));
+    });
   });
 
   test('the cover is a file path, never a URL', () {

@@ -11,7 +11,6 @@ import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/storage/track_cache_store.dart';
 import '../../core/theme/saga_theme.dart';
-import '../../core/utils/format.dart';
 import '../../shared/widgets/resume_card.dart';
 import '../player/player_service.dart';
 
@@ -38,36 +37,16 @@ Map<String, Object?> widgetSnapshot({
   if (key == null || book == null) return {'state': 'empty', ...colors};
   final pos = BookmarkStore.load(key);
   final tracks = TrackCacheStore.load(key);
-  // With "Scrub within chapter" on, the bar, time left and % follow the
-  // chapter, as the player's seek bar does (GitHub #17). From the time
-  // listened in whole minutes: a chapter's bar moves every few seconds, and
-  // the widget redraws whenever its snapshot changes, so it would redraw on
-  // every 10 s save rather than once a minute. Rounding what's listened, not
-  // what's left, keeps the bar from running ahead: rounding what's left drew
-  // a fresh 7.6-minute chapter at 8%.
-  final chapter =
-      SettingsStore.chapterScrub ? resumeChapterProgress(tracks, pos) : null;
-  final int? remainingMs;
-  final double fraction;
-  if (chapter != null) {
-    final listenedMs =
-        (chapter.spanMs - chapter.remainingMs) ~/ 60000 * 60000;
-    remainingMs = chapter.spanMs - listenedMs;
-    fraction = listenedMs / chapter.spanMs;
-  } else {
-    (:remainingMs, :fraction) = resumeProgress(book, pos);
-  }
+  // The same figures as Home's card, chapter or book by the same setting.
+  final (:timeLeft, :fraction) = resumeFigures(book, tracks, pos,
+      chapterScrub: SettingsStore.chapterScrub);
   return {
     ...colors,
     'state': 'book',
     'bookKey': key,
     'title': book.title,
     'chapter': resumeChapterLabel(tracks, pos),
-    'timeLeft': remainingMs == null
-        ? null
-        : chapter != null
-            ? '${fmtListenedMs(remainingMs)} left in chapter'
-            : '${fmtListenedMs(remainingMs)} left',
+    'timeLeft': timeLeft,
     'percent': '${(fraction * 100).round()}%',
     'progress': (fraction * 1000).round().clamp(0, 1000),
     // A path to the app-private cover file, never a URL: the widget draws

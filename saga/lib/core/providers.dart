@@ -45,6 +45,13 @@ final plexServerDiscoveryProvider = Provider<PlexServerDiscovery>((ref) {
   return PlexServerDiscovery(ref.watch(plexClientProvider));
 });
 
+/// "Scrub within chapter", as state a widget can watch. Home's resume card
+/// shows chapter or book figures by it, and Home stays built while Settings
+/// changes it; a plain [SettingsStore] read only caught up on the next
+/// unrelated rebuild. Settings writes both.
+final chapterScrubProvider =
+    StateProvider<bool>((_) => SettingsStore.chapterScrub);
+
 final isAuthenticatedProvider = StateProvider<bool>((ref) {
   return ref.watch(plexClientProvider).isAuthenticated;
 });

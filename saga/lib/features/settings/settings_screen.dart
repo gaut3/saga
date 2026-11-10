@@ -300,6 +300,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   value: _chapterScrub,
                   onChanged: (v) async {
                     await SettingsStore.setChapterScrub(v);
+                    // Home's card and the widget show chapter or book
+                    // figures by this; tell both now.
+                    ref.read(chapterScrubProvider.notifier).state = v;
+                    HomeWidgetSync.refresh();
                     if (!mounted) return;
                     setState(() => _chapterScrub = v);
                   },
