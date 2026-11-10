@@ -23,6 +23,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 > - **Using Android Auto?** It only lists apps from the Play Store until you allow others: in Android Auto's settings, tap Version about ten times, then ⋮ → Developer settings → Unknown sources. [Step by step](https://github.com/gaut3/saga#troubleshooting).
 > - **If anything goes wrong, and above all if Saga loses your place,** please [open an issue](https://github.com/gaut3/saga/issues). Settings → Copy diagnostics puts a log on your clipboard, with your server address and sign-in removed, ready to paste in.
 
+![Saga 1.2: a widget, and casting rebuilt. The home-screen widget beside the player, casting to a TV called Living room.](https://saga-app.no/screens/release-1.2-hero.jpg)
+
 **This update brings two big new things: a home-screen widget, and casting rebuilt.** Casting especially depends on your phone, your TV or speaker and your network, and only a few of those combinations have been tried. If something doesn't work as described here, and above all if Saga ever loses your place, please [open an issue](https://github.com/gaut3/saga/issues) and say what happened.
 
 ### Added
