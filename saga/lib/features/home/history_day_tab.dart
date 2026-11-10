@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/local_library.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/providers.dart';
 import '../../core/stats/listening_sessions.dart';
@@ -33,20 +34,22 @@ class HistoryDayTab extends ConsumerWidget {
 
     final todayClean = dayOnly(DateTime.now());
 
-    // Book map for cover/title lookup
-    final booksAsync = libraryKey != null
-        ? ref.watch(booksProvider(libraryKey!))
-        : const AsyncValue<List<PlexBook>>.data([]);
-    final bookMap = <String, PlexBook>{
-      for (final b in (booksAsync.valueOrNull ?? [])) b.ratingKey: b,
-    };
-
     // One shared scan of the playback log, memoized per history revision —
     // see [playbackLogIndexProvider] for the bucketing and the midnight-split
     // credit rules.
     final logIndex = ref.watch(playbackLogIndexProvider);
     final allDayLogs = logIndex.eventsByDay;
     final creditedMs = logIndex.creditedMsByDay;
+
+    // Cover/title lookup: the library listing, else the phone's own records,
+    // so the server being off doesn't turn every entry into "Unknown".
+    final booksAsync = libraryKey != null
+        ? ref.watch(booksProvider(libraryKey!))
+        : const AsyncValue<List<PlexBook>>.data([]);
+    final bookMap = booksByKey(
+      booksAsync.valueOrNull,
+      {for (final books in allDayLogs.values) ...books.keys},
+    );
 
     // Calendar days via [mondayWeek]/[addDays], the same helpers Home's
     // listening strip uses. Built with `Duration(days:)` these landed at 23:00

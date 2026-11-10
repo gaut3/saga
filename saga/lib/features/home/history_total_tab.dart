@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/plex/models/plex_book.dart';
 import '../../core/providers.dart';
 import '../../core/storage/listening_history_store.dart';
 import '../../core/theme/saga_theme.dart';
@@ -50,10 +49,10 @@ class HistoryTotalTab extends ConsumerWidget {
     final heatStart = heatmapStart(todayClean);
     final heatData = ListeningHistoryStore.getRange(heatStart, todayClean);
 
-    // Riverpod data (requires libraryKey)
-    final completedAsync = libraryKey != null
-        ? ref.watch(completedBooksListProvider(libraryKey!))
-        : const AsyncValue<List<PlexBook>>.data([]);
+    // No library key is the offline launch: the empty section key makes the
+    // provider name finished books from the phone's own records instead.
+    final completedAsync =
+        ref.watch(completedBooksListProvider(libraryKey ?? ''));
 
     final completedBooks = completedAsync.valueOrNull ?? [];
 

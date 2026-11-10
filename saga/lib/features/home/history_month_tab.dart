@@ -1,6 +1,7 @@
 import 'dart:math' show max;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/local_library.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/providers.dart';
 import '../../core/storage/bookmark_store.dart';
@@ -70,13 +71,9 @@ class _MonthTabState extends ConsumerState<HistoryMonthTab> {
     final monthEnd = DateTime(_month.year, _month.month, daysInMonth);
     final dayData = ListeningHistoryStore.getRange(monthStart, monthEnd);
 
-    // Book map for lookup
     final booksAsync = widget.libraryKey != null
         ? ref.watch(booksProvider(widget.libraryKey!))
         : const AsyncValue<List<PlexBook>>.data([]);
-    final bookMap = <String, PlexBook>{
-      for (final b in (booksAsync.valueOrNull ?? [])) b.ratingKey: b,
-    };
 
     // Books listened this month, keyed by day for calendar indicators +
     // sheet — from the shared memoized log index rather than a scan of every
@@ -88,12 +85,6 @@ class _MonthTabState extends ConsumerState<HistoryMonthTab> {
           e.key: e.value.keys.toSet(),
     };
     final allCompleted = CompletedBooksStore.allCompleted();
-    final booksThisMonth = booksPlayedByDay.values
-        .expand((s) => s)
-        .toSet()
-        .map((k) => bookMap[k])
-        .whereType<PlexBook>()
-        .toList();
 
     // Named bookmarks created this month, keyed by day.
     final bookmarksByDay = <DateTime, List<NamedBookmark>>{};
@@ -116,6 +107,21 @@ class _MonthTabState extends ConsumerState<HistoryMonthTab> {
         }
       }
     }
+
+    // Title/cover lookup for every book the month mentions: the library
+    // listing, else the phone's own records, so an unreachable server doesn't
+    // empty the month's book list and blank the day sheets.
+    final playedThisMonth = {for (final s in booksPlayedByDay.values) ...s};
+    final bookMap = booksByKey(booksAsync.valueOrNull, {
+      ...playedThisMonth,
+      for (final bms in bookmarksByDay.values)
+        for (final bm in bms) bm.bookRatingKey,
+      for (final keys in completedByDay.values) ...keys,
+    });
+    final booksThisMonth = playedThisMonth
+        .map((k) => bookMap[k])
+        .whereType<PlexBook>()
+        .toList();
 
     int monthMs = 0;
     int listenedDays = 0;

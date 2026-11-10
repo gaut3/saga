@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saga/core/local_library.dart';
+import 'package:saga/core/plex/models/plex_book.dart';
 import 'package:saga/core/plex/models/plex_track.dart';
 import 'package:saga/core/storage/book_download_store.dart';
 import 'package:saga/core/storage/book_metadata_store.dart';
@@ -143,6 +144,40 @@ void main() {
       await TrackCacheStore.save('12345', [track('t1')]); // nameless
       BookDownloadStore.recordDownload('12345', 't1');
       expect(localDownloadedKeys(), isEmpty);
+    });
+  });
+
+  group('History\'s lookup: the listing, else local records', () {
+    PlexBook listed(String rk, String title) =>
+        PlexBook(ratingKey: rk, title: title, authorName: 'Listed');
+
+    test('with no listing (server off), books are named from the phone',
+        () async {
+      // The bug: History looked books up in the listing alone, so offline
+      // every day read "Unknown" over a blank cover.
+      await TrackCacheStore.save('12345', [
+        track('t1', bookTitle: 'Children of Dune', author: 'Frank Herbert'),
+      ]);
+      final map = booksByKey(null, ['12345']);
+      expect(map['12345']?.title, 'Children of Dune');
+    });
+
+    test('the listing wins over local records when it has the book',
+        () async {
+      await TrackCacheStore.save('12345', [track('t1', bookTitle: 'Old tag')]);
+      final map = booksByKey([listed('12345', 'Server title')], ['12345']);
+      expect(map['12345']?.title, 'Server title');
+    });
+
+    test('a book the listing lacks is still filled in locally', () async {
+      await TrackCacheStore.save('2', [track('t1', bookTitle: 'Local only')]);
+      final map = booksByKey([listed('1', 'Listed')], ['1', '2']);
+      expect(map['1']?.title, 'Listed');
+      expect(map['2']?.title, 'Local only');
+    });
+
+    test('a key nothing can name is absent, not a placeholder', () {
+      expect(booksByKey(const [], ['nope']), isEmpty);
     });
   });
 

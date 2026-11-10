@@ -414,8 +414,15 @@ final completedBooksListProvider =
   ref.watch(completionRevisionProvider);
   final completedKeys = CompletedBooksStore.allCompleted();
   if (completedKeys.isEmpty) return [];
-  final allBooks = await ref.watch(booksProvider(sectionKey).future);
-  return allBooks.where((b) => completedKeys.contains(b.ratingKey)).toList();
+  // Offline, the finished shelf comes from the phone's own records rather
+  // than reading "0 books finished" — the same fallback the collections use.
+  if (sectionKey.isEmpty) return localBooks(completedKeys);
+  try {
+    final allBooks = await ref.watch(booksProvider(sectionKey).future);
+    return allBooks.where((b) => completedKeys.contains(b.ratingKey)).toList();
+  } catch (_) {
+    return localBooks(completedKeys);
+  }
 });
 
 /// Incremented every time a book is added to / removed from the Want to Read list.

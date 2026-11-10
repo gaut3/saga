@@ -100,3 +100,23 @@ List<PlexBook> localBooks(Iterable<String> bookRatingKeys) => [
       for (final key in bookRatingKeys)
         if (localBook(key) case final book?) book,
     ];
+
+/// The book for each of [bookRatingKeys]: from the library [listing] when it
+/// has it, else from local records ([localBook]) — the listing failed, hasn't
+/// loaded yet, or no longer carries the book. Keys that can't be named either
+/// way are absent.
+///
+/// History looked books up in the listing alone, so with the server off every
+/// day of it read "Unknown" over a blank cover while Home, a tap away, named
+/// the same books from the phone's own records.
+Map<String, PlexBook> booksByKey(
+  Iterable<PlexBook>? listing,
+  Iterable<String> bookRatingKeys,
+) {
+  final map = {for (final b in listing ?? const <PlexBook>[]) b.ratingKey: b};
+  for (final key in bookRatingKeys) {
+    if (map.containsKey(key)) continue;
+    if (localBook(key) case final book?) map[key] = book;
+  }
+  return map;
+}
