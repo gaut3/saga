@@ -13,16 +13,14 @@
 
 ## Features
 
-Anything marked *(1.2.0 beta)* is new in 1.2.0, which is out now as a [beta](https://github.com/gaut3/saga/releases) for testing. The latest stable release, 1.1.3, doesn't have it yet.
-
 **Playback**
 - M4B and multi-track audiobook support with embedded chapter detection and jump-to — both MP4 chapter conventions (Nero `chpl` and QuickTime chapter tracks)
 - Book-level progress bar and seek across the full book (multi-file aware), or scrub within the current chapter instead
-- Time remaining at your actual playback speed; tap to switch to the total length (the book's, or the chapter's when scrubbing by chapter). Scrubbing by chapter still shows how much of the book is left *(1.2.0 beta)*
+- Time remaining at your actual playback speed; tap to switch to the total length (the book's, or the chapter's when scrubbing by chapter). Scrubbing by chapter still shows how much of the book is left
 - Variable speed playback (0.75×–3×) with per-book speed memory and configurable default
 - Skip silence — quiet stretches in the narration go by faster, audio untouched (off by default)
 - Volume boost (+3/+6/+9 dB) for quiet narrators, applied on the phone after decoding — works on any book without touching your server's files (off by default)
-- Background playback with lock-screen and notification controls: skip back, play-pause and skip forward, the skip buttons showing your skip lengths *(1.2.0 beta)*
+- Background playback with lock-screen and notification controls: skip back, play-pause and skip forward, the skip buttons showing your skip lengths
 - Skip back and skip forward set separately (15 / 30 / 45 / 60 s each), used by the player, the notification, the lock screen, the widget and Android Auto
 - Undo after a scrub or a jump to a chapter, bookmark or session
 - Sleep timer — fixed duration or end-of-current-chapter, easing the volume down over the last fifteen seconds instead of cutting off mid-word
@@ -30,11 +28,11 @@ Anything marked *(1.2.0 beta)* is new in 1.2.0, which is out now as a [beta](htt
 - Auto-play the next book in a collection, with a cancellable countdown (off by default)
 - Tap the cover on the player to look through it at the book's details
 - Always-visible mini player; swipe it away to dismiss, long-press for options
-- Home-screen widget — the book you're listening to, with cover, chapter, progress, resume or pause and your skip buttons. Resize it to change its shape: one row, a wide card that also shows the time left, or the cover on its own above the controls. It works with Saga closed and wears the theme you picked *(1.2.0 beta)*
-- Chromecast support via native Cast SDK *(1.2.0 beta)*: the player's Device button lists this phone and the Google Cast devices on your network. The whole book is cast as one queue, the notification, lock screen, headset and widget drive the TV, the sleep timer and listening stats work on it, and your place is handed back when casting ends. A cast left paused or finished for 10 minutes lets the TV go. Google Cast devices only (Chromecasts, Google TV, Nest speakers): TVs with their own casting systems, like most Roku and LG models, don't appear
+- Home-screen widget — the book you're listening to, with cover, chapter, progress, resume or pause and your skip buttons. Resize it to change its shape: one row, a wide card that also shows the time left, or the cover on its own above the controls. It works with Saga closed and wears the theme you picked
+- Chromecast support via native Cast SDK: the player's Device button lists this phone and the Google Cast devices on your network. The whole book is cast as one queue, the notification, lock screen, headset and widget drive the TV, the sleep timer and listening stats work on it, and your place is handed back when casting ends. A cast left paused or finished for 10 minutes lets the TV go. Google Cast devices only (Chromecasts, Google TV, Nest speakers): TVs with their own casting systems, like most Roku and LG models, don't appear
 - Bluetooth speakers, receivers and car stereos work like headphones: the book plays on the phone and is sent to them, so everything above applies, including the sleep timer, smart rewind and listening stats. The phone has to stay in range
 - Headphone unplug auto-pause; auto-resume after calls and brief interruptions (on by default, and never over another app's media)
-- Android Auto — Continue listening, Downloaded, and your collections in the order you dragged them, as a grid of covers showing your progress and what's downloaded; the player's queue is the book's chapters *(1.2.0 beta)*. Built from what's already on the phone, so a downloaded book plays in the car with no server involved. Asking for a book by name works too. The same browse tree backs the lock screen's media-resumption card. Android Auto hides apps that don't come from the Play Store until you allow them: see [Troubleshooting](#troubleshooting)
+- Android Auto — Continue listening, Downloaded, and your collections in the order you dragged them, as a grid of covers showing your progress and what's downloaded; the player's queue is the book's chapters. Built from what's already on the phone, so a downloaded book plays in the car with no server involved. Asking for a book by name works too. The same browse tree backs the lock screen's media-resumption card. Android Auto hides apps that don't come from the Play Store until you allow them: see [Troubleshooting](#troubleshooting)
 
 **Library**
 - Browse your Plex audiobook library: search across titles and authors — narrators too, once the one-tap narrator index is built; sort by title, author, length or narrator (each reversible); grid or list toggle
@@ -173,7 +171,7 @@ The built manifest also carries `com.gaut3.saga.DYNAMIC_RECEIVER_NOT_EXPORTED_PE
 
 ## Setup
 
-1. Open the app and sign in with your Plex account: in the browser, or with a code at plex.tv/link if the browser doesn't hand you back to Saga *(1.2.0 beta)*.
+1. Open the app and sign in with your Plex account: in the browser, or with a code at plex.tv/link if the browser doesn't hand you back to Saga.
 2. Pick your server. Saga gets the list from your Plex account and tries each of the server's addresses, preferring one on your home network, then a remote one, then Plex's relay. It checks again when your network changes, so it follows you out of the house and back.
 3. Select your audiobook library from Settings if you have more than one.
 4. Tap any book to start listening. Your place is saved automatically.
