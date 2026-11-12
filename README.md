@@ -91,6 +91,23 @@ Onyx is true black — the page is `#000000`, so those pixels are physically off
 
 ---
 
+## Installing and updating
+
+Saga isn't on the Play Store. Each [release](https://github.com/gaut3/saga/releases/latest) has two APKs:
+
+- **`saga-arm64-v8a.apk`** (about 21 MB) for almost any phone from the last several years. Pick this one if you're not sure.
+- **`saga.apk`** (about 58 MB), the universal build, for older 32-bit phones and anything the first one won't install on.
+
+**Keep to the one you picked.** Android refuses an update that looks older than what's installed, and the arm64 build is numbered higher than the universal one, so the universal APK can't install over the arm64 one. Moving from universal to arm64 works.
+
+**To check a download,** compare it with the `.sha256` file beside it (`sha256sum -c saga-arm64-v8a.apk.sha256`), or confirm GitHub built it from this repository: `gh attestation verify saga-arm64-v8a.apk --repo gaut3/saga`.
+
+**To update,** install the new APK over the old one; your places, downloads and settings stay. Saga can tell you when there's a new release: Settings → About → "Check for updates automatically" (off by default). Or let [Obtainium](https://github.com/ImranR98/Obtainium) do it: add `https://github.com/gaut3/saga`, and set its APK filter to `arm64-v8a` if that's the build you use. Turn on "Include prereleases" only if you want betas.
+
+**Never uninstall Saga to get past an install error.** Uninstalling erases your places, bookmarks and history along with the app. If a reinstall is truly needed, export first: Settings → Data & backup → Export progress, and use Import progress in the same place afterwards.
+
+---
+
 ## Building from source
 
 **Prerequisites:** [Flutter SDK](https://flutter.dev/docs/get-started/install) (stable channel), Android SDK, a connected Android device or emulator.
