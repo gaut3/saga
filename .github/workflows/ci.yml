@@ -32,6 +32,11 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
+          # Pinned, not "latest stable": 3.50.0 arrived between beta 7 and
+          # 1.2.0 and failed analyze on its material.dart deprecation. A release
+          # is built with the Flutter its betas were tested on; move this in ci.yml,
+          # release.yml and codeql.yml together as a deliberate upgrade.
+          flutter-version: 3.47.9
           cache: true
 
       - run: flutter pub get
