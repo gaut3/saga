@@ -31,9 +31,18 @@ class ReportGate {
   int? get heldUntilMs => _open ? null : _heldUntilMs;
 
   /// A book has been loaded at [loadedAtMs], before any resume rewind.
-  void load(int loadedAtMs) {
+  ///
+  /// [savedHoldMs] is the hold that place was saved under, if it was saved
+  /// while reports were held (`BookPosition.reportHoldMs`). Then Plex never
+  /// heard of it, and still has the hold's place: the new hold is the
+  /// further of the two. Without it, a listen that stopped inside a resume
+  /// rewind came back after a reload as the "loaded spot", and reports opened
+  /// up to a minute behind what Plex already had.
+  void load(int loadedAtMs, {int? savedHoldMs}) {
     _open = false;
-    _heldUntilMs = loadedAtMs;
+    _heldUntilMs = savedHoldMs != null && savedHoldMs > loadedAtMs
+        ? savedHoldMs
+        : loadedAtMs;
   }
 
   /// A resume rewind from [fromMs]: held until playback is back past it.

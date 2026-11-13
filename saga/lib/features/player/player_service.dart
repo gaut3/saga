@@ -481,8 +481,15 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       if (chosenPoint) {
         _openReports('loaded at a chosen point');
       } else {
+        // A resume lands on the saved place, which may have been saved while
+        // reports were held — then Plex still has the hold's place. Not for
+        // "from the start": that hold belonged to a place being left.
         _reportGate.load(
-            absoluteFromTrack(_trackDurationsMs, startTrackIndex, startPositionMs));
+          absoluteFromTrack(_trackDurationsMs, startTrackIndex, startPositionMs),
+          savedHoldMs: applyResumeRewind
+              ? BookmarkStore.load(bookRatingKey)?.reportHoldMs
+              : null,
+        );
         AppLog.log('sync', 'reports held for book $bookRatingKey until '
             '${fmtBookPositionMs(_reportGate.heldUntilMs!)}');
       }
@@ -1690,6 +1697,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
             absolutePositionMs: at.absoluteMs,
             totalDurationMs: h.totalDurationMs,
             savedAt: now,
+            // The TV's place, from a cast this player started: still held if
+            // the gate is, like every other save of this book.
+            reportHoldMs: _bookRatingKey == h.bookRatingKey
+                ? _reportGate.heldUntilMs
+                : null,
           ),
         );
         onBookmarkSaved?.call();
@@ -2227,6 +2239,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     final positionMs = _trackPosMs;
     final absolutePositionMs = _absolutePositionMs(positionMs);
 
+    // Asked before the save so a held place is saved with its hold: a reload,
+    // even after the app is killed, must not take a place Plex never heard of
+    // for one it did. The gate only ever holds back the report below, never
+    // this save.
+    final wasOpen = _reportGate.isOpen;
+    final reportAllowed = _reportGate.allows(absolutePositionMs);
+
     // Awaited so the write is durable before this future completes — the
     // lifecycle save path (app backgrounded/killed) depends on it.
     await BookmarkStore.save(
@@ -2237,15 +2256,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         absolutePositionMs: absolutePositionMs,
         totalDurationMs: _tracks.fold<int>(0, (sum, t) => sum + t.durationMs),
         savedAt: DateTime.now(),
+        reportHoldMs: reportAllowed ? null : _reportGate.heldUntilMs,
       ),
     );
     onBookmarkSaved?.call();
     _progressChanged.add(null);
 
-    // Only now, after the save: the gate holds back the Plex report, never
-    // the place on this device.
-    final wasOpen = _reportGate.isOpen;
-    if (!_reportGate.allows(absolutePositionMs)) return;
+    if (!reportAllowed) return;
     if (!wasOpen) AppLog.log('sync', 'reports open: playback passed the hold');
 
     _api.reportTimeline(

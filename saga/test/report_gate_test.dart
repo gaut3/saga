@@ -6,11 +6,13 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:saga/core/storage/bookmark_store.dart';
 import 'package:saga/features/player/book_launch.dart';
 import 'package:saga/features/player/report_gate.dart';
 
 const _s = 1000;
 const _min = 60 * _s;
+int _t(int h, int m, int s) => ((h * 60 + m) * 60 + s) * _s;
 
 void main() {
   group('ReportGate', () {
@@ -72,10 +74,54 @@ void main() {
       expect(gate.heldUntilMs, isNull);
     });
 
+    test('a reload keeps the hold its place was saved under', () {
+      // The 2026-11-13 dogfood: opened at 6:56:21, rewound, paused at 6:56:04
+      // before getting back past the hold, app restarted. Holding at the
+      // saved 6:56:04 opened reports 17 s behind what Plex already had.
+      final gate = ReportGate()
+        ..load(_t(6, 56, 4), savedHoldMs: _t(6, 56, 21));
+      expect(gate.heldUntilMs, _t(6, 56, 21));
+      expect(gate.allows(_t(6, 56, 14)), isFalse);
+      expect(gate.allows(_t(6, 56, 24)), isTrue);
+    });
+
+    test('a saved hold behind the loaded place changes nothing', () {
+      final gate = ReportGate()..load(_t(1, 0, 0), savedHoldMs: _t(0, 59, 0));
+      expect(gate.heldUntilMs, _t(1, 0, 0));
+    });
+
     test('the next load holds it again', () {
       final gate = ReportGate()..moved();
       gate.load(5 * _min);
       expect(gate.allows(5 * _min), isFalse);
+    });
+  });
+
+  group('BookPosition.reportHoldMs', () {
+    final at = DateTime(2026, 11, 13, 10, 28);
+    test('survives a round trip, and is absent when the place was reported',
+        () {
+      final held = BookPosition(
+          trackRatingKey: 't',
+          positionMs: 5,
+          absolutePositionMs: 5,
+          savedAt: at,
+          reportHoldMs: 900);
+      expect(BookPosition.fromMap(held.toMap()).reportHoldMs, 900);
+      final sent = BookPosition(
+          trackRatingKey: 't', positionMs: 5, absolutePositionMs: 5, savedAt: at);
+      expect(sent.toMap().containsKey('reportHoldMs'), isFalse);
+      expect(BookPosition.fromMap(sent.toMap()).reportHoldMs, isNull);
+    });
+
+    test('a negative hold from a hand-edited backup is dropped', () {
+      final map = {
+        'trackRatingKey': 't',
+        'positionMs': 5,
+        'savedAt': at.toIso8601String(),
+        'reportHoldMs': -1.0,
+      };
+      expect(BookPosition.fromMap(map).reportHoldMs, isNull);
     });
   });
 
@@ -102,14 +148,19 @@ void main() {
 
     test('the local save runs whatever the gate says', () {
       // The gate wraps the reportTimeline call only. A held report costs
-      // nothing; a skipped save loses a place.
+      // nothing; a skipped save loses a place. It is asked before the save
+      // so the place carries its hold, and only consulted after it.
       final save = body('Future<void> _saveAndReportPosition(');
+      final asked = save.indexOf('_reportGate.allows(');
       final stored = save.indexOf('await BookmarkStore.save(');
-      final gate = save.indexOf('_reportGate.allows(');
+      final held = save.indexOf('if (!reportAllowed) return;');
       final report = save.indexOf('_api.reportTimeline(');
-      expect(stored, isNot(-1));
-      expect(gate, greaterThan(stored));
-      expect(report, greaterThan(gate));
+      expect(asked, isNot(-1));
+      expect(stored, greaterThan(asked));
+      expect(held, greaterThan(stored));
+      expect(report, greaterThan(held));
+      expect(save.substring(stored, held).contains('reportHoldMs:'), isTrue,
+          reason: 'a held place is saved with its hold');
     });
 
     test('every report to Plex from the player passes the gate', () {

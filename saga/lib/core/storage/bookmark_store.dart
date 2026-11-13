@@ -14,6 +14,11 @@ class BookPosition {
   /// displayed even when the Plex album API omits the duration field.
   final int? totalDurationMs;
   final DateTime savedAt;
+  /// Set when this place was saved while reports to Plex were held
+  /// ([ReportGate]): the absolute position Plex still has instead. A resume
+  /// holds reports until playback passes it, so a place Plex never heard of
+  /// isn't taken for one it did. Null for a place that was reported.
+  final int? reportHoldMs;
 
   const BookPosition({
     required this.trackRatingKey,
@@ -21,6 +26,7 @@ class BookPosition {
     required this.absolutePositionMs,
     this.totalDurationMs,
     required this.savedAt,
+    this.reportHoldMs,
   });
 
   Map<String, dynamic> toMap() => {
@@ -29,6 +35,7 @@ class BookPosition {
         'absolutePositionMs': absolutePositionMs,
         if (totalDurationMs != null) 'totalDurationMs': totalDurationMs,
         'savedAt': savedAt.toIso8601String(),
+        if (reportHoldMs != null) 'reportHoldMs': reportHoldMs,
       };
 
   factory BookPosition.fromMap(Map<dynamic, dynamic> map) {
@@ -40,12 +47,14 @@ class BookPosition {
     final absoluteMs =
         (map['absolutePositionMs'] as num?)?.toInt() ?? positionMs;
     final totalMs = (map['totalDurationMs'] as num?)?.toInt();
+    final holdMs = (map['reportHoldMs'] as num?)?.toInt();
     return BookPosition(
       trackRatingKey: map['trackRatingKey'] as String,
       positionMs: positionMs < 0 ? 0 : positionMs,
       absolutePositionMs: absoluteMs < 0 ? 0 : absoluteMs,
       totalDurationMs: (totalMs != null && totalMs > 0) ? totalMs : null,
       savedAt: DateTime.parse(map['savedAt'] as String),
+      reportHoldMs: (holdMs != null && holdMs >= 0) ? holdMs : null,
     );
   }
 }
