@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/stats/listening_sessions.dart';
 import '../../core/storage/playback_log_store.dart';

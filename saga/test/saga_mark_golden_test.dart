@@ -1,7 +1,7 @@
 @Tags(['golden'])
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saga/core/mark_motion.dart';
 import 'package:saga/shared/widgets/saga_mark.dart';

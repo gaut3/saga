@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_track.dart';

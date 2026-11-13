@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/plex/models/plex_book.dart';
 import '../../core/theme/saga_theme.dart';

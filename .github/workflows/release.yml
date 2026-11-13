@@ -25,16 +25,19 @@ jobs:
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
-          java-version: '17'
+          # 25, not 17: AGP 9.3's lint calls a JDK 21 API and crashes on 17
+          # (lintVitalAnalyzeRelease). Same major as Android Studio's bundled JDK.
+          java-version: '25'
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           # Pinned, not "latest stable": 3.50.0 arrived between beta 7 and
-          # 1.2.0 and failed analyze on its material.dart deprecation. A release
-          # is built with the Flutter its betas were tested on; move this in ci.yml,
-          # release.yml and codeql.yml together as a deliberate upgrade.
-          flutter-version: 3.47.9
+          # 1.2.0 and failed analyze on its material.dart deprecation, so 1.2.0
+          # shipped on 3.47.9. A release is built with the Flutter its betas were
+          # tested on; move this in ci.yml, release.yml and codeql.yml together
+          # as a deliberate upgrade (3.50.0: Material moved to package:material_ui).
+          flutter-version: 3.50.0
           cache: true
 
       - name: Decode keystore

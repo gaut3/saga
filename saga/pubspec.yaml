@@ -58,6 +58,7 @@ dependencies:
   share_plus: ^10.1.3
   file_picker: ^8.3.7
   package_info_plus: ^9.0.1
+  material_ui: ^1.11.0
 
 # Vendored fork of just_audio: its Android pipeline is patched with a Media3
 # TeeAudioProcessor that taps the decoded PCM for the real-loudness visualizer

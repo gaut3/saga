@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Saga is built with Flutter 3.50.** Flutter's Material widgets, which draw most of Saga's screens, now come as a separate package, and the Android build tools moved up a major version with it. Nothing should look or behave differently; if something does, please [open an issue](https://github.com/gaut3/saga/issues).
+
 ### Fixed
 - **Closing Saga should no longer cut the end off the diagnostics log.** Swiping Saga away could end the app before it had written down its last second, so the log Copy diagnostics gives you was missing how playback stopped, including when a cast ended. Saga now writes the log out before it closes.
 
