@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Changed
+- **Settings fits on one screen.** Your theme is at the top, then a row for each part of Settings (Playback, Server, Downloads, Data and backup, About), each with a line saying what's set, such as "30s skips · 1.0x". Tap one to open its page; Sign out sits on its own at the bottom. Every setting is still there and works as before, only grouped onto pages. Tapping the update notice now opens About, at Check for updates.
 - **Saga is built with Flutter 3.50.** Flutter's Material widgets, which draw most of Saga's screens, now come as a separate package, and the Android build tools moved up a major version with it. Nothing should look or behave differently; if something does, please [open an issue](https://github.com/gaut3/saga/issues).
 
 ### Fixed

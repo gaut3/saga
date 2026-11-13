@@ -302,7 +302,7 @@ void main() {
     // The notification / lock screen / car skip buttons show the interval
     // (`AudioPlayerService._skipControl`). An option without its drawable
     // falls back to the stock glyph — not broken, but not what was chosen.
-    final settings = File('lib/features/settings/settings_screen.dart')
+    final settings = File('lib/features/settings/settings_playback.dart')
         .readAsStringSync();
     final options = RegExp(r'_skipOptions = \[([^\]]*)\]')
         .firstMatch(settings)!
