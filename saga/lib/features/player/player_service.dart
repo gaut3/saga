@@ -18,6 +18,7 @@ import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/chapter_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/storage/completed_books_store.dart';
+import '../../core/utils/format.dart';
 import '../../core/storage/listen_days_store.dart';
 import '../../core/storage/listening_history_store.dart';
 import '../../core/storage/playback_log_store.dart';
@@ -29,6 +30,7 @@ import 'media_browse.dart';
 import 'resume_rewind.dart';
 import 'session_restore.dart';
 import 'track_audio_source.dart';
+import 'report_gate.dart';
 import 'track_position_math.dart';
 import '../../core/book_status.dart';
 
@@ -85,6 +87,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   // incoming book while the platform player still holds the outgoing one, so
   // any position save in that window would file A's position under B's key.
   bool _loadInProgress = false;
+  // Which saves also go to Plex: positions the listener reached, not a load, a
+  // restore or a resume rewind ([ReportGate]). Wraps the report only.
+  final _reportGate = ReportGate();
   // The phone player's volume is the product of three things, and only
   // [_applyVolume] writes it: loadBook's mute (hides the old audio during a
   // playWhenReady load), the interruption duck, and the sleep timer's fade.
@@ -125,6 +130,19 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   Stream<void> get jumps => _jumps.stream;
   final _jumps = StreamController<void>.broadcast();
   void _jumped() => _jumps.add(null);
+
+  /// A move of the listener's own has landed: a seek, skip, undo or queue
+  /// jump. Its position may go to Plex from now on ([ReportGate]).
+  void _listenerMoved() {
+    _openReports('listener moved');
+    _jumped();
+  }
+
+  void _openReports(String why) {
+    if (_reportGate.isOpen) return;
+    _reportGate.moved();
+    AppLog.log('sync', 'reports open: $why');
+  }
 
   /// Fires after a position save and after a finish is recorded: what the
   /// home-screen widget redraws on. A stream rather than another callback
@@ -422,6 +440,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     int startPositionMs = 0,
     bool isAutoReload = false,
     bool applyResumeRewind = false,
+    bool chosenPoint = false,
     bool playWhenReady = false,
   }) async {
     if (tracks.isEmpty) throw ArgumentError('Cannot load a book with no tracks');
@@ -453,6 +472,21 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _loadInProgress = true;
     _bookRatingKey = bookRatingKey;
     _tracks = tracks;
+    // After the outgoing book's save above, which the gate still judged as
+    // that book's. A stream-error reload carries on the same listen and keeps
+    // the gate as it was. A point the listener chose is a move of their own;
+    // anything else holds reports until playback passes the loaded spot —
+    // [startPositionMs], before the resume rewind below.
+    if (!isAutoReload) {
+      if (chosenPoint) {
+        _openReports('loaded at a chosen point');
+      } else {
+        _reportGate.load(
+            absoluteFromTrack(_trackDurationsMs, startTrackIndex, startPositionMs));
+        AppLog.log('sync', 'reports held for book $bookRatingKey until '
+            '${fmtBookPositionMs(_reportGate.heldUntilMs!)}');
+      }
+    }
     _pausedAt = null; // new book — don't rewind on first play
     _lastChapterIndex = -1; // recompute chapter title for the new book
     _completedThisSession = false; // a fresh listen can be counted again
@@ -780,7 +814,14 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       if (rewindMs > 0) {
         final currentMs = _trackPosMs;
         final targetMs = (currentMs - rewindMs).clamp(0, currentMs);
-        if (targetMs < currentMs) await _seekTo(targetMs);
+        if (targetMs < currentMs) {
+          // A rewind is not the listener moving: hold reports until playback
+          // is back past where they paused.
+          _reportGate.rewound(_absolutePositionMs(currentMs));
+          AppLog.log('sync', 'reports held after resume rewind until '
+              '${fmtBookPositionMs(_reportGate.heldUntilMs!)}');
+          await _seekTo(targetMs);
+        }
       }
     } else {
       _pausedAt = null;
@@ -934,7 +975,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _previousAbsolutePositionMs = absolutePositionMs;
     canUndoSeekNotifier.value = true;
     await _seekTo(_clampToTrack(position).inMilliseconds);
-    _jumped();
+    _listenerMoved();
   }
 
   @override
@@ -959,7 +1000,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     } else {
       await _player.seekToNext();
     }
-    _jumped();
+    _listenerMoved();
   }
 
   @override
@@ -986,7 +1027,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     } else {
       await _player.seekToPrevious();
     }
-    _jumped();
+    _listenerMoved();
   }
 
   /// Returns cached chapters for single-track (M4B) books, null otherwise.
@@ -1051,7 +1092,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       return;
     }
     await _seekTo(0, index: index);
-    _jumped();
+    _listenerMoved();
   }
 
   // ── Where the book plays: the phone, or a TV ────────────────────────────
@@ -2024,7 +2065,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     final target = trackFromAbsolute(_trackDurationsMs, targetMs);
     if (target == null) return;
     await _seekTo(target.positionMs, index: target.index);
-    _jumped();
+    _listenerMoved();
   }
 
   /// Seek to [absolutePosition] within the book, resolving the correct
@@ -2070,7 +2111,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _previousAbsolutePositionMs = absolutePositionMs;
     canUndoSeekNotifier.value = true;
     await _seekTo(target.positionMs, index: target.index);
-    _jumped();
+    _listenerMoved();
   }
 
   void logSleepTimer() => _logEvent('sleepTimer');
@@ -2200,6 +2241,12 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     );
     onBookmarkSaved?.call();
     _progressChanged.add(null);
+
+    // Only now, after the save: the gate holds back the Plex report, never
+    // the place on this device.
+    final wasOpen = _reportGate.isOpen;
+    if (!_reportGate.allows(absolutePositionMs)) return;
+    if (!wasOpen) AppLog.log('sync', 'reports open: playback passed the hold');
 
     _api.reportTimeline(
       ratingKey: track.ratingKey,

@@ -3,6 +3,7 @@ import '../../core/plex/models/plex_track.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/settings_store.dart';
 import 'player_service.dart';
+import 'report_gate.dart';
 
 enum _StartKind { resume, beginning, trackKey, trackIndex }
 
@@ -65,6 +66,15 @@ class BookStartPoint {
         _trackRatingKey = null,
         _trackIndex = trackIndex,
         _positionMs = positionMs;
+
+  /// An exact point the listener chose — a bookmark, a chapter, a history
+  /// entry — rather than "where I was" or "the start". Landing on one is a
+  /// move of the listener's own, so its position may go to Plex at once
+  /// ([ReportGate.moved]); a resume or a start waits until playback passes
+  /// the loaded spot. A stream-error reload also lands on an exact point and
+  /// is no move at all: [startBook] passes `isAutoReload` for that.
+  bool get isChosen =>
+      _kind == _StartKind.trackKey || _kind == _StartKind.trackIndex;
 }
 
 /// Resolves [start] against a book's track keys and its saved position.
@@ -165,6 +175,7 @@ Future<bool> startBook({
       startTrackIndex: resolved.trackIndex,
       startPositionMs: resolved.positionMs,
       applyResumeRewind: resolved.applyResumeRewind,
+      chosenPoint: from.isChosen,
       playWhenReady: playback != LaunchPlayback.none,
       isAutoReload: isAutoReload,
     );

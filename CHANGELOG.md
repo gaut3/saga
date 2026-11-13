@@ -11,6 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Saga is built with Flutter 3.50.** Flutter's Material widgets, which draw most of Saga's screens, now come as a separate package, and the Android build tools moved up a major version with it. Nothing should look or behave differently; if something does, please [open an issue](https://github.com/gaut3/saga/issues).
 
 ### Fixed
+- **Opening a book should no longer move your place in other Plex apps.** Saga told your Plex server where you were every time it saved your place, including just after opening a book and just after the short rewind it does when you come back to one. Apps that read your place from Plex, such as Prologue, then showed you up to a minute behind where you'd stopped. Saga now tells Plex only about places you reach by listening, or by skipping and jumping yourself. Your place on this phone is saved exactly as before.
 - **Closing Saga should no longer cut the end off the diagnostics log.** Swiping Saga away could end the app before it had written down its last second, so the log Copy diagnostics gives you was missing how playback stopped, including when a cast ended. Saga now writes the log out before it closes.
 
 ## [1.2.0] - 2026-11-12
