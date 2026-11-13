@@ -6,10 +6,10 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 
 import 'app.dart';
 import 'core/audio/audio_level.dart';
+import 'core/build_channel.dart';
 import 'core/diagnostics/app_log.dart';
 import 'core/mark_motion.dart';
 import 'core/plex/plex_api.dart';
@@ -27,6 +27,7 @@ import 'core/storage/listen_days_store.dart';
 import 'core/storage/listening_history_store.dart';
 import 'core/storage/named_bookmark_store.dart';
 import 'core/storage/playback_log_store.dart';
+import 'core/storage/save_audit_store.dart';
 import 'core/storage/server_scope.dart';
 import 'core/storage/settings_store.dart';
 import 'core/storage/timeline_queue_store.dart';
@@ -59,10 +60,11 @@ Future<void> _run() async {
   // One line per launch, so a pasted log always says which build produced it
   // and always has something recent in it. Without it a quiet week reads as a
   // log that has stopped working.
-  unawaited(PackageInfo.fromPlatform().then(
-    (i) => AppLog.log('app', 'launch ${i.version}+${i.buildNumber}'),
-    onError: (_) => AppLog.log('app', 'launch'),
-  ));
+  // Awaited, unlike the old log-only read: whether this is a beta or dev
+  // build gates developer options and the save audit, which the player's
+  // first save already asks.
+  await BuildChannel.init();
+  AppLog.log('app', 'launch ${BuildChannel.version}'.trim());
 
   try {
     await Hive.initFlutter();
@@ -73,6 +75,7 @@ Future<void> _run() async {
     await BookMetadataStore.init(hiveKey);
     await NarratorIndexStore.init(hiveKey);
     await ChapterStore.init(hiveKey);
+    await SaveAuditStore.init(hiveKey);
     await CompletedBooksStore.init(hiveKey);
     await DownloadStore.init(hiveKey);
     await ListeningHistoryStore.init(hiveKey);

@@ -225,6 +225,15 @@ class SettingsStore {
       _box.put('dismissedUpdateTag', tag);
 
   // Mask server address in Settings for screenshots/recordings.
+  /// Settings › Developer options shown, unlocked by tapping the version in
+  /// About seven times. Read only on a beta or dev build
+  /// ([BuildChannel.isPrerelease]): a release ignores it without erasing it.
+  static bool get developerOptions =>
+      _box.get('developerOptions', defaultValue: false) as bool;
+
+  static Future<void> setDeveloperOptions(bool v) =>
+      _box.put('developerOptions', v);
+
   static bool get redactServerAddress =>
       _box.get('redactServerAddress', defaultValue: false) as bool;
 

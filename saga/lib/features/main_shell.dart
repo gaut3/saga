@@ -123,7 +123,9 @@ class _MainShellState extends ConsumerState<MainShell>
       // Not awaited (the OS doesn't wait for us), but not unwatched either: this
       // is the save most likely to come just before a kill, and a throw here
       // used to vanish into the zone handler as one anonymous line.
-      ref.read(playerServiceProvider).savePositionForLifecycle().catchError(
+      ref.read(playerServiceProvider)
+          .savePositionForLifecycle(trigger: state.name)
+          .catchError(
           (Object e) => AppLog.log('playback', 'lifecycle save failed: $e'));
       // Leaving the app is when the home-screen widget becomes visible, and
       // anything changed in here (a finish marked by hand, cleared progress)

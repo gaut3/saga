@@ -58,6 +58,12 @@ typedef _Version = ({List<int> core, List<String> pre});
 /// Tolerant of a leading `v` and a `+build` suffix. Pre-release builds
 /// (`-dev`, `-beta.N`) used to parse to null, so on a beta every check
 /// failed and a tester was never told the final release was out.
+/// Whether [version] is a beta's or a dev build's: it has a pre-release
+/// part (`1.3.0-dev`, `1.3.0-beta.2`). A version that doesn't parse counts as
+/// a release, so nothing gated on this opens by accident.
+bool isPrereleaseVersion(String version) =>
+    _parseVersion(version)?.pre.isNotEmpty ?? false;
+
 _Version? _parseVersion(String s) {
   var v = s.trim();
   if (v.startsWith('v') || v.startsWith('V')) v = v.substring(1);

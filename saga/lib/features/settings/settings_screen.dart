@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kDebugMode;
@@ -9,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/audio/audio_level.dart';
+import '../../core/build_channel.dart';
 import '../../core/diagnostics/app_log.dart';
 import '../../core/mark_motion.dart';
 import '../../core/plex/plex_client.dart';
@@ -24,6 +26,7 @@ import '../../core/storage/listening_history_store.dart';
 import '../../core/storage/named_bookmark_store.dart';
 import '../../core/storage/playback_log_store.dart';
 import '../../core/storage/progress_backup.dart';
+import '../../core/storage/save_audit_store.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/storage/track_cache_store.dart';
 import '../../core/update/update_checker.dart';
@@ -44,6 +47,7 @@ part 'settings_server.dart';
 part 'settings_downloads.dart';
 part 'settings_data.dart';
 part 'settings_about.dart';
+part 'settings_developer.dart';
 
 /// Settings (handoff frame 13): an index that fits one screen — the theme
 /// inline, one row per page with a line saying what's set, and Sign out set
@@ -171,6 +175,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ].join(' · '),
                     onTap: () => _open(const _AboutPage()),
                   ),
+                  if (BuildChannel.developerOptions)
+                    _SettingsTile(
+                      icon: Icons.developer_mode_outlined,
+                      title: 'Developer options',
+                      subtitle: 'Position saves · beta and dev builds',
+                      onTap: () => _open(const _DeveloperPage()),
+                    ),
                   const SizedBox(height: 24),
                   _SettingsTile(
                     icon: Icons.logout,

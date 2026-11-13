@@ -14,6 +14,24 @@ class _AboutPageState extends ConsumerState<_AboutPage> {
   late bool _updateCheck = SettingsStore.updateCheckEnabled;
   final _updateRowKey = GlobalKey();
   String _version = '';
+  int _versionTaps = 0;
+
+  void _onVersionTap() {
+    if (!BuildChannel.isPrerelease) return;
+    if (SettingsStore.developerOptions) {
+      showSagaToast(context, 'Developer options are already on');
+      return;
+    }
+    final left = 7 - ++_versionTaps;
+    if (left <= 0) {
+      _versionTaps = 0;
+      SettingsStore.setDeveloperOptions(true);
+      showSagaToast(context, 'Developer options are on, under About in Settings');
+    } else if (left <= 3) {
+      showSagaToast(context,
+          left == 1 ? 'One more tap' : '$left taps from developer options');
+    }
+  }
 
   @override
   void initState() {
@@ -150,9 +168,19 @@ class _AboutPageState extends ConsumerState<_AboutPage> {
                 const SizedBox(height: 12),
                 const SagaWordmark(fontSize: 22),
                 const SizedBox(height: 6),
-                Text(_version,
-                    style: TextStyle(
-                        color: SagaColors.fgSubtle, fontSize: 12)),
+                // Seven taps unlock developer options on a beta or dev
+                // build, as the build number does in Android's settings.
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _onVersionTap,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 6),
+                    child: Text(_version,
+                        style: TextStyle(
+                            color: SagaColors.fgSubtle, fontSize: 12)),
+                  ),
+                ),
               ],
             ),
           ),

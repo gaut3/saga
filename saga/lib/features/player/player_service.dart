@@ -9,6 +9,9 @@ import 'package:rxdart/rxdart.dart';
 
 import '../../core/cast/cast_service.dart';
 import '../../core/diagnostics/app_log.dart';
+import '../../core/storage/server_scope.dart';
+import '../../core/storage/save_audit_store.dart';
+import '../../core/build_channel.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/plex/plex_api.dart';
 import '../../core/plex/plex_client.dart';
@@ -208,7 +211,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         // was, which is audible as a jump.
         final resumeFrom = _liveOrStoredPosition();
         if (_player.processingState == ProcessingState.ready) {
-          _saveAndReportPosition(state: 'paused');
+          _saveAndReportPosition(trigger: 'stream error', state: 'paused');
         }
         final key = _bookRatingKey;
         if (key != null && !_reloadInProgress) {
@@ -465,7 +468,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // new one — the periodic timer's last save can be up to 10 s stale, and
     // once the swap happens no save for the old book is possible.
     if (_bookRatingKey != null && _bookRatingKey != bookRatingKey) {
-      await _saveAndReportPosition(state: 'paused');
+      await _saveAndReportPosition(trigger: 'book switch', state: 'paused');
     }
 
     final gen = ++_loadGeneration;
@@ -843,7 +846,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // for the 10-second progress timer to fire. Skip when the source is still
     // loading — position is not meaningful and would overwrite the resume point.
     if (_isReady) {
-      await _saveAndReportPosition(state: 'playing');
+      await _saveAndReportPosition(trigger: 'play', state: 'playing');
     }
     _trackingFrom = DateTime.now();
     _startProgressTimer();
@@ -880,7 +883,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // to pause — a platform-side no-op that emits nothing. Re-send the truth
     // so the session's buttons flip back to a working direction.
     republishNowPlaying();
-    await _saveAndReportPosition(state: 'paused');
+    await _saveAndReportPosition(trigger: 'pause', state: 'paused');
   }
 
   @override
@@ -895,7 +898,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // pause() — without this the final stretch had no end: no duration in
     // Sessions, no History credit, and no position to return to.
     _closeSession();
-    await _saveAndReportPosition(state: 'stopped');
+    await _saveAndReportPosition(trigger: 'stop', state: 'stopped');
     if (_castActive) {
       // Stopping Saga stops the TV too: swipe-away means quit (see
       // [onTaskRemoved]), and a cast left running would have nothing on the
@@ -1333,7 +1336,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     final positionMs = _player.position.inMilliseconds;
     final session = cast.session;
     // On disk before anything moves: the place the TV starts from.
-    await savePositionForLifecycle();
+    await savePositionForLifecycle(trigger: 'cast start');
     // A raw pause: the listen carries on, on the TV, so the session log and
     // History keep running.
     await _player.pause();
@@ -1498,7 +1501,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       _progressTimer?.cancel();
       _pausedAt = DateTime.now();
       _closeSession();
-      unawaited(_saveAndReportPosition(state: 'paused'));
+      unawaited(_saveAndReportPosition(trigger: 'cast pause', state: 'paused'));
     } else if (s.state == CastPlayerState.playing && !_castWantsPlay) {
       _castWantsPlay = true;
       _pausedAt = null;
@@ -1545,7 +1548,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _setCastPlace((item: last, positionMs: _tracks[last].durationMs));
     _closeSession();
     await _markBookCompleted();
-    await _saveAndReportPosition(state: 'stopped');
+    await _saveAndReportPosition(trigger: 'cast finished', state: 'stopped');
     _broadcastState();
   }
 
@@ -1562,7 +1565,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // Still reading the TV: the session closes, and the place saves, at its
     // last good position.
     _closeSession();
-    if (!saved && !finished) await _saveAndReportPosition(state: 'paused');
+    if (!saved && !finished) await _saveAndReportPosition(trigger: 'cast end', state: 'paused');
     final place = _castPlace;
     casting.value = false;
     _castingSubject.add(false);
@@ -1890,7 +1893,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       if (!started) return;
     }
     forward ? await fastForward() : await rewind();
-    await savePositionForLifecycle();
+    await savePositionForLifecycle(trigger: 'widget skip');
   }
 
   /// The home-screen widget's buttons, sent by audio_service's custom-action
@@ -1998,7 +2001,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// skips when the player is not fully ready to avoid writing a stale position.
   Future<void> savePosition() async {
     if (_isReady) {
-      await _saveAndReportPosition(state: _isPlaying ? 'playing' : 'paused');
+      await _saveAndReportPosition(trigger: 'save', state: _isPlaying ? 'playing' : 'paused');
     }
   }
 
@@ -2006,14 +2009,15 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// (background, detach) so the position is never lost when Android kills the app
   /// while the player is buffering on a slow connection.
   /// _player.position remains valid during ProcessingState.buffering.
-  Future<void> savePositionForLifecycle() async {
+  Future<void> savePositionForLifecycle({String trigger = 'lifecycle'}) async {
     if (_castActive) {
       if (!_isReady) return;
     } else {
       final ps = _player.processingState;
       if (ps == ProcessingState.idle || ps == ProcessingState.completed) return;
     }
-    await _saveAndReportPosition(state: _isPlaying ? 'playing' : 'paused');
+    await _saveAndReportPosition(
+        trigger: trigger, state: _isPlaying ? 'playing' : 'paused');
   }
 
   @override
@@ -2194,11 +2198,14 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       // Heals a platform session rebuilt mid-listen (see republishNowPlaying)
       // within one tick, before the user ever hits a dead button.
       republishNowPlaying();
-      _saveAndReportPosition(state: 'playing');
+      _saveAndReportPosition(trigger: 'tick', state: 'playing');
     });
   }
 
-  Future<void> _saveAndReportPosition({required String state}) async {
+  /// [trigger] says what asked for the save, for the developer options'
+  /// save audit: `tick`, `play`, `pause`, a lifecycle state, and so on.
+  Future<void> _saveAndReportPosition(
+      {required String trigger, required String state}) async {
     // Mid-load the identity fields already name the incoming book while the
     // player still reports the outgoing one — a save here would file A's
     // position under B's key and destroy B's place. Skip; the next periodic
@@ -2261,6 +2268,16 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     );
     onBookmarkSaved?.call();
     _progressChanged.add(null);
+    if (BuildChannel.developerOptions) {
+      await SaveAuditStore.record(SaveAuditEntry(
+        at: DateTime.now(),
+        trigger: trigger,
+        bookKey: ServerScope.key(bookKey),
+        positionMs: absolutePositionMs,
+        reported: reportAllowed,
+        heldUntilMs: reportAllowed ? null : _reportGate.heldUntilMs,
+      ));
+    }
 
     if (!reportAllowed) return;
     if (!wasOpen) AppLog.log('sync', 'reports open: playback passed the hold');
