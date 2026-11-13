@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Closing Saga should no longer cut the end off the diagnostics log.** Swiping Saga away could end the app before it had written down its last second, so the log Copy diagnostics gives you was missing how playback stopped, including when a cast ended. Saga now writes the log out before it closes.
+
 ## [1.2.0] - 2026-11-12
 
 ![Saga 1.2: a widget, and casting rebuilt. The home-screen widget in three sizes beside the player, casting to a TV called Living room.](https://saga-app.no/screens/release-1.2-hero.jpg)

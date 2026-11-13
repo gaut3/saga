@@ -856,6 +856,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       unawaited(cast.stopCasting());
     }
     await _player.stop();
+    // super.stop() goes idle, the service answers with stopSelf(), and after a
+    // swipe-away the process can end before AppLog's debounced write: the log
+    // lost this stop's lines. Write them out while the process is still ours.
+    await AppLog.flush();
     await super.stop();
   }
 

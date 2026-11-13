@@ -70,6 +70,16 @@ class AppLog {
     } catch (_) {}
   }
 
+  /// Writes the buffer now instead of after the 1 s debounce. For the moments
+  /// the process may not last that second: a stop ends the media service, and
+  /// after a swipe-away the process goes with it — taking the last lines (the
+  /// stop's own, "cast ended" among them) along.
+  static Future<void> flush() {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    return _flush();
+  }
+
   static Future<void> _flush() async {
     final file = _file;
     if (file == null) return;

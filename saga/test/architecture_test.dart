@@ -89,6 +89,19 @@ void main() {
     }
   });
 
+  test('stop() writes the log out before it ends the media service', () {
+    // super.stop() lets the service stop itself, and after a swipe-away the
+    // process goes with it — before AppLog's 1 s debounced write, so the log
+    // lost the stop's own lines ("cast ended" in device test step 16).
+    final src = _code(File('lib/features/player/player_service.dart'));
+    final start = src.indexOf('Future<void> stop() async {');
+    expect(start, isNot(-1));
+    final body = src.substring(start, src.indexOf('\n  }\n', start));
+    final flush = body.indexOf('await AppLog.flush();');
+    expect(flush, isNot(-1), reason: 'stop() must flush the log');
+    expect(flush, lessThan(body.indexOf('await super.stop();')));
+  });
+
   test('messages use showSagaToast, not a SnackBar', () {
     // A SnackBar mounts in the tab's Scaffold, under the nav pill and mini
     // player (`extendBody: true`), and not at all over the full-screen player.
