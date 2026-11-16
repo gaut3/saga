@@ -109,6 +109,16 @@ class AppLog {
   /// at which anything can be done about them.
   static String dump() => _buffer.map(_redact).join('\n');
 
+  /// The newest [count] entries tagged [tag], newest first and redacted, for
+  /// developer options. The first line of each entry only.
+  static List<String> recent(String tag, {int count = 8}) {
+    final marker = ' [$tag] ';
+    return [
+      for (final l in _buffer.reversed)
+        if (l.contains(marker)) _redact(l),
+    ].take(count).toList();
+  }
+
   static Future<void> clear() async {
     _buffer.clear();
     try {

@@ -85,6 +85,9 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
         const SizedBox(height: 16),
         _SectionHeader('Timeline queue'),
         ..._queue(subtle),
+        const SizedBox(height: 16),
+        _SectionHeader('Sync log'),
+        _syncLog(subtle),
         const SizedBox(height: 24),
         _SettingsTile(
           icon: Icons.visibility_off_outlined,
@@ -174,6 +177,40 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
         },
       ),
     ];
+  }
+
+  /// The newest `[sync]` lines from the diagnostics log: when reports were
+  /// held and opened, and what the queue check did with each entry.
+  Widget _syncLog(TextStyle subtle) {
+    final lines = AppLog.recent('sync');
+    return Material(
+      color: SagaColors.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: lines.isEmpty
+            ? Text('Nothing yet.', style: subtle)
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final l in lines)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      // "2026-11-13T10:47:29.123 [sync] …" → "10:47:29 …"
+                      child: Text(
+                          l.length > 30 && l[10] == 'T'
+                              ? '${l.substring(11, 19)}  '
+                                  '${l.substring(l.indexOf('] ') + 2)}'
+                              : l,
+                          style: subtle.copyWith(
+                              color: SagaColors.fgMuted,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ])),
+                    ),
+                ],
+              ),
+      ),
+    );
   }
 
   /// The loaded book: how far the live position is from the last save (what

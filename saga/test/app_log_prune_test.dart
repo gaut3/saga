@@ -32,6 +32,18 @@ void main() {
     expect(AppLog.staleCount(lines, cutoff), 2);
   });
 
+  test('recent: one tag, newest first, redacted, capped', () {
+    AppLog.log('sync', 'one');
+    AppLog.log('playback', 'other');
+    AppLog.log('sync', 'two from http://192.168.1.5:32400');
+    AppLog.log('sync', 'three');
+    final lines = AppLog.recent('sync', count: 2);
+    expect(lines, hasLength(2));
+    expect(lines.first, endsWith('[sync] three'));
+    expect(lines.last, contains('[sync] two'));
+    expect(lines.last, isNot(contains('192.168')));
+  });
+
   test('empty log', () {
     expect(AppLog.staleCount([], cutoff), 0);
   });

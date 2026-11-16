@@ -2317,6 +2317,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       // Success — opportunistically flush anything queued while offline.
       _flushTimelineQueue();
     }, onError: (Object e) async {
+      // A report that never arrived isn't one Plex has: the same place sent
+      // again later is not a repeat. The queued copy may yet be dropped
+      // (rule 6), and then only a live report gets it there.
+      if (_lastReport == report) _lastReport = null;
       if (auditId != null) {
         // An answer means Plex refused it; none means it never arrived,
         // and the queue below keeps it.
