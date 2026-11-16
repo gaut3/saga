@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:saga/core/storage/save_audit_store.dart';
 import 'package:saga/core/update/update_checker.dart';
 import 'package:saga/features/player/report_gate.dart';
@@ -109,6 +110,15 @@ void main() {
       final rows = await coldEntries();
       expect(rows.first.outcomes, {'http 404': 1});
       expect(rows.last.outcomes, {'ok': 1, 'queued': 1});
+    });
+
+    test('rows in the old shape are dropped, not fatal', () async {
+      // What a developer build before tick runs left on the phone.
+      await Hive.box('save_audit').put('entries', [
+        {'at': 1, 'tr': 'tick', 'bk': '1', 'p': 0, 'rep': true},
+      ]);
+      expect(await save(0, trigger: 'pause'), isNotNull);
+      expect(SaveAuditStore.entries().single.trigger, 'pause');
     });
 
     test('two saves in one millisecond get their own rows', () async {

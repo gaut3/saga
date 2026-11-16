@@ -133,8 +133,15 @@ class SaveAuditStore {
     int? heldUntilMs,
   }) async {
     try {
-      final list = _raw();
-      final last = list.isEmpty ? null : SaveAuditEntry.fromMap(list.last);
+      var list = _raw();
+      SaveAuditEntry? last;
+      try {
+        last = list.isEmpty ? null : SaveAuditEntry.fromMap(list.last);
+      } catch (_) {
+        // Rows in the old shape (developer builds before tick runs): start
+        // over, or every save after the update would fail to record.
+        list = [];
+      }
       final SaveAuditEntry entry;
       if (last != null &&
           trigger == 'tick' &&
