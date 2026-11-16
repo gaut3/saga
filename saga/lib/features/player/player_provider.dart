@@ -59,6 +59,11 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
         finished: finished,
         startsOver: startsOver);
   };
+  service.onSyncOffer = ({required serverMs, required hereMs}) async {
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return null;
+    return showSyncOfferSheet(ctx, serverMs: serverMs, hereMs: hereMs);
+  };
   service.onStreamError = (bookRatingKey, position) async {
     try {
       AppLog.log('playback',

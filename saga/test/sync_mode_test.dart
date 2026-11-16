@@ -165,6 +165,22 @@ void main() {
       expect(play.indexOf('saveSyncedPlace()', branch), greaterThan(branch));
     });
 
+    test('an answer after audio started is offered, and moves only on a yes',
+        () {
+      final sync = _body(service, 'Future<({ServerPosition server');
+      expect('_offerAfterStart('.allMatches(sync).length, 2,
+          reason: 'both the no-wait and the late answer are offered');
+      final offer = _body(service, 'Future<void> _offerAfterStart(');
+      final asked = offer.indexOf('await offer(');
+      final yes = offer.indexOf('if (jump != true');
+      final move = offer.indexOf('_takeServerPlace(');
+      expect(asked, isNot(-1));
+      expect(yes, greaterThan(asked));
+      expect(move, greaterThan(yes));
+      expect(offer.contains('_offerWindow'), isTrue,
+          reason: 'a stale answer is not offered');
+    });
+
     test('a downloaded book about to play never waits (rule 1)', () {
       final sync = _body(service, 'Future<({ServerPosition server');
       expect(sync.contains('final wait = live && !(downloaded && startsAudio);'),

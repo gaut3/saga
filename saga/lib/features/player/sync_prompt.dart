@@ -94,3 +94,66 @@ Future<bool?> showSyncAskSheet(BuildContext context,
     scrollable: false,
   );
 }
+
+/// Plex's place, offered after audio started here without it (a downloaded
+/// book never waits; a late answer). A prompt rather than a toast, which is
+/// easy to miss while listening. True jumps there; anything else keeps
+/// playing where it is.
+Future<bool?> showSyncOfferSheet(BuildContext context,
+    {required int serverMs, required int hereMs}) {
+  final ahead = serverMs > hereMs;
+  final bottomPad = MediaQuery.of(context).padding.bottom;
+  return showSagaSheet<bool>(
+    context,
+    (ctx) => Padding(
+      padding: EdgeInsets.fromLTRB(20, 4, 20, 20 + bottomPad),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SagaSheetTitle(
+              ahead
+                  ? 'Another device is further ahead'
+                  : 'Another device is further back',
+              padding: const EdgeInsets.only(bottom: 6)),
+          Text(
+              'Plex has ${fmtBookPositionMs(serverMs)} from another device, '
+              'newer than where this phone started. Jump there?',
+              style: TextStyle(color: SagaColors.fgMuted, fontSize: 14)),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: SagaColors.accent,
+                foregroundColor: SagaColors.accentFg,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text('Jump to ${fmtBookPositionMs(serverMs)}'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: SagaColors.fg,
+                side: BorderSide(
+                    color: SagaColors.accent.withValues(alpha: 0.4)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Keep listening here'),
+            ),
+          ),
+        ],
+      ),
+    ),
+    scrollable: false,
+  );
+}

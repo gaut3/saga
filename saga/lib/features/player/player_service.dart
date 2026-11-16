@@ -1894,6 +1894,16 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       required bool finished,
       required bool startsOver})? onSyncAsk;
 
+  /// Offers Plex's place after audio has started without it (a downloaded
+  /// book, which never waits, or an answer past [syncWaitLimit]): true jumps
+  /// there. A prompt, not a toast, which is easy to miss while listening.
+  Future<bool?> Function({required int serverMs, required int hereMs})?
+      onSyncOffer;
+
+  /// How long after a play a late answer is still offered. Past it the
+  /// listener has moved on, and the question would be about a stale moment.
+  static const _offerWindow = Duration(seconds: 15);
+
   // An in-app play waiting on the server: a second tap is ignored rather
   // than starting the local place under the pending answer.
   bool _syncWaiting = false;
@@ -1931,12 +1941,20 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       live: live,
       waited: wait,
     );
+    final askedAt = DateTime.now();
     if (!wait) {
-      unawaited(check);
+      // Live, the answer still counts: it's offered once it arrives.
+      unawaited(live
+          ? check.then((r) => _offerAfterStart(bookKey, r, askedAt))
+          : check);
       return null;
     }
-    // On a timeout the request carries on and logs; its answer is dropped.
-    final result = await check.timeout(syncWaitLimit, onTimeout: () => null);
+    // On a timeout the request carries on and logs, and its answer is
+    // offered when it comes.
+    final result = await check.timeout(syncWaitLimit, onTimeout: () {
+      unawaited(check.then((r) => _offerAfterStart(bookKey, r, askedAt)));
+      return null;
+    });
     final server = result?.server;
     final key = result?.trackRatingKey;
     if (result == null || server == null || key == null) return null;
@@ -1994,12 +2012,15 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// A place was taken from Plex: the player's Undo goes back to [localMs]
   /// (a move of the listener's own, so it's reported: rule 9), and the
   /// toast says so.
-  void announceSyncApplied(int serverMs, int localMs) {
+  ///
+  /// No toast after a jump the listener chose ([toast] false): they just
+  /// said yes, and the player's Undo still goes back.
+  void announceSyncApplied(int serverMs, int localMs, {bool toast = true}) {
     _previousAbsolutePositionMs = localMs;
     canUndoSeekNotifier.value = true;
     AppLog.log('sync', 'took Plex\'s place ${fmtBookPositionMs(serverMs)} '
         '(was ${fmtBookPositionMs(localMs)})');
-    onSyncApplied?.call(serverMs: serverMs, undo: undoSeek);
+    if (toast) onSyncApplied?.call(serverMs: serverMs, undo: undoSeek);
   }
 
   /// The play button in the app (player, mini player): a play the listener
@@ -2052,17 +2073,57 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     await play();
   }
 
-  /// Moves the paused player to Plex's place. Reports hold until playback
-  /// passes it (Plex has it already), no resume rewind follows (the listener
-  /// was just listening elsewhere), and the place is saved now, with its
-  /// hold, so a kill can't lose it.
+  /// A live answer that arrived after audio started here: offers Plex's
+  /// place in a prompt when it differs from where playback is now. Nothing
+  /// moves unless the listener says so.
+  Future<void> _offerAfterStart(
+      String bookKey, ServerCheck? r, DateTime askedAt) async {
+    final server = r?.server;
+    final key = r?.trackRatingKey;
+    if (r == null || server == null || key == null) return;
+    if (r.decision.action != SyncAction.apply &&
+        r.decision.action != SyncAction.ask) {
+      return;
+    }
+    if (DateTime.now().difference(askedAt) > _offerWindow) {
+      AppLog.log('sync', 'book $bookKey: answer came too late to offer');
+      return;
+    }
+    if (_bookRatingKey != bookKey ||
+        _loadInProgress ||
+        _castActive ||
+        !_tracks.any((t) => t.ratingKey == key)) {
+      return;
+    }
+    final hereMs = absolutePositionMs;
+    if ((server.absoluteMs - hereMs).abs() <= syncSameWindow.inMilliseconds) {
+      return;
+    }
+    final offer = onSyncOffer;
+    if (offer == null) return;
+    final jump = await offer(serverMs: server.absoluteMs, hereMs: hereMs);
+    AppLog.log('sync', 'book $bookKey: offered ${fmtBookPositionMs(server.absoluteMs)}, '
+        '${jump == true ? 'jumped' : 'stayed'}');
+    if (jump != true || _bookRatingKey != bookKey || _loadInProgress) return;
+    final from = absolutePositionMs;
+    await _takeServerPlace(server.absoluteMs);
+    announceSyncApplied(server.absoluteMs, from, toast: false);
+  }
+
+  /// Moves the player to Plex's place: paused, before an in-app play, or
+  /// playing when the listener said yes to [_offerAfterStart] (sync itself
+  /// never seeks under playback). Reports hold until playback passes it (Plex
+  /// has it already), no resume rewind follows (the listener was just
+  /// listening elsewhere), and the place is saved now, with its hold, so a
+  /// kill can't lose it.
   Future<void> _takeServerPlace(int absoluteMs) async {
     final target = trackFromAbsolute(_trackDurationsMs, absoluteMs);
     if (target == null) return;
     await _seekTo(target.positionMs, index: target.index);
     _reportGate.load(absoluteMs);
     _pausedAt = null;
-    await _saveAndReportPosition(trigger: 'sync', state: 'paused');
+    await _saveAndReportPosition(
+        trigger: 'sync', state: _isPlaying ? 'playing' : 'paused');
     _jumped();
   }
 
