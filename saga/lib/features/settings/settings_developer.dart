@@ -17,6 +17,35 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
   List<SaveAuditEntry> _saves = SaveAuditStore.entries();
   Timer? _tick;
 
+  // "Plex's view": the loaded book's files as last read from the server.
+  // Read on a tap only, never on a timer: it's a network call.
+  String? _plexBook;
+  List<PlexTrack>? _plexTracks;
+  DateTime? _plexReadAt;
+  String? _plexError;
+  bool _plexReading = false;
+
+  Future<void> _readPlex(String book) async {
+    setState(() {
+      _plexReading = true;
+      _plexError = null;
+    });
+    try {
+      final tracks = await ref.read(plexApiProvider).fetchTracks(book);
+      if (!mounted) return;
+      setState(() {
+        _plexBook = book;
+        _plexTracks = tracks;
+        _plexReadAt = DateTime.now();
+      });
+    } catch (e) {
+      AppLog.log('dev', "reading Plex's view failed: $e");
+      if (mounted) setState(() => _plexError = "Couldn't reach Plex");
+    } finally {
+      if (mounted) setState(() => _plexReading = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -56,6 +85,9 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
         ),
         _SectionHeader('Now'),
         _now(subtle),
+        const SizedBox(height: 16),
+        _SectionHeader("Plex's view"),
+        ..._plexView(subtle),
         const SizedBox(height: 16),
         _SectionHeader('Position saves'),
         Padding(
@@ -175,6 +207,93 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
           setState(() => PlexClient.simulateOffline = v);
           AppLog.log('dev', 'simulate offline ${v ? 'on' : 'off'}');
         },
+      ),
+    ];
+  }
+
+  /// What Plex has for the loaded book, and the place rule 2 makes of it
+  /// ([resolveServerPosition]), beside this phone's. Read-only: nothing here
+  /// moves a position.
+  List<Widget> _plexView(TextStyle subtle) {
+    final player = ref.read(playerServiceProvider);
+    final book = player.currentBookRatingKey;
+    if (book == null) {
+      return [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          child: Text('Load a book to read what Plex has for it.', style: subtle),
+        ),
+      ];
+    }
+    final tracks = _plexBook == book ? _plexTracks : null;
+    final lines = <String>[];
+    if (tracks != null) {
+      final server = resolveServerPosition([
+        for (final t in tracks)
+          (
+            durationMs: t.durationMs,
+            viewOffsetMs: t.viewOffsetMs,
+            lastViewedAt: t.lastViewedAt,
+          ),
+      ]);
+      final local = BookmarkStore.load(book);
+      if (server == null) {
+        lines.add('Plex knows nothing about this book.');
+      } else {
+        lines.add('Plex: ${fmtBookPositionMs(server.absoluteMs)} · file '
+            '${server.fileIndex + 1} of ${tracks.length} at '
+            '${fmtDuration(Duration(milliseconds: server.positionMs))}'
+            '${server.offsetErased ? ' (offset erased: its start)' : ''}');
+        lines.add('Plex heard of it ${_clock(server.at.toLocal())} '
+            '(server clock)');
+      }
+      if (local != null) {
+        lines.add('This phone: ${fmtBookPositionMs(local.absolutePositionMs)} · '
+            'saved ${_clock(local.savedAt)}');
+        if (server != null) {
+          final d = ((server.absoluteMs - local.absolutePositionMs) / 1000)
+              .round();
+          final t = server.at.difference(local.savedAt).inSeconds;
+          lines.add('Plex is ${d.abs()} s ${d >= 0 ? 'ahead' : 'behind'}, '
+              'and ${t.abs()} s ${t >= 0 ? 'newer' : 'older'}');
+        }
+      }
+      final seen = [
+        for (var i = 0; i < tracks.length; i++)
+          if (tracks[i].lastViewedAt != null) i,
+      ]..sort((a, b) =>
+          tracks[b].lastViewedAt!.compareTo(tracks[a].lastViewedAt!));
+      for (final i in seen.take(4)) {
+        final off = tracks[i].viewOffsetMs;
+        lines.add('  file ${i + 1}: '
+            '${off == null ? 'no offset' : fmtDuration(Duration(milliseconds: off))}'
+            ' · heard ${_clock(tracks[i].lastViewedAt!.toLocal())}');
+      }
+      if (seen.length > 4) lines.add('  … ${seen.length - 4} more files');
+    }
+
+    return [
+      Material(
+        color: SagaColors.surface,
+        child: ListTile(
+          leading: Icon(Icons.dns_outlined, color: SagaColors.accent),
+          title: Text(
+              _plexReading
+                  ? 'Reading…'
+                  : tracks == null
+                      ? 'Read from Plex'
+                      : 'Read again · last read ${_clock(_plexReadAt!)}',
+              style: TextStyle(color: SagaColors.fg)),
+          subtitle: Text(
+              _plexError ??
+                  (lines.isEmpty
+                      ? 'Each file\'s offset and when Plex last heard of it, '
+                          'and the place Saga makes of them'
+                      : lines.join('\n')),
+              style: subtle.copyWith(
+                  fontFeatures: const [FontFeature.tabularFigures()])),
+          onTap: _plexReading ? null : () => _readPlex(book),
+        ),
       ),
     ];
   }
