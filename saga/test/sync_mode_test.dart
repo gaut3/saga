@@ -179,6 +179,11 @@ void main() {
       expect(move, greaterThan(yes));
       expect(offer.contains('_offerWindow'), isTrue,
           reason: 'a stale answer is not offered');
+      // An answer before the load is done waits for it (the first iPhone
+      // test gave up instead), and the move comes after the wait.
+      final wait = offer.indexOf('while (_loadInProgress');
+      expect(wait, isNot(-1));
+      expect(asked, greaterThan(wait));
     });
 
     test('a downloaded book about to play never waits (rule 1)', () {

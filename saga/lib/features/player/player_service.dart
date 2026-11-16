@@ -2101,18 +2101,30 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         r.decision.action != SyncAction.ask) {
       return;
     }
-    if (DateTime.now().difference(askedAt) > _offerWindow) {
-      AppLog.log('sync', 'book $bookKey: answer came too late to offer');
-      return;
+    // A downloaded book's answer usually comes before its own load is done
+    // (iPhone, 2026-11-16: 0.1 s): wait for the load, not give up on it.
+    // Never offered mid-load: the player would move under the swap.
+    while (_loadInProgress &&
+        DateTime.now().difference(askedAt) < _offerWindow) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
     }
-    if (_bookRatingKey != bookKey ||
-        _loadInProgress ||
-        _castActive ||
-        !_tracks.any((t) => t.ratingKey == key)) {
+    String? skip;
+    if (DateTime.now().difference(askedAt) >= _offerWindow) {
+      skip = 'came too late to offer';
+    } else if (_bookRatingKey != bookKey) {
+      skip = 'another book is loaded';
+    } else if (_castActive) {
+      skip = 'casting';
+    } else if (!_tracks.any((t) => t.ratingKey == key)) {
+      skip = "Plex's file is not one of this book's here";
+    }
+    if (skip != null) {
+      AppLog.log('sync', 'book $bookKey: not offered, $skip');
       return;
     }
     final hereMs = absolutePositionMs;
     if ((server.absoluteMs - hereMs).abs() <= syncSameWindow.inMilliseconds) {
+      AppLog.log('sync', 'book $bookKey: not offered, already there');
       return;
     }
     final offer = onSyncOffer;
