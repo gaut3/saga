@@ -94,8 +94,8 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
         _SegmentedTile(
           icon: Icons.sync_alt_rounded,
           title: 'Sync mode',
-          options: const ['Off', 'Shadow'],
-          selectedIndex: BuildChannel.syncMode.index.clamp(0, 1),
+          options: const ['Off', 'Shadow', 'Live'],
+          selectedIndex: BuildChannel.syncMode.index,
           onChanged: (i) async {
             await SettingsStore.setSyncModeIndex(i);
             AppLog.log('sync', 'sync mode ${SyncMode.values[i].name}');
@@ -105,8 +105,10 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
           child: Text(
-              'Shadow reads Plex when you open or play a book in the app, and '
-              'logs what it would do below, under Sync log. It moves nothing. '
+              'Shadow and Live read Plex when you open or play a book in the '
+              'app, and log it below, under Sync log. Shadow moves nothing. '
+              'Live takes a newer place from Plex before audio starts, with '
+              'Undo, and asks when Plex\'s is further back. '
               '${lastMeasuredSkew == null ? 'Clock skew: not measured yet.' : 'Clock skew: Plex is ${lastMeasuredSkew!.inSeconds.abs()} s ${lastMeasuredSkew!.isNegative ? 'behind' : 'ahead of'} this phone.'}',
               style: subtle),
         ),

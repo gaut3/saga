@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers.dart';
 import '../../core/theme/saga_theme.dart';
 
-/// Show a floating toast anchored below the status bar.
+/// Show a floating toast anchored below the status bar. With [onTap], a tap
+/// on it runs that and closes it (an Undo).
 ///
 /// [isError] tints the pill red-amber so errors are visually distinct from
 /// informational confirmations. Pass the calling widget's [BuildContext] —
@@ -18,6 +19,7 @@ void showSagaToast(
   String message, {
   bool isError = false,
   Duration duration = const Duration(milliseconds: 2500),
+  VoidCallback? onTap,
 }) {
   // Use the root navigator's overlay so the toast is visible even when
   // PlayerScreen (rootNavigator: true) is covering the tab overlay.
@@ -35,6 +37,7 @@ void showSagaToast(
         top: top,
         isError: isError,
         duration: duration,
+        onTap: onTap,
         onDone: () {
           // Guard against the overlay entry already being removed (e.g. a
           // route change that tore down the overlay between the timer firing

@@ -156,4 +156,33 @@ void main() {
       (trackIndex: 0, positionMs: 90, applyResumeRewind: false),
     );
   });
+
+  group('BookStartPoint.synced', () {
+    test("lands on Plex's file and place, with no rewind", () {
+      final r = resolveBookStart(
+        start: const BookStartPoint.synced('t2', positionMs: 5000),
+        trackRatingKeys: const ['t1', 't2', 't3'],
+        saved: saved('t3', 12345),
+      )!;
+      expect(r.trackIndex, 1);
+      expect(r.positionMs, 5000);
+      expect(r.applyResumeRewind, isFalse);
+    });
+
+    test('is neither a resume nor a chosen point: reports hold', () {
+      const p = BookStartPoint.synced('t2', positionMs: 5000);
+      expect(p.isResume, isFalse);
+      expect(p.isChosen, isFalse);
+    });
+
+    test('a file this book does not have refuses, never restarts', () {
+      expect(
+          resolveBookStart(
+            start: const BookStartPoint.synced('gone', positionMs: 5000),
+            trackRatingKeys: const ['t1'],
+            saved: null,
+          ),
+          isNull);
+    });
+  });
 }

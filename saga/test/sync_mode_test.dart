@@ -80,9 +80,9 @@ void main() {
     test('runs only on in-app resumes and plays (rule 1)', () {
       final service = _code('lib/features/player/player_service.dart');
       // A headset, notification or widget play is play(): it never checks.
-      expect(_body(service, 'Future<void> play() async').contains('checkServer('),
+      expect(_body(service, 'Future<void> play() async').contains('_syncPlaceFor('),
           isFalse);
-      expect(_body(service, 'Future<void> playFromApp()').contains('checkServer('),
+      expect(_body(service, 'Future<void> playFromApp()').contains('_syncPlaceFor('),
           isTrue);
       // The widget resumes without inApp.
       final widget = _body(service, 'Future<dynamic> customAction(');
@@ -90,7 +90,7 @@ void main() {
       expect(widget.contains('inApp'), isFalse);
 
       final launch = _code('lib/features/player/book_launch.dart');
-      expect(launch.contains('if (inApp && from.isResume)'), isTrue);
+      expect(launch.contains('inApp && from.isResume'), isTrue);
       expect(_code('lib/features/player/open_player.dart').contains('inApp: true'),
           isTrue);
       for (final f in [
@@ -99,6 +99,44 @@ void main() {
       ]) {
         expect(_code(f).contains('playFromApp'), isTrue, reason: f);
       }
+    });
+  });
+
+  group('live', () {
+    final service = _code('lib/features/player/player_service.dart');
+
+    test('takes a place only into a paused player, never mid-load (rule 7)',
+        () {
+      final play = _body(service, 'Future<void> playFromApp()');
+      final take = play.indexOf('_takeServerPlace(');
+      final guard = play.lastIndexOf('!_isPlaying &&', take);
+      expect(take, isNot(-1));
+      expect(guard, isNot(-1), reason: 'checked again after the wait');
+      expect(play.substring(guard, take).contains('!_loadInProgress'), isTrue);
+    });
+
+    test("Plex's place holds reports and gets no resume rewind", () {
+      final take = _body(service, 'Future<void> _takeServerPlace(');
+      expect(take.contains('_reportGate.load('), isTrue);
+      expect(take.contains('_pausedAt = null'), isTrue);
+      expect(take.indexOf('_saveAndReportPosition('),
+          greaterThan(take.indexOf('_reportGate.load(')),
+          reason: 'saved with its hold, so a kill keeps it');
+    });
+
+    test('Undo is a move of the listener\'s own, so it is reported (rule 9)',
+        () {
+      expect(_body(service, 'void announceSyncApplied(').contains('undo: undoSeek'),
+          isTrue);
+      expect(_body(service, 'Future<void> undoSeek()').contains('_listenerMoved()'),
+          isTrue);
+    });
+
+    test('a downloaded book about to play never waits (rule 1)', () {
+      final sync = _body(service, 'Future<({ServerPosition server');
+      expect(sync.contains('final wait = live && !(downloaded && startsAudio);'),
+          isTrue);
+      expect(sync.contains('check.timeout(syncWaitLimit'), isTrue);
     });
   });
 }

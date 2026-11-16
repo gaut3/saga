@@ -34,6 +34,8 @@ import 'resume_rewind.dart';
 import 'session_restore.dart';
 import 'track_audio_source.dart';
 import 'report_gate.dart';
+import 'sync_decision.dart';
+import 'server_position.dart';
 import 'sync_check.dart';
 import '../../core/sync/sync_mode.dart';
 import '../../core/sync/sync_clock.dart';
@@ -1878,39 +1880,151 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     );
   }
 
-  /// Checks [bookKey] against the server on an in-app open or play (sync
-  /// rule 1), in the sync mode that's in effect. Headset, widget,
-  /// notification, car and cold-start plays don't come here: they play the
-  /// local place at once.
+  /// Shows that a place was taken from Plex: the toast with Undo (sync rule
+  /// 9). Set by the player provider; a headless engine never syncs.
+  void Function({required int serverMs, required Future<void> Function() undo})?
+      onSyncApplied;
+
+  /// Asks which place to keep when Plex's is newer but further back (rule
+  /// 9): true takes Plex's, false stays, null (dismissed) stays. Unset, the
+  /// local place stands.
+  Future<bool?> Function({required int serverMs, required int localMs})?
+      onSyncAsk;
+
+  // An in-app play waiting on the server: a second tap is ignored rather
+  // than starting the local place under the pending answer.
+  bool _syncWaiting = false;
+
+  /// The sync check for an in-app open or play of [bookKey] (rule 1).
   ///
-  /// This phone's place is captured now, before the request (rule 4). In
-  /// shadow mode the answer is only logged, and nothing waits for it.
-  void checkServer(String bookKey, String trigger,
-      {List<PlexTrack>? tracks}) {
-    if (BuildChannel.syncMode == SyncMode.off) return;
+  /// Off: nothing. Shadow: reads, logs, and returns null at once. Live:
+  /// waits up to [syncWaitLimit] (but not for a downloaded book about to
+  /// play: it never waits on the server) and returns Plex's place to take,
+  /// asking first when the decision is ask. Null means stay. This phone's
+  /// place is captured here, before the request (rule 4).
+  Future<({ServerPosition server, String trackRatingKey, int localMs, bool announce})?>
+      _syncPlaceFor(String bookKey, String trigger, List<PlexTrack> files,
+          {required bool startsAudio}) async {
+    final mode = BuildChannel.syncMode;
+    if (mode == SyncMode.off) return null;
     final saved = BookmarkStore.load(bookKey);
-    final files =
-        tracks ?? (_bookRatingKey == bookKey ? _tracks : const <PlexTrack>[]);
-    unawaited(checkServerPlace(
+    final local = saved == null
+        ? null
+        : (absoluteMs: saved.absolutePositionMs, savedAt: saved.savedAt);
+    final downloaded = files.isNotEmpty &&
+        files.every((t) => PlexClient.localTrackPath(t) != null);
+    final live = mode == SyncMode.live && !_castActive;
+    final wait = live && !(downloaded && startsAudio);
+    final check = checkServerPlace(
       api: _api,
       bookKey: bookKey,
       trigger: trigger,
-      local: saved == null
-          ? null
-          : (absoluteMs: saved.absolutePositionMs, savedAt: saved.savedAt),
+      local: local,
       finished: CompletedBooksStore.isCompleted(bookKey),
-      downloaded: files.isNotEmpty &&
-          files.every((t) => PlexClient.localTrackPath(t) != null),
-    ));
+      downloaded: downloaded,
+      live: live,
+      waited: wait,
+    );
+    if (!wait) {
+      unawaited(check);
+      return null;
+    }
+    // On a timeout the request carries on and logs; its answer is dropped.
+    final result = await check.timeout(syncWaitLimit, onTimeout: () => null);
+    final server = result?.server;
+    final key = result?.trackRatingKey;
+    if (result == null || server == null || key == null) return null;
+    if (!files.any((t) => t.ratingKey == key)) {
+      AppLog.log('sync', 'book $bookKey: Plex\'s file $key is not one of '
+          'this book\'s here; stayed');
+      return null;
+    }
+    final localMs = local?.absoluteMs ?? 0;
+    switch (result.decision.action) {
+      case SyncAction.same:
+      case SyncAction.keep:
+        return null;
+      case SyncAction.apply:
+        return (server: server, trackRatingKey: key, localMs: localMs, announce: true);
+      case SyncAction.ask:
+        final ask = onSyncAsk;
+        if (ask == null) return null;
+        final take = await ask(serverMs: server.absoluteMs, localMs: localMs);
+        AppLog.log('sync', 'book $bookKey: asked, ${take == true ? 'took Plex\'s place' : take == false ? 'stayed' : 'dismissed (stayed)'}');
+        return take == true
+            ? (server: server, trackRatingKey: key, localMs: localMs, announce: false)
+            : null;
+    }
+  }
+
+  /// Before an in-app resume launches [bookKey] ([startBook]): Plex's place
+  /// to start from instead, or null for the usual resume.
+  Future<({BookStartPoint start, int serverMs, int localMs, bool announce})?>
+      syncBeforeOpen(String bookKey, List<PlexTrack> tracks,
+          {required bool startsAudio}) async {
+    final r = await _syncPlaceFor(bookKey, 'open', tracks,
+        startsAudio: startsAudio);
+    if (r == null) return null;
+    return (
+      start: BookStartPoint.synced(r.trackRatingKey,
+          positionMs: r.server.positionMs),
+      serverMs: r.server.absoluteMs,
+      localMs: r.localMs,
+      announce: r.announce,
+    );
+  }
+
+  /// A place was taken from Plex: the player's Undo goes back to [localMs]
+  /// (a move of the listener's own, so it's reported: rule 9), and the
+  /// toast says so.
+  void announceSyncApplied(int serverMs, int localMs) {
+    _previousAbsolutePositionMs = localMs;
+    canUndoSeekNotifier.value = true;
+    AppLog.log('sync', 'took Plex\'s place ${fmtBookPositionMs(serverMs)} '
+        '(was ${fmtBookPositionMs(localMs)})');
+    onSyncApplied?.call(serverMs: serverMs, undo: undoSeek);
   }
 
   /// The play button in the app (player, mini player): a play the listener
   /// made looking at Saga, so it checks the server first (sync rule 1).
   /// Everything else that plays calls [play] directly.
+  ///
+  /// In live mode a newer place from Plex goes into the paused player
+  /// before play (rule 7: the player takes it, not just the store, or the
+  /// next save sends the old one back). Never while playing, never mid-load.
   Future<void> playFromApp() async {
     final book = _bookRatingKey;
-    if (book != null && !_isPlaying) checkServer(book, 'play');
+    if (book != null && !_isPlaying && !_loadInProgress) {
+      if (_syncWaiting) return;
+      _syncWaiting = true;
+      try {
+        final r = await _syncPlaceFor(book, 'play', _tracks, startsAudio: true);
+        if (r != null &&
+            _bookRatingKey == book &&
+            !_isPlaying &&
+            !_loadInProgress) {
+          await _takeServerPlace(r.server.absoluteMs);
+          if (r.announce) announceSyncApplied(r.server.absoluteMs, r.localMs);
+        }
+      } finally {
+        _syncWaiting = false;
+      }
+    }
     await play();
+  }
+
+  /// Moves the paused player to Plex's place. Reports hold until playback
+  /// passes it (Plex has it already), no resume rewind follows (the listener
+  /// was just listening elsewhere), and the place is saved now, with its
+  /// hold, so a kill can't lose it.
+  Future<void> _takeServerPlace(int absoluteMs) async {
+    final target = trackFromAbsolute(_trackDurationsMs, absoluteMs);
+    if (target == null) return;
+    await _seekTo(target.positionMs, index: target.index);
+    _reportGate.load(absoluteMs);
+    _pausedAt = null;
+    await _saveAndReportPosition(trigger: 'sync', state: 'paused');
+    _jumped();
   }
 
   /// The widget's skip buttons. When [bookRatingKey] isn't the loaded book

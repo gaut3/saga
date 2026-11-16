@@ -5,7 +5,7 @@ import '../../core/storage/settings_store.dart';
 import 'player_service.dart';
 import 'report_gate.dart';
 
-enum _StartKind { resume, beginning, trackKey, trackIndex }
+enum _StartKind { resume, beginning, trackKey, trackIndex, synced }
 
 /// What a launch should do about playback.
 enum LaunchPlayback {
@@ -73,6 +73,16 @@ class BookStartPoint {
   /// ([ReportGate.moved]); a resume or a start waits until playback passes
   /// the loaded spot. A stream-error reload also lands on an exact point and
   /// is no move at all: [startBook] passes `isAutoReload` for that.
+  /// The place Plex has, taken by sync (rule 3's apply, or a yes to its
+  /// question). Not rewound (the listener was just listening elsewhere), and
+  /// not [isChosen]: Plex already has this place, so reports hold until
+  /// playback passes it, as after any load.
+  const BookStartPoint.synced(String trackRatingKey, {required int positionMs})
+      : _kind = _StartKind.synced,
+        _trackRatingKey = trackRatingKey,
+        _trackIndex = null,
+        _positionMs = positionMs;
+
   /// "Where I was": the only kind a server place can stand in for.
   bool get isResume => _kind == _StartKind.resume;
 
@@ -114,6 +124,7 @@ class BookStartPoint {
       );
 
     case _StartKind.trackKey:
+    case _StartKind.synced:
       final idx = trackRatingKeys.indexOf(start._trackRatingKey!);
       if (idx < 0) return null;
       return (
@@ -166,11 +177,14 @@ Future<bool> startBook({
   try {
     // An in-app resume checks the server (sync rule 1), before the load
     // touches anything: the check captures this phone's place as it is now.
-    if (inApp && from.isResume) {
-      service.checkServer(bookRatingKey, 'open', tracks: tracks);
-    }
+    // In live mode it may hand back Plex's place to start from instead.
+    final synced = inApp && from.isResume
+        ? await service.syncBeforeOpen(bookRatingKey, tracks,
+            startsAudio: playback != LaunchPlayback.none)
+        : null;
+    final start = synced?.start ?? from;
     final resolved = resolveBookStart(
-      start: from,
+      start: start,
       trackRatingKeys: [for (final t in tracks) t.ratingKey],
       saved: BookmarkStore.load(bookRatingKey),
     );
@@ -186,10 +200,13 @@ Future<bool> startBook({
       startTrackIndex: resolved.trackIndex,
       startPositionMs: resolved.positionMs,
       applyResumeRewind: resolved.applyResumeRewind,
-      chosenPoint: from.isChosen,
+      chosenPoint: start.isChosen,
       playWhenReady: playback != LaunchPlayback.none,
       isAutoReload: isAutoReload,
     );
+    if (synced != null && synced.announce) {
+      service.announceSyncApplied(synced.serverMs, synced.localMs);
+    }
     if (playback == LaunchPlayback.start) await service.play();
     return true;
   } catch (e) {

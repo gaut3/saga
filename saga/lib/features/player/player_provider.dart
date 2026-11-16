@@ -20,6 +20,7 @@ import '../../core/storage/settings_store.dart';
 import '../../core/storage/track_cache_store.dart';
 import '../../shared/widgets/saga_toast.dart';
 import 'book_launch.dart';
+import 'sync_prompt.dart';
 import 'play_next.dart';
 import 'player_service.dart';
 
@@ -37,6 +38,18 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
   };
   service.onHistoryRecorded = () {
     ref.read(historyRevisionProvider.notifier).state++;
+  };
+  // Sync rule 9, on the root overlay: an in-app play can be waiting on the
+  // server from the player, Home or the book page.
+  service.onSyncApplied = ({required serverMs, required undo}) {
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    showSyncAppliedToast(ctx, serverMs: serverMs, undo: () => undo());
+  };
+  service.onSyncAsk = ({required serverMs, required localMs}) async {
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return null;
+    return showSyncAskSheet(ctx, serverMs: serverMs, localMs: localMs);
   };
   service.onStreamError = (bookRatingKey, position) async {
     try {
