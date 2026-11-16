@@ -20,6 +20,17 @@ enum SyncAction {
   ask,
 }
 
+/// What each action would do, in words: the shadow log and developer
+/// options both say it this way.
+extension SyncActionWords on SyncAction {
+  String get wouldDo => switch (this) {
+        SyncAction.same => 'do nothing',
+        SyncAction.keep => "keep this phone's place",
+        SyncAction.apply => "take Plex's place, with Undo",
+        SyncAction.ask => 'ask',
+      };
+}
+
 /// Places this close are the same place (rule 3's first row): a few seconds
 /// of drift between a save and a report, never worth a toast.
 const syncSameWindow = Duration(seconds: 10);

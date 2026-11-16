@@ -272,12 +272,7 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
         server: server,
         localFinished: finishedBookKeys().contains(book),
       );
-      lines.add('Saga would: ${switch (decision.action) {
-        SyncAction.same => 'nothing',
-        SyncAction.keep => 'keep this phone\'s place',
-        SyncAction.apply => 'take Plex\'s place, with Undo',
-        SyncAction.ask => 'ask',
-      }} · ${decision.reason}');
+      lines.add('Saga would ${decision.action.wouldDo} · ${decision.reason}');
       if (server == null) {
         lines.add('Plex knows nothing about this book.');
       } else {

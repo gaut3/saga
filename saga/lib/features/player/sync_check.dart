@@ -64,7 +64,7 @@ Future<SyncDecision?> checkServerPlace({
     AppLog.log(
         'sync',
         'shadow book $bookKey ($trigger): would '
-            '${decision.action.name} · ${decision.reason} · $timing'
+            '${decision.action.wouldDo} · ${decision.reason} · $timing'
             '${skew == null ? '' : ' · clock ${_signedSeconds(skew)}'}');
     return decision;
   } catch (e) {
