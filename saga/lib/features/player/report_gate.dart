@@ -69,3 +69,26 @@ class ReportGate {
     return _open;
   }
 }
+
+/// A timeline report as sent to Plex: enough to tell whether the next one
+/// says anything new.
+typedef SentReport = ({
+  String bookKey,
+  String trackRatingKey,
+  int positionMs,
+  String state,
+});
+
+/// Whether [next] repeats [last]: the same book, file and state, within a
+/// second. Such a report moves nothing but Plex's `lastViewedAt`, which then
+/// says an old place is the newest. Dogfood 2026-11-13: after a pause at
+/// 7:09:10, every trip to the background re-sent 7:09:10, so a phone opened
+/// briefly after listening elsewhere would have stamped its stale place over
+/// the other device's newer one. A change of state still goes once (a
+/// `stopped` after a `paused` ends the play in Plex's activity view).
+bool isRepeatReport(SentReport? last, SentReport next) =>
+    last != null &&
+    last.bookKey == next.bookKey &&
+    last.trackRatingKey == next.trackRatingKey &&
+    last.state == next.state &&
+    (last.positionMs - next.positionMs).abs() <= 1000;

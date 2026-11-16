@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saga/core/storage/save_audit_store.dart';
 import 'package:saga/core/update/update_checker.dart';
+import 'package:saga/features/player/report_gate.dart';
 
 import 'helpers/hive_test_env.dart';
 
@@ -40,38 +41,114 @@ void main() {
 
     tearDown(() => stopHiveTestEnv(dir));
 
-    SaveAuditEntry entry(int i, {bool reported = true}) => SaveAuditEntry(
-          at: DateTime(2026, 11, 13, 10, 0, i),
-          trigger: 'tick',
+    Future<int?> save(int s,
+            {String trigger = 'tick',
+            ReportStatus report = ReportStatus.sent}) =>
+        SaveAuditStore.record(
+          at: DateTime(2026, 11, 13, 17, 0, s),
+          trigger: trigger,
           bookKey: '23340',
-          positionMs: i * 10000,
-          reported: reported,
-          heldUntilMs: reported ? null : 999999,
+          positionMs: s * 1000,
+          report: report,
+          heldUntilMs: report == ReportStatus.held ? 999999 : null,
         );
 
-    test('keeps only the last maxEntries saves, across a cold restart',
-        () async {
-      // A cache with no ceiling is a bug: this writes on every save.
-      for (var i = 0; i < SaveAuditStore.maxEntries + 5; i++) {
-        await SaveAuditStore.record(entry(i));
-      }
+    Future<List<SaveAuditEntry>> coldEntries() async {
       await coldRestartHive();
       await SaveAuditStore.init(testEncKey);
-      final saves = SaveAuditStore.entries();
-      expect(saves, hasLength(SaveAuditStore.maxEntries));
-      // Newest first; the five oldest dropped.
-      expect(saves.first.positionMs, (SaveAuditStore.maxEntries + 4) * 10000);
-      expect(saves.last.positionMs, 5 * 10000);
+      return SaveAuditStore.entries();
+    }
+
+    test('a run of ticks folds into one row', () async {
+      for (var s = 0; s < 50; s += 10) {
+        await save(s);
+      }
+      final row = (await coldEntries()).single;
+      expect(row.count, 5);
+      expect(row.fromPositionMs, 0);
+      expect(row.positionMs, 40000);
+      expect(row.id, DateTime(2026, 11, 13, 17).millisecondsSinceEpoch);
     });
 
-    test('a held save keeps its hold through a cold read', () async {
-      await SaveAuditStore.record(entry(1, reported: false));
-      await coldRestartHive();
-      await SaveAuditStore.init(testEncKey);
-      final s = SaveAuditStore.entries().single;
-      expect(s.reported, isFalse);
-      expect(s.heldUntilMs, 999999);
-      expect(s.trigger, 'tick');
+    test('anything else breaks a run, and so does a change of status',
+        () async {
+      await save(0, report: ReportStatus.held);
+      await save(10, report: ReportStatus.held);
+      await save(20); // the hold passed: a new run
+      await save(30);
+      await save(35, trigger: 'pause');
+      await save(40, trigger: 'hidden', report: ReportStatus.repeat);
+      await save(50); // ticks again after the pause: not the old run
+      final rows = await coldEntries();
+      expect([for (final r in rows) '${r.trigger}×${r.count}'],
+          ['tick×1', 'hidden×1', 'pause×1', 'tick×2', 'tick×2']);
+      expect(rows.last.report, ReportStatus.held);
+      expect(rows.last.heldUntilMs, 999999);
+    });
+
+    test('keeps only the last maxEntries rows', () async {
+      // A cache with no ceiling is a bug: this writes on every save.
+      for (var i = 0; i < SaveAuditStore.maxEntries + 5; i++) {
+        await save(i, trigger: 'pause');
+      }
+      final rows = await coldEntries();
+      expect(rows, hasLength(SaveAuditStore.maxEntries));
+      expect(rows.first.positionMs, (SaveAuditStore.maxEntries + 4) * 1000);
+      expect(rows.last.positionMs, 5 * 1000);
+    });
+
+    test('outcomes land on their row, run or not', () async {
+      final a = await save(0);
+      final b = await save(10);
+      expect(b, a, reason: 'a folded tick shares its run\'s id');
+      await SaveAuditStore.recordOutcome(a!, 'ok');
+      await SaveAuditStore.recordOutcome(a, 'queued');
+      final p = await save(15, trigger: 'pause');
+      await SaveAuditStore.recordOutcome(p!, 'http 404');
+      await SaveAuditStore.recordOutcome(12345, 'ok'); // scrolled out: ignored
+      final rows = await coldEntries();
+      expect(rows.first.outcomes, {'http 404': 1});
+      expect(rows.last.outcomes, {'ok': 1, 'queued': 1});
+    });
+
+    test('two saves in one millisecond get their own rows', () async {
+      final a = await save(0, trigger: 'pause');
+      final b = await save(0, trigger: 'hidden');
+      expect(b, a! + 1);
+    });
+  });
+
+  group('isRepeatReport', () {
+    const base = (
+      bookKey: '23340',
+      trackRatingKey: 't1',
+      positionMs: 429100,
+      state: 'paused',
+    );
+
+    test('the same place and state again is a repeat', () {
+      expect(isRepeatReport(base, base), isTrue);
+      expect(
+          isRepeatReport(base, (
+            bookKey: '23340',
+            trackRatingKey: 't1',
+            positionMs: 429900,
+            state: 'paused',
+          )),
+          isTrue);
+    });
+
+    test('a new place, file, book or state is not', () {
+      expect(isRepeatReport(null, base), isFalse);
+      for (final next in [
+        (bookKey: '23340', trackRatingKey: 't1', positionMs: 431000, state: 'paused'),
+        (bookKey: '23340', trackRatingKey: 't2', positionMs: 429100, state: 'paused'),
+        (bookKey: '99', trackRatingKey: 't1', positionMs: 429100, state: 'paused'),
+        // A stop after a pause still goes: it ends the play in Plex.
+        (bookKey: '23340', trackRatingKey: 't1', positionMs: 429100, state: 'stopped'),
+      ]) {
+        expect(isRepeatReport(base, next), isFalse, reason: '$next');
+      }
     });
   });
 }

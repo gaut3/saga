@@ -93,6 +93,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   // Which saves also go to Plex: positions the listener reached, not a load, a
   // restore or a resume rewind ([ReportGate]). Wraps the report only.
   final _reportGate = ReportGate();
+  // The last report sent, so one that says nothing new isn't sent again
+  // ([isRepeatReport]).
+  SentReport? _lastReport;
   // The phone player's volume is the product of three things, and only
   // [_applyVolume] writes it: loadBook's mute (hides the old audio during a
   // playWhenReady load), the interruption duck, and the sleep timer's fade.
@@ -2034,6 +2037,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   AudioPlayer get player => _player;
   String? get currentBookRatingKey => _bookRatingKey;
+
+  /// Where reports to Plex are held until, for the developer page: null when
+  /// they go out ([ReportGate]).
+  int? get reportHeldUntilMs => _reportGate.heldUntilMs;
+
+  /// The last report sent to Plex, for the developer page.
+  SentReport? get lastReport => _lastReport;
   PlexTrack? get currentTrackInfo => _currentTrack;
   List<PlexTrack> get currentTracks => List.unmodifiable(_tracks);
 
@@ -2268,19 +2278,32 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     );
     onBookmarkSaved?.call();
     _progressChanged.add(null);
-    if (BuildChannel.developerOptions) {
-      await SaveAuditStore.record(SaveAuditEntry(
-        at: DateTime.now(),
-        trigger: trigger,
-        bookKey: ServerScope.key(bookKey),
-        positionMs: absolutePositionMs,
-        reported: reportAllowed,
-        heldUntilMs: reportAllowed ? null : _reportGate.heldUntilMs,
-      ));
-    }
 
-    if (!reportAllowed) return;
+    final report = (
+      bookKey: ServerScope.key(bookKey),
+      trackRatingKey: track.ratingKey,
+      positionMs: positionMs,
+      state: state,
+    );
+    final repeat = reportAllowed && isRepeatReport(_lastReport, report);
+    final auditId = BuildChannel.developerOptions
+        ? await SaveAuditStore.record(
+            at: DateTime.now(),
+            trigger: trigger,
+            bookKey: report.bookKey,
+            positionMs: absolutePositionMs,
+            report: !reportAllowed
+                ? ReportStatus.held
+                : repeat
+                    ? ReportStatus.repeat
+                    : ReportStatus.sent,
+            heldUntilMs: reportAllowed ? null : _reportGate.heldUntilMs,
+          )
+        : null;
+
+    if (!reportAllowed || repeat) return;
     if (!wasOpen) AppLog.log('sync', 'reports open: playback passed the hold');
+    _lastReport = report;
 
     _api.reportTimeline(
       ratingKey: track.ratingKey,
@@ -2289,9 +2312,17 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       durationMs: track.durationMs,
       state: state,
     ).then((_) {
+      if (auditId != null) SaveAuditStore.recordOutcome(auditId, 'ok');
       // Success — opportunistically flush anything queued while offline.
       _flushTimelineQueue();
-    }, onError: (_) async {
+    }, onError: (Object e) async {
+      if (auditId != null) {
+        // An answer means Plex refused it; none means it never arrived,
+        // and the queue below keeps it.
+        final status = e is DioException ? e.response?.statusCode : null;
+        SaveAuditStore.recordOutcome(
+            auditId, status == null ? 'queued' : 'http $status');
+      }
       // Server unreachable — persist the latest position for this book so it
       // survives a kill and syncs to Plex's "Continue" on the next success or
       // app foreground. Last-write-wins: one pending entry per book. Uses the

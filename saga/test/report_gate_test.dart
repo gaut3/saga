@@ -153,7 +153,7 @@ void main() {
       final save = body('Future<void> _saveAndReportPosition(');
       final asked = save.indexOf('_reportGate.allows(');
       final stored = save.indexOf('await BookmarkStore.save(');
-      final held = save.indexOf('if (!reportAllowed) return;');
+      final held = save.indexOf('if (!reportAllowed || repeat) return;');
       final report = save.indexOf('_api.reportTimeline(');
       expect(asked, isNot(-1));
       expect(stored, greaterThan(asked));
@@ -161,6 +161,8 @@ void main() {
       expect(report, greaterThan(held));
       expect(save.substring(stored, held).contains('reportHoldMs:'), isTrue,
           reason: 'a held place is saved with its hold');
+      expect(save.substring(stored, held).contains('isRepeatReport('), isTrue,
+          reason: 'a report that says nothing new is not sent');
     });
 
     test('every report to Plex from the player passes the gate', () {
