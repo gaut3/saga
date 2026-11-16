@@ -36,6 +36,7 @@ class _PlaybackPageState extends ConsumerState<_PlaybackPage> {
   late bool _autoPlayNextBook;
   late bool _resumeAfterInterruption;
   late bool _chapterScrub;
+  late bool _mediaButtonsSkip;
   late int _markMotion;
   late int _animationSyncDelay;
   late int _defaultSleepTimer;
@@ -52,6 +53,7 @@ class _PlaybackPageState extends ConsumerState<_PlaybackPage> {
     _autoPlayNextBook = SettingsStore.autoPlayNextBook;
     _resumeAfterInterruption = SettingsStore.resumeAfterInterruption;
     _chapterScrub = SettingsStore.chapterScrub;
+    _mediaButtonsSkip = SettingsStore.mediaButtonsSkip;
     _markMotion = SettingsStore.markMotionIndex;
     _animationSyncDelay = SettingsStore.animationSyncDelayMs;
     _defaultSleepTimer = SettingsStore.defaultSleepTimerMinutes;
@@ -196,7 +198,9 @@ class _PlaybackPageState extends ConsumerState<_PlaybackPage> {
             icon: Icons.linear_scale_rounded,
             title: 'Scrub within chapter',
             subtitle:
-                'Seek bar covers the current chapter, not the whole book',
+                'Seek bar covers the current chapter, not the whole book. '
+                'Continue Listening and the widget show time left in the '
+                'chapter too',
             value: _chapterScrub,
             onChanged: (v) async {
               await SettingsStore.setChapterScrub(v);
@@ -206,6 +210,18 @@ class _PlaybackPageState extends ConsumerState<_PlaybackPage> {
               HomeWidgetSync.refresh();
               if (!mounted) return;
               setState(() => _chapterScrub = v);
+            },
+          ),
+          _SwitchTile(
+            icon: Icons.headphones_outlined,
+            title: 'Headphone buttons skip',
+            subtitle: 'Next and previous on headphones or in the car skip '
+                'back and forward instead of changing chapter',
+            value: _mediaButtonsSkip,
+            onChanged: (v) async {
+              await SettingsStore.setMediaButtonsSkip(v);
+              if (!mounted) return;
+              setState(() => _mediaButtonsSkip = v);
             },
           ),
           _SettingsTile(

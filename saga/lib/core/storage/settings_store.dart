@@ -100,6 +100,15 @@ class SettingsStore {
 
   static Future<void> setChapterScrub(bool v) => _box.put('chapterScrub', v);
 
+  // Next/previous on headphones or a car: chapter (default) or a skip by the
+  // skip lengths (GitHub #25). Only the hardware buttons; the app's own
+  // buttons and Android Auto's screen keep changing chapter.
+  static bool get mediaButtonsSkip =>
+      _box.get('mediaButtonsSkip', defaultValue: false) as bool;
+
+  static Future<void> setMediaButtonsSkip(bool v) =>
+      _box.put('mediaButtonsSkip', v);
+
   // Start the next book in the collection automatically when one finishes.
   // Default OFF: finishing a book is a moment, not a cue to start another one
   // without being asked.

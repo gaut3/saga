@@ -1048,6 +1048,22 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     _listenerMoved();
   }
 
+  /// A hardware media button: headphones, a headset, a car's Bluetooth
+  /// buttons. audio_service sends their key presses here, apart from the
+  /// transport controls the app's buttons and Android Auto's screen use
+  /// (`skipToNext`/`skipToPrevious` directly), so the "Headphone buttons
+  /// skip" setting changes only these (GitHub #25). Logged so diagnostics can
+  /// show which path a phone's Bluetooth presses take.
+  @override
+  Future<void> click([MediaButton button = MediaButton.media]) async {
+    final skips =
+        button != MediaButton.media && SettingsStore.mediaButtonsSkip;
+    AppLog.log('playback',
+        'media button ${button.name}${skips ? ' (skip)' : ''}');
+    if (!skips) return super.click(button);
+    button == MediaButton.next ? await fastForward() : await rewind();
+  }
+
   /// Returns cached chapters for single-track (M4B) books, null otherwise.
   List<M4bChapter>? _chaptersIfSingleTrack() {
     if (_tracks.length != 1) return null;
