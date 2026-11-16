@@ -1974,6 +1974,13 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     );
   }
 
+  /// After a launch at Plex's place ([syncBeforeOpen]): saves it now, with
+  /// its hold. A load saves nothing, so until the first save Home's card and
+  /// a kill would both still see the old place: the card did, on the first
+  /// live test (2026-11-13), when the book was opened without playing.
+  Future<void> saveSyncedPlace() =>
+      _saveAndReportPosition(trigger: 'sync', state: 'paused');
+
   /// A place was taken from Plex: the player's Undo goes back to [localMs]
   /// (a move of the listener's own, so it's reported: rule 9), and the
   /// toast says so.

@@ -204,8 +204,11 @@ Future<bool> startBook({
       playWhenReady: playback != LaunchPlayback.none,
       isAutoReload: isAutoReload,
     );
-    if (synced != null && synced.announce) {
-      service.announceSyncApplied(synced.serverMs, synced.localMs);
+    if (synced != null) {
+      await service.saveSyncedPlace();
+      if (synced.announce) {
+        service.announceSyncApplied(synced.serverMs, synced.localMs);
+      }
     }
     if (playback == LaunchPlayback.start) await service.play();
     return true;

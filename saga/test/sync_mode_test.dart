@@ -124,6 +124,14 @@ void main() {
           reason: 'saved with its hold, so a kill keeps it');
     });
 
+    test("a launch at Plex's place saves it straight after the load", () {
+      // Home's card read the old place: a load saves nothing.
+      final launch = _code('lib/features/player/book_launch.dart');
+      final load = launch.indexOf('await service.loadBook(');
+      final save = launch.indexOf('await service.saveSyncedPlace();');
+      expect(save, greaterThan(load));
+    });
+
     test('Undo is a move of the listener\'s own, so it is reported (rule 9)',
         () {
       expect(_body(service, 'void announceSyncApplied(').contains('undo: undoSeek'),
