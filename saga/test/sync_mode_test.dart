@@ -90,7 +90,7 @@ void main() {
       expect(widget.contains('inApp'), isFalse);
 
       final launch = _code('lib/features/player/book_launch.dart');
-      expect(launch.contains('inApp && from.isResume'), isTrue);
+      expect(launch.contains('inApp && (from.isResume || startsOver)'), isTrue);
       expect(_code('lib/features/player/open_player.dart').contains('inApp: true'),
           isTrue);
       for (final f in [
@@ -138,6 +138,31 @@ void main() {
           isTrue);
       expect(_body(service, 'Future<void> undoSeek()').contains('_listenerMoved()'),
           isTrue);
+    });
+
+    test('a finished book: Listen again checks too, and "finished" is now',
+        () {
+      // Rule 8: finished here, listened to elsewhere since.
+      final launch = _code('lib/features/player/book_launch.dart');
+      expect(
+          launch.contains(
+              'final startsOver = from.isBeginning && isBookFinished(bookRatingKey);'),
+          isTrue);
+      expect(launch.contains('inApp && (from.isResume || startsOver)'), isTrue);
+      // Finished until picked up again: "ever finished" would ask forever.
+      final sync = _body(service, 'Future<({ServerPosition server');
+      expect(sync.contains('isBookFinished(bookKey)'), isTrue);
+      expect(sync.contains('CompletedBooksStore.isCompleted'), isFalse);
+    });
+
+    test('a stopped or finished player loads at Plex\'s place, not seeks', () {
+      // play() reloads such a player (from the start, for a finished book),
+      // which would lose a seek.
+      final play = _body(service, 'Future<void> playFromApp()');
+      final branch = play.indexOf('if (replay || stopped)');
+      expect(branch, isNot(-1));
+      expect(play.indexOf('BookStartPoint.synced(', branch), greaterThan(branch));
+      expect(play.indexOf('saveSyncedPlace()', branch), greaterThan(branch));
     });
 
     test('a downloaded book about to play never waits (rule 1)', () {

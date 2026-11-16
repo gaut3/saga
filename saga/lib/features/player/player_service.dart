@@ -1888,8 +1888,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// Asks which place to keep when Plex's is newer but further back (rule
   /// 9): true takes Plex's, false stays, null (dismissed) stays. Unset, the
   /// local place stands.
-  Future<bool?> Function({required int serverMs, required int localMs})?
-      onSyncAsk;
+  Future<bool?> Function(
+      {required int serverMs,
+      required int localMs,
+      required bool finished,
+      required bool startsOver})? onSyncAsk;
 
   // An in-app play waiting on the server: a second tap is ignored rather
   // than starting the local place under the pending answer.
@@ -1904,9 +1907,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// place is captured here, before the request (rule 4).
   Future<({ServerPosition server, String trackRatingKey, int localMs, bool announce})?>
       _syncPlaceFor(String bookKey, String trigger, List<PlexTrack> files,
-          {required bool startsAudio}) async {
+          {required bool startsAudio, bool startsOver = false}) async {
     final mode = BuildChannel.syncMode;
     if (mode == SyncMode.off) return null;
+    final finished = isBookFinished(bookKey);
     final saved = BookmarkStore.load(bookKey);
     final local = saved == null
         ? null
@@ -1920,7 +1924,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       bookKey: bookKey,
       trigger: trigger,
       local: local,
-      finished: CompletedBooksStore.isCompleted(bookKey),
+      // Finished *now* (the app's one rule: until picked up again), not
+      // "ever finished", which would ask forever about a book re-started.
+      finished: finished,
       downloaded: downloaded,
       live: live,
       waited: wait,
@@ -1949,7 +1955,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       case SyncAction.ask:
         final ask = onSyncAsk;
         if (ask == null) return null;
-        final take = await ask(serverMs: server.absoluteMs, localMs: localMs);
+        final take = await ask(
+            serverMs: server.absoluteMs,
+            localMs: localMs,
+            finished: finished,
+            startsOver: startsOver);
         AppLog.log('sync', 'book $bookKey: asked, ${take == true ? 'took Plex\'s place' : take == false ? 'stayed' : 'dismissed (stayed)'}');
         return take == true
             ? (server: server, trackRatingKey: key, localMs: localMs, announce: false)
@@ -1961,9 +1971,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// to start from instead, or null for the usual resume.
   Future<({BookStartPoint start, int serverMs, int localMs, bool announce})?>
       syncBeforeOpen(String bookKey, List<PlexTrack> tracks,
-          {required bool startsAudio}) async {
+          {required bool startsAudio, bool startsOver = false}) async {
     final r = await _syncPlaceFor(bookKey, 'open', tracks,
-        startsAudio: startsAudio);
+        startsAudio: startsAudio, startsOver: startsOver);
     if (r == null) return null;
     return (
       start: BookStartPoint.synced(r.trackRatingKey,
@@ -2005,12 +2015,34 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       if (_syncWaiting) return;
       _syncWaiting = true;
       try {
-        final r = await _syncPlaceFor(book, 'play', _tracks, startsAudio: true);
+        // Play on a book that finished here replays it from the start (see
+        // [play]): that is what a "no" to Plex's place means for it.
+        final replay = justFinishedBook.value == book || _completedThisSession;
+        final r = await _syncPlaceFor(book, 'play', _tracks,
+            startsAudio: true, startsOver: replay);
         if (r != null &&
             _bookRatingKey == book &&
             !_isPlaying &&
             !_loadInProgress) {
-          await _takeServerPlace(r.server.absoluteMs);
+          final stopped = !_castActive &&
+              (_player.processingState == ProcessingState.idle ||
+                  _player.processingState == ProcessingState.completed);
+          if (replay || stopped) {
+            // [play] would reload this player, from the start for a
+            // finished book, and lose a seek. Load at Plex's place instead,
+            // through the one launch path.
+            final ok = await startBook(
+              service: this,
+              bookRatingKey: book,
+              tracks: List.of(_tracks),
+              from: BookStartPoint.synced(r.trackRatingKey,
+                  positionMs: r.server.positionMs),
+              playback: LaunchPlayback.none,
+            );
+            if (ok) await saveSyncedPlace();
+          } else {
+            await _takeServerPlace(r.server.absoluteMs);
+          }
           if (r.announce) announceSyncApplied(r.server.absoluteMs, r.localMs);
         }
       } finally {

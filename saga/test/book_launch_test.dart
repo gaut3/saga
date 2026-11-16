@@ -173,6 +173,8 @@ void main() {
       const p = BookStartPoint.synced('t2', positionMs: 5000);
       expect(p.isResume, isFalse);
       expect(p.isChosen, isFalse);
+      expect(p.isBeginning, isFalse);
+      expect(const BookStartPoint.beginning().isBeginning, isTrue);
     });
 
     test('a file this book does not have refuses, never restarts', () {

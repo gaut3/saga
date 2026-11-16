@@ -1,3 +1,4 @@
+import '../../core/book_status.dart' show isBookFinished;
 import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/storage/bookmark_store.dart';
@@ -83,8 +84,11 @@ class BookStartPoint {
         _trackIndex = null,
         _positionMs = positionMs;
 
-  /// "Where I was": the only kind a server place can stand in for.
+  /// "Where I was": the kind a server place usually stands in for.
   bool get isResume => _kind == _StartKind.resume;
+
+  /// The start of the book.
+  bool get isBeginning => _kind == _StartKind.beginning;
 
   bool get isChosen =>
       _kind == _StartKind.trackKey || _kind == _StartKind.trackIndex;
@@ -178,9 +182,13 @@ Future<bool> startBook({
     // An in-app resume checks the server (sync rule 1), before the load
     // touches anything: the check captures this phone's place as it is now.
     // In live mode it may hand back Plex's place to start from instead.
-    final synced = inApp && from.isResume
+    // "Listen again" on a finished book checks too (rule 8): another device
+    // may have started it again since, and that place is what's offered.
+    final startsOver = from.isBeginning && isBookFinished(bookRatingKey);
+    final synced = inApp && (from.isResume || startsOver)
         ? await service.syncBeforeOpen(bookRatingKey, tracks,
-            startsAudio: playback != LaunchPlayback.none)
+            startsAudio: playback != LaunchPlayback.none,
+            startsOver: startsOver)
         : null;
     final start = synced?.start ?? from;
     final resolved = resolveBookStart(

@@ -19,10 +19,21 @@ void showSyncAppliedToast(BuildContext context,
 }
 
 /// Sync rule 9, ask: Plex's place is newer but further back. The finished
-/// panel's two-button shape. True takes Plex's place, false stays; dismissing
-/// it returns null, which stays too.
+/// panel's two-button shape. True takes Plex's place, false does what the
+/// listener asked for (stays, or starts over); dismissing it returns null,
+/// which does the same.
+///
+/// A [finished] book (rule 8) is the case of finishing it here and then
+/// listening again elsewhere: the newer place is offered, never taken on its
+/// own, since a sync never clears a finish. [startsOver] is "Listen again",
+/// whose own choice is the start, so the second button says so.
 Future<bool?> showSyncAskSheet(BuildContext context,
-    {required int serverMs, required int localMs}) {
+    {required int serverMs,
+    required int localMs,
+    bool finished = false,
+    bool startsOver = false}) {
+  final stayLabel =
+      startsOver ? 'Start over' : 'Stay at ${fmtBookPositionMs(localMs)}';
   final bottomPad = MediaQuery.of(context).padding.bottom;
   return showSagaSheet<bool>(
     context,
@@ -32,12 +43,18 @@ Future<bool?> showSyncAskSheet(BuildContext context,
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SagaSheetTitle('Another device is further back',
+          SagaSheetTitle(
+              finished
+                  ? 'Listened to on another device'
+                  : 'Another device is further back',
               padding: const EdgeInsets.only(bottom: 6)),
           Text(
-              'Plex was told about ${fmtBookPositionMs(serverMs)} more '
-              'recently than this phone saved ${fmtBookPositionMs(localMs)}. '
-              'Which place do you want?',
+              finished
+                  ? 'You finished this book here. Since then, another device '
+                      'has listened to it up to ${fmtBookPositionMs(serverMs)}.'
+                  : 'Plex was told about ${fmtBookPositionMs(serverMs)} more '
+                      'recently than this phone saved '
+                      '${fmtBookPositionMs(localMs)}. Which place do you want?',
               style: TextStyle(color: SagaColors.fgMuted, fontSize: 14)),
           const SizedBox(height: 16),
           SizedBox(
@@ -68,7 +85,7 @@ Future<bool?> showSyncAskSheet(BuildContext context,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
               ),
-              child: Text('Stay at ${fmtBookPositionMs(localMs)}'),
+              child: Text(stayLabel),
             ),
           ),
         ],

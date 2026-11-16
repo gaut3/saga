@@ -46,10 +46,18 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
     if (ctx == null || !ctx.mounted) return;
     showSyncAppliedToast(ctx, serverMs: serverMs, undo: () => undo());
   };
-  service.onSyncAsk = ({required serverMs, required localMs}) async {
+  service.onSyncAsk = (
+      {required serverMs,
+      required localMs,
+      required finished,
+      required startsOver}) async {
     final ctx = rootNavigatorKey.currentContext;
     if (ctx == null || !ctx.mounted) return null;
-    return showSyncAskSheet(ctx, serverMs: serverMs, localMs: localMs);
+    return showSyncAskSheet(ctx,
+        serverMs: serverMs,
+        localMs: localMs,
+        finished: finished,
+        startsOver: startsOver);
   };
   service.onStreamError = (bookRatingKey, position) async {
     try {
