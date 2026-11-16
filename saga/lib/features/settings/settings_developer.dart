@@ -82,6 +82,9 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
               children: [for (final s in _saves) _saveRow(s, subtle)],
             ),
           ),
+        const SizedBox(height: 16),
+        _SectionHeader('Timeline queue'),
+        ..._queue(subtle),
         const SizedBox(height: 24),
         _SettingsTile(
           icon: Icons.visibility_off_outlined,
@@ -95,6 +98,82 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
         ),
       ],
     );
+  }
+
+  /// Reports that couldn't reach Plex, waiting to be replayed (one per book,
+  /// the newest). Before a replay Saga reads the book from Plex and drops
+  /// the entry if Plex has heard of it since (sync design rule 6).
+  List<Widget> _queue(TextStyle subtle) {
+    final pending = TimelineQueueStore.all().entries.toList()
+      ..sort((a, b) => a.value.savedAt.compareTo(b.value.savedAt));
+    final now = DateTime.now();
+    String age(DateTime t) {
+      final d = now.difference(t);
+      if (d.inHours > 0) return '${d.inHours} h ${d.inMinutes % 60} min ago';
+      if (d.inMinutes > 0) return '${d.inMinutes} min ago';
+      return '${d.inSeconds} s ago';
+    }
+
+    return [
+      Material(
+        color: SagaColors.surface,
+        child: Column(
+          children: [
+            ListTile(
+              leading: Icon(
+                  pending.isEmpty
+                      ? Icons.cloud_done_outlined
+                      : Icons.cloud_upload_outlined,
+                  color: SagaColors.accent),
+              title: Text(
+                  pending.isEmpty
+                      ? 'Nothing waiting'
+                      : '${pending.length} waiting · oldest '
+                          '${age(pending.first.value.savedAt)}',
+                  style: TextStyle(color: SagaColors.fg)),
+              subtitle: Text(
+                  'Reports that couldn\'t reach Plex. Each is checked against '
+                  'Plex before it\'s sent: if Plex has heard of the book since, '
+                  'it\'s dropped.',
+                  style: subtle),
+            ),
+            for (final e in pending)
+              ListTile(
+                dense: true,
+                leading: const SizedBox(width: 24),
+                title: Text(
+                    '${_clock(e.value.savedAt)}  ·  '
+                    '${fmtDuration(Duration(milliseconds: e.value.positionMs))} '
+                    'in its file',
+                    style: _mono),
+                subtitle: Text(
+                    '${e.value.state} · book ${e.key} · ${age(e.value.savedAt)}',
+                    style: subtle),
+              ),
+          ],
+        ),
+      ),
+      _SettingsTile(
+        icon: Icons.sync_rounded,
+        title: 'Sync now',
+        subtitle: 'Check and send what is waiting, as coming back online does',
+        onTap: () {
+          ref.read(playerServiceProvider).flushTimelineQueue();
+          showSagaToast(context, 'Sending what is waiting');
+        },
+      ),
+      _SwitchTile(
+        icon: Icons.cloud_off_outlined,
+        title: 'Simulate offline',
+        subtitle: 'Plex calls fail as if the server were down, until Saga '
+            'restarts. Audio already loaded keeps playing.',
+        value: PlexClient.simulateOffline,
+        onChanged: (v) {
+          setState(() => PlexClient.simulateOffline = v);
+          AppLog.log('dev', 'simulate offline ${v ? 'on' : 'off'}');
+        },
+      ),
+    ];
   }
 
   /// The loaded book: how far the live position is from the last save (what

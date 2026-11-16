@@ -30,6 +30,11 @@ class PlexClient {
   String? _serverUri;
   String? _machineIdentifier;
 
+  /// Developer options: make every Plex API call fail as if the server were
+  /// unreachable. In memory only, so it ends with the process; a forgotten
+  /// switch can't leave a beta looking broken.
+  static bool simulateOffline = false;
+
   void Function()? onUnauthorized;
   bool _handlingUnauthorized = false;
 
@@ -97,6 +102,20 @@ class PlexClient {
     _instance = client;
 
     dio.interceptors.add(InterceptorsWrapper(
+      // Developer options' "Simulate offline": every Plex API call fails as
+      // an unreachable server would, for the session. Not the audio (the
+      // player fetches it itself) and not the connection re-check (its own
+      // client).
+      onRequest: (options, handler) {
+        if (simulateOffline) {
+          handler.reject(DioException.connectionError(
+            requestOptions: options,
+            reason: 'simulated offline (developer options)',
+          ));
+          return;
+        }
+        handler.next(options);
+      },
       onError: (err, handler) {
         final status = err.response?.statusCode;
         // 401 always means the token is no longer good. 403 does not: a media

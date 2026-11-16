@@ -1,3 +1,5 @@
+import '../plex_time.dart';
+
 class PlexTrack {
   final String ratingKey;
   final String key;
@@ -10,6 +12,13 @@ class PlexTrack {
   final String partKey;
   final String? partFile;
 
+  /// Plex's progress for this file, as of the fetch: the offset in ms and
+  /// when the server last heard a report for it (sync design rule 2). Null
+  /// when Plex has none. Read from the server only, never cached: a copy
+  /// from yesterday would say the wrong thing about who is newer.
+  final int? viewOffsetMs;
+  final DateTime? lastViewedAt;
+
   const PlexTrack({
     required this.ratingKey,
     required this.key,
@@ -21,6 +30,8 @@ class PlexTrack {
     this.authorName,
     this.thumbPath,
     this.partFile,
+    this.viewOffsetMs,
+    this.lastViewedAt,
   });
 
   /// Flat map for local storage (offline track cache) — deliberately our own
@@ -71,6 +82,8 @@ class PlexTrack {
       index: (json['index'] as num?)?.toInt() ?? 0,
       partKey: part?['key'] as String? ?? '',
       partFile: part?['file'] as String?,
+      viewOffsetMs: plexViewOffsetMs(json['viewOffset']),
+      lastViewedAt: plexLastViewedAt(json['lastViewedAt']),
     );
   }
 }

@@ -13,6 +13,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - **Opening a book should no longer move your place in other Plex apps.** Saga told your Plex server where you were every time it saved your place, including just after opening a book and just after the short rewind it does when you come back to one. Apps that read your place from Plex, such as Prologue, then showed you up to a minute behind where you'd stopped. Saga now tells Plex only about places you reach by listening, or by skipping and jumping yourself, and doesn't tell it the same place twice: before, every time you left Saga after a pause, it sent the paused place again as if it were new. Your place on this phone is saved exactly as before.
+- **Coming back online should no longer move your place back in other Plex apps.** When Saga couldn't reach your server, it kept your latest place and sent it once the server answered again, even if you had listened further on another device in the meantime. That older place then replaced the newer one. Saga now asks your server first, and sends the kept place only if nothing newer has arrived since.
 - **Closing Saga should no longer cut the end off the diagnostics log.** Swiping Saga away could end the app before it had written down its last second, so the log Copy diagnostics gives you was missing how playback stopped, including when a cast ended. Saga now writes the log out before it closes.
 
 ## [1.2.0] - 2026-11-12

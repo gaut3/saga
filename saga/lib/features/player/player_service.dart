@@ -34,6 +34,7 @@ import 'resume_rewind.dart';
 import 'session_restore.dart';
 import 'track_audio_source.dart';
 import 'report_gate.dart';
+import '../../core/sync/sync_clock.dart';
 import 'track_position_math.dart';
 import '../../core/book_status.dart';
 
@@ -2345,6 +2346,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
 
   bool _flushingQueue = false;
 
+  /// Local wall-clock time with seconds, for the sync log.
+  static String _hms(DateTime t) =>
+      t.toLocal().toIso8601String().substring(11, 19);
+
   /// Replays position updates that previously failed to reach Plex (e.g. saved
   /// while offline). Stops at the first failure (still offline). Safe to call
   /// repeatedly; called on successful reports and on app foreground.
@@ -2357,6 +2362,21 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       for (final entry in TimelineQueueStore.all().entries) {
         final t = entry.value;
         try {
+          // Rule 6: read the book from Plex first. Arrival order wins
+          // there, so replaying a report older than what another device
+          // has sent since would move that device's place back. Fetched
+          // fresh, never from the track cache.
+          final tracks = await _api.fetchTracks(entry.key);
+          final serverNewest = newestViewedAt(tracks.map((t) => t.lastViewedAt));
+          if (!shouldReplayQueued(
+              queuedAt: t.savedAt, serverNewest: serverNewest)) {
+            AppLog.log('sync',
+                'queued report for book ${entry.key} dropped: queued '
+                '${_hms(t.savedAt)}, Plex last heard of the book '
+                '${_hms(serverNewest!)}');
+            await TimelineQueueStore.remove(entry.key);
+            continue;
+          }
           await _api.reportTimeline(
             ratingKey: t.ratingKey,
             key: t.key,
@@ -2365,6 +2385,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
             state: t.state,
           );
           await TimelineQueueStore.remove(entry.key);
+          AppLog.log('sync',
+              'queued report for book ${entry.key} replayed (queued '
+              '${_hms(t.savedAt)}, Plex last heard of the book '
+              '${serverNewest == null ? 'never' : _hms(serverNewest)})');
         } on DioException catch (e) {
           // A 4xx means the server saw the report and refused it — retrying
           // can't fix that, and one such entry would stop the loop at itself
