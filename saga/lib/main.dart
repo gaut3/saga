@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'app.dart';
 import 'core/audio/audio_level.dart';
@@ -77,7 +78,10 @@ Future<void> _run() async {
     await ChapterStore.init(hiveKey);
     await SaveAuditStore.init(hiveKey);
     await CompletedBooksStore.init(hiveKey);
-    await DownloadStore.init(hiveKey);
+    // The documents folder, so a download whose folder iOS moved on an
+    // update is found again rather than dropped (DownloadStore).
+    await DownloadStore.init(hiveKey,
+        documentsDir: (await getApplicationDocumentsDirectory()).path);
     await ListeningHistoryStore.init(hiveKey);
     await ListenDaysStore.init(hiveKey);
     await NamedBookmarkStore.init(hiveKey);
