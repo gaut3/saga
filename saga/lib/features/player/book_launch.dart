@@ -73,6 +73,9 @@ class BookStartPoint {
   /// ([ReportGate.moved]); a resume or a start waits until playback passes
   /// the loaded spot. A stream-error reload also lands on an exact point and
   /// is no move at all: [startBook] passes `isAutoReload` for that.
+  /// "Where I was": the only kind a server place can stand in for.
+  bool get isResume => _kind == _StartKind.resume;
+
   bool get isChosen =>
       _kind == _StartKind.trackKey || _kind == _StartKind.trackIndex;
 }
@@ -145,7 +148,9 @@ class BookStartPoint {
 /// of the eight sites used to omit it altogether, so tapping a chapter played
 /// the book at whatever speed the previous book had been using. The saved
 /// position is resolved to a track index by one rule ([resolveBookStart]). And
-/// the resume rewind is applied to genuine resumes only.
+/// the resume rewind is applied to genuine resumes only. [inApp] marks a
+/// launch the listener made in the app, which checks the server (sync rule
+/// 1); the widget, headset, car and session restore leave it false.
 ///
 /// Returns false when the book couldn't be started; the caller decides whether
 /// that deserves a message.
@@ -156,8 +161,14 @@ Future<bool> startBook({
   required BookStartPoint from,
   LaunchPlayback playback = LaunchPlayback.start,
   bool isAutoReload = false,
+  bool inApp = false,
 }) async {
   try {
+    // An in-app resume checks the server (sync rule 1), before the load
+    // touches anything: the check captures this phone's place as it is now.
+    if (inApp && from.isResume) {
+      service.checkServer(bookRatingKey, 'open', tracks: tracks);
+    }
     final resolved = resolveBookStart(
       start: from,
       trackRatingKeys: [for (final t in tracks) t.ratingKey],

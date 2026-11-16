@@ -81,6 +81,7 @@ Future<bool> _openPlayerAndStart({
         tracks: tracks,
         from: from,
         playback: playback,
+        inApp: true,
       );
 
   if (!started) {

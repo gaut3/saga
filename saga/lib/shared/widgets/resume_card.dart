@@ -258,6 +258,7 @@ class _ResumeCardState extends ConsumerState<ResumeCard> {
       await service.resumeBook(
         widget.book.ratingKey,
         loadTracks: () => ref.read(tracksProvider(widget.book.ratingKey).future),
+        inApp: true,
       );
     } catch (e) {
       // "Loading…" quietly reverting to "Resume listening" reads as a dead

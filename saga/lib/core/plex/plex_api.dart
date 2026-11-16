@@ -1,3 +1,5 @@
+import 'dart:io' show HttpDate;
+
 import '../diagnostics/app_log.dart';
 import 'models/plex_author.dart';
 import 'models/plex_book.dart';
@@ -177,12 +179,42 @@ class PlexApi {
           queryParameters: {'type': 9, 'query': query},
           fromJson: PlexBook.fromJson);
 
-  Future<List<PlexTrack>> fetchTracks(String bookRatingKey) async {
-    final tracks = await _fetchList(
-      '/library/metadata/$bookRatingKey/children',
-      fromJson: PlexTrack.fromJson,
-    );
-    return tracks..sort((a, b) => a.index.compareTo(b.index));
+  Future<List<PlexTrack>> fetchTracks(String bookRatingKey) async =>
+      (await fetchBookProgress(bookRatingKey)).tracks;
+
+  /// A book's files, in order, with the server's clock from the response's
+  /// `Date` header (null when absent or unreadable). Each file carries Plex's
+  /// progress for it, read fresh: sync's rules read this, never a cache.
+  Future<({List<PlexTrack> tracks, DateTime? serverDate})> fetchBookProgress(
+      String bookRatingKey) async {
+    final response = await _client.get<Map<String, dynamic>>(
+        '/library/metadata/$bookRatingKey/children');
+    final container = response.data?['MediaContainer'];
+    final items = container is Map ? container['Metadata'] : null;
+    final tracks = <PlexTrack>[];
+    var skipped = 0;
+    if (items is List) {
+      for (final i in items) {
+        try {
+          tracks.add(PlexTrack.fromJson(i is Map<String, dynamic>
+              ? i
+              : Map<String, dynamic>.from(i as Map)));
+        } catch (_) {
+          skipped++;
+        }
+      }
+    }
+    if (skipped > 0) {
+      AppLog.log('plex',
+          'skipped $skipped unparseable tracks of book $bookRatingKey');
+    }
+    tracks.sort((a, b) => a.index.compareTo(b.index));
+    DateTime? serverDate;
+    try {
+      final date = response.headers.value('date');
+      if (date != null) serverDate = HttpDate.parse(date);
+    } catch (_) {}
+    return (tracks: tracks, serverDate: serverDate);
   }
 
   Future<void> reportTimeline({

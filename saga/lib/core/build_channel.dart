@@ -1,6 +1,7 @@
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'storage/settings_store.dart';
+import 'sync/sync_mode.dart';
 import 'update/update_checker.dart' show isPrereleaseVersion;
 
 /// Which kind of build this is. A beta or dev build has a pre-release part in
@@ -24,6 +25,11 @@ class BuildChannel {
   /// Developer options are on: a beta or dev build, unlocked in About.
   static bool get developerOptions =>
       _prerelease && SettingsStore.developerOptions;
+
+  /// The sync mode in effect: the stored one on a beta or dev build, always
+  /// off on a release ([effectiveSyncMode]).
+  static SyncMode get syncMode => effectiveSyncMode(
+      prerelease: _prerelease, storedIndex: SettingsStore.syncModeIndex);
 
   static Future<void> init() async {
     try {

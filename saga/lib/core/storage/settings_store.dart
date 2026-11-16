@@ -234,6 +234,13 @@ class SettingsStore {
   static Future<void> setDeveloperOptions(bool v) =>
       _box.put('developerOptions', v);
 
+  /// The stored sync mode (`SyncMode` index). Read only through
+  /// [BuildChannel.syncMode], which ignores it on a release build.
+  static int get syncModeIndex =>
+      _box.get('syncMode', defaultValue: 0) as int;
+
+  static Future<void> setSyncModeIndex(int v) => _box.put('syncMode', v);
+
   static bool get redactServerAddress =>
       _box.get('redactServerAddress', defaultValue: false) as bool;
 

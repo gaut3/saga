@@ -34,6 +34,8 @@ import 'resume_rewind.dart';
 import 'session_restore.dart';
 import 'track_audio_source.dart';
 import 'report_gate.dart';
+import 'sync_check.dart';
+import '../../core/sync/sync_mode.dart';
 import '../../core/sync/sync_clock.dart';
 import 'track_position_math.dart';
 import '../../core/book_status.dart';
@@ -1859,9 +1861,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// Home's resume card and the home-screen widget both come through here.
   /// Throws what [loadTracks] or the launch throws.
   Future<void> resumeBook(String bookRatingKey,
-      {Future<List<PlexTrack>> Function()? loadTracks}) async {
+      {Future<List<PlexTrack>> Function()? loadTracks,
+      bool inApp = false}) async {
     if (_bookRatingKey == bookRatingKey) {
-      await play();
+      await (inApp ? playFromApp() : play());
       return;
     }
     final tracks = await (loadTracks ?? () => _tracksFor(bookRatingKey))();
@@ -1871,7 +1874,43 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       bookRatingKey: bookRatingKey,
       tracks: tracks,
       from: const BookStartPoint.resume(),
+      inApp: inApp,
     );
+  }
+
+  /// Checks [bookKey] against the server on an in-app open or play (sync
+  /// rule 1), in the sync mode that's in effect. Headset, widget,
+  /// notification, car and cold-start plays don't come here: they play the
+  /// local place at once.
+  ///
+  /// This phone's place is captured now, before the request (rule 4). In
+  /// shadow mode the answer is only logged, and nothing waits for it.
+  void checkServer(String bookKey, String trigger,
+      {List<PlexTrack>? tracks}) {
+    if (BuildChannel.syncMode == SyncMode.off) return;
+    final saved = BookmarkStore.load(bookKey);
+    final files =
+        tracks ?? (_bookRatingKey == bookKey ? _tracks : const <PlexTrack>[]);
+    unawaited(checkServerPlace(
+      api: _api,
+      bookKey: bookKey,
+      trigger: trigger,
+      local: saved == null
+          ? null
+          : (absoluteMs: saved.absolutePositionMs, savedAt: saved.savedAt),
+      finished: CompletedBooksStore.isCompleted(bookKey),
+      downloaded: files.isNotEmpty &&
+          files.every((t) => PlexClient.localTrackPath(t) != null),
+    ));
+  }
+
+  /// The play button in the app (player, mini player): a play the listener
+  /// made looking at Saga, so it checks the server first (sync rule 1).
+  /// Everything else that plays calls [play] directly.
+  Future<void> playFromApp() async {
+    final book = _bookRatingKey;
+    if (book != null && !_isPlaying) checkServer(book, 'play');
+    await play();
   }
 
   /// The widget's skip buttons. When [bookRatingKey] isn't the loaded book

@@ -1175,7 +1175,7 @@ class _Controls extends StatelessWidget {
           // announces but can't be activated.
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: playing ? service.pause : service.play,
+            onTap: playing ? service.pause : service.playFromApp,
             child: Semantics(
               label: playing ? 'Pause' : 'Play',
               button: true,

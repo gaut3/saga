@@ -131,7 +131,7 @@ class MiniPlayerPill extends ConsumerWidget {
                 // Controls. The box is 54×64 (full pill height) so the tap
                 // target clears the 48 dp floor — the mark alone is 26 px.
                 GestureDetector(
-                  onTap: loading ? null : () => playing ? service.pause() : service.play(),
+                  onTap: loading ? null : () => playing ? service.pause() : service.playFromApp(),
                   behavior: HitTestBehavior.opaque,
                   child: Semantics(
                     label: loading ? 'Loading' : (playing ? 'Pause' : 'Play'),
