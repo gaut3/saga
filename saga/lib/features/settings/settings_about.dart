@@ -13,7 +13,8 @@ class _AboutPage extends ConsumerStatefulWidget {
 class _AboutPageState extends ConsumerState<_AboutPage> {
   late bool _updateCheck = SettingsStore.updateCheckEnabled;
   final _updateRowKey = GlobalKey();
-  String _version = '';
+  // From the code, not the platform: iOS reports it without its "-dev".
+  static const _version = 'v$appVersionName';
   int _versionTaps = 0;
 
   void _onVersionTap() {
@@ -36,9 +37,6 @@ class _AboutPageState extends ConsumerState<_AboutPage> {
   @override
   void initState() {
     super.initState();
-    PackageInfo.fromPlatform().then((info) {
-      if (mounted) setState(() => _version = 'v${info.version}');
-    }).catchError((_) {});
     if (widget.revealUpdate) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final row = _updateRowKey.currentContext;

@@ -4,12 +4,12 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
-import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/theme/saga_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/audio/audio_level.dart';
+import '../../core/app_version.dart';
 import '../../core/build_channel.dart';
 import '../../core/diagnostics/app_log.dart';
 import '../../core/mark_motion.dart';
@@ -69,15 +69,8 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  String _version = '';
-
-  @override
-  void initState() {
-    super.initState();
-    PackageInfo.fromPlatform().then((info) {
-      if (mounted) setState(() => _version = info.version);
-    }).catchError((_) {});
-  }
+  // From the code, not the platform: iOS reports it without its "-dev".
+  static const _version = appVersionName;
 
   /// Pushes [page] on the Settings tab, and redraws the summaries when it's
   /// closed: the pages write settings this screen only reads at build.

@@ -1,12 +1,14 @@
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'app_version.dart';
 import 'storage/settings_store.dart';
 import 'sync/sync_mode.dart';
 import 'update/update_checker.dart' show isPrereleaseVersion;
 
 /// Which kind of build this is. A beta or dev build has a pre-release part in
 /// its version (`1.3.0-beta.2`, `1.3.0-dev`); a release has none — the test
-/// the update checker uses to decide whether to offer betas.
+/// the update checker uses to decide whether to offer betas. The version is
+/// [appVersionName], not the platform's, which iOS strips.
 ///
 /// Developer options exist only on a pre-release build, and so does the sync
 /// mode (sync design § Shipping dark): a release reads neither setting,
@@ -33,9 +35,12 @@ class BuildChannel {
 
   static Future<void> init() async {
     try {
+      // The name from the code, not the platform: iOS strips the
+      // pre-release part (app_version.dart). The build number is the
+      // platform's.
+      _prerelease = isPrereleaseVersion(appVersionName);
       final info = await PackageInfo.fromPlatform();
-      _version = '${info.version}+${info.buildNumber}';
-      _prerelease = isPrereleaseVersion(info.version);
+      _version = '$appVersionName+${info.buildNumber}';
     } catch (_) {
       // Stays a release: nothing gated on the channel opens.
     }
