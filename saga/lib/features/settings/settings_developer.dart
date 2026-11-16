@@ -215,13 +215,15 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
   /// ([resolveServerPosition]), beside this phone's. Read-only: nothing here
   /// moves a position.
   List<Widget> _plexView(TextStyle subtle) {
-    final player = ref.read(playerServiceProvider);
-    final book = player.currentBookRatingKey;
+    // The loaded book, else the one a play press would resume.
+    final book = ref.read(playerServiceProvider).currentBookRatingKey ??
+        mostRecentBookRatingKey(BookmarkStore.allPositions(),
+            completed: finishedBookKeys());
     if (book == null) {
       return [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          child: Text('Load a book to read what Plex has for it.', style: subtle),
+          child: Text('No book listened to yet.', style: subtle),
         ),
       ];
     }
@@ -279,9 +281,9 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
           leading: Icon(Icons.dns_outlined, color: SagaColors.accent),
           title: Text(
               _plexReading
-                  ? 'Reading…'
+                  ? 'Reading book $book…'
                   : tracks == null
-                      ? 'Read from Plex'
+                      ? 'Read book $book from Plex'
                       : 'Read again · last read ${_clock(_plexReadAt!)}',
               style: TextStyle(color: SagaColors.fg)),
           subtitle: Text(

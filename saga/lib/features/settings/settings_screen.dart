@@ -36,6 +36,8 @@ import '../auth/server_selection_screen.dart';
 import '../home/history_shared.dart' show historyMonthAbbr;
 import '../player/player_provider.dart';
 import '../player/server_position.dart';
+import '../player/session_restore.dart' show mostRecentBookRatingKey;
+import '../../core/book_status.dart' show finishedBookKeys;
 import '../../core/audio/canned_audio_level.dart';
 import '../../shared/widgets/confirm_dialog.dart';
 import '../../shared/widgets/saga_mark.dart'
