@@ -22,10 +22,16 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
   String? _plexBook;
   List<PlexTrack>? _plexTracks;
   DateTime? _plexReadAt;
+  // This phone's place as it was just before the read (rule 4).
+  LocalPlace? _plexLocal;
   String? _plexError;
   bool _plexReading = false;
 
   Future<void> _readPlex(String book) async {
+    final saved = BookmarkStore.load(book);
+    final local = saved == null
+        ? null
+        : (absoluteMs: saved.absolutePositionMs, savedAt: saved.savedAt);
     setState(() {
       _plexReading = true;
       _plexError = null;
@@ -37,6 +43,7 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
         _plexBook = book;
         _plexTracks = tracks;
         _plexReadAt = DateTime.now();
+        _plexLocal = local;
       });
     } catch (e) {
       AppLog.log('dev', "reading Plex's view failed: $e");
@@ -238,7 +245,18 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
             lastViewedAt: t.lastViewedAt,
           ),
       ]);
-      final local = BookmarkStore.load(book);
+      final local = _plexLocal;
+      final decision = decideSync(
+        local: local,
+        server: server,
+        localFinished: finishedBookKeys().contains(book),
+      );
+      lines.add('Saga would: ${switch (decision.action) {
+        SyncAction.same => 'nothing',
+        SyncAction.keep => 'keep this phone\'s place',
+        SyncAction.apply => 'take Plex\'s place, with Undo',
+        SyncAction.ask => 'ask',
+      }} (${decision.reason})');
       if (server == null) {
         lines.add('Plex knows nothing about this book.');
       } else {
@@ -250,15 +268,8 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
             '(server clock)');
       }
       if (local != null) {
-        lines.add('This phone: ${fmtBookPositionMs(local.absolutePositionMs)} · '
+        lines.add('This phone: ${fmtBookPositionMs(local.absoluteMs)} · '
             'saved ${_clock(local.savedAt)}');
-        if (server != null) {
-          final d = ((server.absoluteMs - local.absolutePositionMs) / 1000)
-              .round();
-          final t = server.at.difference(local.savedAt).inSeconds;
-          lines.add('Plex is ${d.abs()} s ${d >= 0 ? 'ahead' : 'behind'}, '
-              'and ${t.abs()} s ${t >= 0 ? 'newer' : 'older'}');
-        }
       }
       final seen = [
         for (var i = 0; i < tracks.length; i++)
