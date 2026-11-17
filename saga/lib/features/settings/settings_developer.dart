@@ -398,7 +398,9 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
   Widget _logLines(List<String> lines, TextStyle subtle) {
     return Material(
       color: SagaColors.surface,
-      child: Padding(
+      // Full width: the panel otherwise ends where its longest line does.
+      child: Container(
+        width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: lines.isEmpty
             ? Text('Nothing yet.', style: subtle)

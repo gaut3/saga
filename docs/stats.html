@@ -62,8 +62,28 @@
       border: 1px solid var(--border); border-radius: 14px;
       background: rgba(244,234,216,.03); padding: 22px 22px 14px;
     }
-    .chart-wrap svg { width: 100%; height: auto; display: block; }
-    .chart-axis { font-size: 11px; fill: var(--sub2); font-family: var(--ff-body); }
+    .chart-inner { position: relative; }
+    .chart-wrap svg {
+      width: 100%; display: block; cursor: crosshair;
+      touch-action: pan-y; outline: none; border-radius: 6px;
+    }
+    .chart-wrap svg:focus-visible { outline: 2px solid var(--amber); outline-offset: 4px; }
+    .chart-axis {
+      font-size: 11px; fill: var(--sub); font-family: var(--ff-body);
+      font-variant-numeric: tabular-nums;
+    }
+    .chart-tip {
+      position: absolute; pointer-events: none; white-space: nowrap;
+      background: #2A1D17; border: 1px solid rgba(244,234,216,.16);
+      border-radius: 10px; padding: 9px 12px 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    }
+    .chart-tip .d { font-size: 11.5px; color: var(--sub); }
+    .chart-tip .v {
+      font-size: 15px; font-weight: 700; color: var(--cream);
+      font-variant-numeric: tabular-nums; margin-top: 1px;
+    }
+    .chart-tip .c { font-size: 11.5px; color: var(--amber); margin-top: 2px; }
 
     /* ─── RELEASE TABLE ─── */
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -366,33 +386,136 @@
       return;
     }
 
-    // Zero-dependency SVG line chart.
-    var W = 820, H = 220, P = { l: 44, r: 14, t: 14, b: 28 };
-    var xs = pts.map(function (p) { return new Date(p.d).getTime(); });
+    // Zero-dependency SVG line chart. Drawn at the box's real pixel width (and
+    // redrawn when that changes) so the labels stay 11px on a phone instead of
+    // shrinking with a scaled viewBox. The whole plot is the hover target: the
+    // pointer snaps to the nearest snapshot, so nobody has to hit a dot.
+    pts.forEach(function (p) { p.x = new Date(p.d).getTime(); });
+    pts = pts.filter(function (p) { return isFinite(p.x); });
+    if (pts.length < 2) { throw {}; }
+    var day = function (ms, year) {
+      return new Date(ms).toLocaleDateString('en-US', year
+        ? { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }
+        : { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    };
+
+    // Y axis: round ticks around the data. A cumulative total that only ever
+    // grows reads as a flat line when the axis is pinned to zero, so the axis
+    // starts just below the first snapshot unless zero is close anyway.
     var ys = pts.map(function (p) { return p.t; });
-    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
-    var y1 = Math.max.apply(null, ys), y0 = 0;
-    var X = function (v) { return P.l + (W - P.l - P.r) * (x1 === x0 ? 0.5 : (v - x0) / (x1 - x0)); };
-    var Y = function (v) { return H - P.b - (H - P.t - P.b) * (y1 === y0 ? 0.5 : (v - y0) / (y1 - y0)); };
+    var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys);
+    var raw = Math.max(1, (yMax - yMin) / 4);
+    var mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+    var step = [1, 2, 5, 10].map(function (m) { return m * mag; })
+      .filter(function (s) { return s >= raw; })[0];
+    var y0 = Math.floor(yMin / step) * step, y1 = Math.ceil(yMax / step) * step;
+    if (y0 < y1 * 0.3) { y0 = 0; }
+    if (y1 === y0) { y1 = y0 + step; }
+    var yTicks = [];
+    for (var v = y0; v <= y1 + step / 2; v += Math.max(step, (y1 - y0) / 6)) { yTicks.push(Math.round(v)); }
+    var x0 = pts[0].x, x1 = pts[pts.length - 1].x;
 
-    var line = pts.map(function (p, i) {
-      return (i ? 'L' : 'M') + X(new Date(p.d).getTime()).toFixed(1) + ' ' + Y(p.t).toFixed(1);
-    }).join(' ');
-    var dots = pts.map(function (p) {
-      return '<circle cx="' + X(new Date(p.d).getTime()).toFixed(1) + '" cy="' +
-        Y(p.t).toFixed(1) + '" r="3" fill="#F4EAD8"><title>' + p.d + ': ' + fmt(p.t) + '</title></circle>';
-    }).join('');
+    wrap.innerHTML = '<div class="chart-inner"><svg tabindex="0" role="img"></svg>' +
+      '<div class="chart-tip" hidden><div class="d"></div><div class="v"></div><div class="c"></div></div></div>';
+    var inner = wrap.firstChild, svg = inner.firstChild, tip = inner.lastChild;
+    svg.setAttribute('aria-label', 'Total APK downloads over time, from ' + fmt(ys[0]) + ' on ' +
+      pts[0].d + ' to ' + fmt(ys[ys.length - 1]) + ' on ' + pts[pts.length - 1].d +
+      '. Arrow keys step through the snapshots.');
 
-    wrap.innerHTML =
-      '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Total APK downloads over time, from ' +
-        fmt(ys[0]) + ' on ' + pts[0].d + ' to ' + fmt(ys[ys.length - 1]) + ' on ' + pts[pts.length - 1].d + '">' +
-      '<line x1="' + P.l + '" y1="' + (H - P.b) + '" x2="' + (W - P.r) + '" y2="' + (H - P.b) + '" stroke="rgba(244,234,216,.15)"/>' +
-      '<text class="chart-axis" x="' + P.l + '" y="' + (H - 8) + '">' + pts[0].d + '</text>' +
-      '<text class="chart-axis" x="' + (W - P.r) + '" y="' + (H - 8) + '" text-anchor="end">' + pts[pts.length - 1].d + '</text>' +
-      '<text class="chart-axis" x="' + (P.l - 8) + '" y="' + (Y(y1) + 4) + '" text-anchor="end">' + fmt(y1) + '</text>' +
-      '<text class="chart-axis" x="' + (P.l - 8) + '" y="' + (H - P.b + 4) + '" text-anchor="end">0</text>' +
-      '<path d="' + line + '" fill="none" stroke="#E0A050" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
-      dots + '</svg>';
+    var active = -1, W = 0, H = 240, P, X, Y;
+
+    function draw() {
+      W = inner.clientWidth;
+      if (!W) { return; }
+      P = { l: fmt(y1).length * 7 + 16, r: 24, t: 14, b: 30 };
+      var pw = W - P.l - P.r;
+      X = function (v) { return P.l + pw * (x1 === x0 ? 0.5 : (v - x0) / (x1 - x0)); };
+      Y = function (v) { return H - P.b - (H - P.t - P.b) * (v - y0) / (y1 - y0); };
+
+      var s = '';
+      yTicks.forEach(function (t, i) {
+        s += '<line x1="' + P.l + '" x2="' + (W - P.r) + '" y1="' + Y(t).toFixed(1) + '" y2="' + Y(t).toFixed(1) +
+          '" stroke="rgba(244,234,216,' + (i ? '.07' : '.18') + ')"/>' +
+          '<text class="chart-axis" x="' + (P.l - 10) + '" y="' + (Y(t) + 4).toFixed(1) + '" text-anchor="end">' + fmt(t) + '</text>';
+      });
+      // Date labels sit under real snapshots; walk back from the newest and
+      // drop any that would collide with one already placed.
+      var lastX = Infinity;
+      for (var i = pts.length - 1; i >= 0; i--) {
+        var px = X(pts[i].x);
+        if (lastX - px < 56) { continue; }
+        lastX = px;
+        s += '<text class="chart-axis" x="' + px.toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">' + day(pts[i].x) + '</text>';
+      }
+      s += '<line class="chart-guide" y1="' + P.t + '" y2="' + (H - P.b) + '" stroke="rgba(244,234,216,.3)" stroke-dasharray="3 3" visibility="hidden"/>';
+      s += '<path d="' + pts.map(function (p, i) {
+        return (i ? 'L' : 'M') + X(p.x).toFixed(1) + ' ' + Y(p.t).toFixed(1);
+      }).join(' ') + '" fill="none" stroke="#E0A050" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+      // Dots only while there is room for them; the hover marker covers the rest.
+      if (pw / pts.length >= 14) {
+        pts.forEach(function (p) {
+          s += '<circle cx="' + X(p.x).toFixed(1) + '" cy="' + Y(p.t).toFixed(1) + '" r="4" fill="#F4EAD8" stroke="#150E0A" stroke-width="2"/>';
+        });
+      }
+      s += '<circle class="chart-mark" r="6.5" fill="#E0A050" stroke="#F4EAD8" stroke-width="2.5" visibility="hidden"/>';
+      svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+      svg.setAttribute('height', H);
+      svg.innerHTML = s;
+      show(active);
+    }
+
+    function show(i) {
+      active = i;
+      var guide = svg.querySelector('.chart-guide'), mark = svg.querySelector('.chart-mark');
+      if (!guide) { return; }
+      if (i < 0) {
+        tip.hidden = true;
+        guide.setAttribute('visibility', 'hidden');
+        mark.setAttribute('visibility', 'hidden');
+        return;
+      }
+      var p = pts[i], px = X(p.x), py = Y(p.t);
+      guide.setAttribute('x1', px); guide.setAttribute('x2', px);
+      guide.setAttribute('visibility', 'visible');
+      mark.setAttribute('cx', px); mark.setAttribute('cy', py);
+      mark.setAttribute('visibility', 'visible');
+      tip.children[0].textContent = day(p.x, true);
+      tip.children[1].textContent = fmt(p.t) + ' downloads';
+      tip.children[2].textContent = i
+        ? '+' + fmt(p.t - pts[i - 1].t) + ' since ' + day(pts[i - 1].x)
+        : 'first snapshot';
+      tip.hidden = false;
+      var tw = tip.offsetWidth, th = tip.offsetHeight;
+      var left = Math.max(0, Math.min(W - tw, px - tw / 2));
+      var top = py - th - 14;
+      if (top < 0) { top = py + 14; }
+      tip.style.left = left + 'px';
+      tip.style.top = top + 'px';
+    }
+
+    function nearest(clientX) {
+      var mx = clientX - svg.getBoundingClientRect().left, best = 0;
+      pts.forEach(function (p, i) {
+        if (Math.abs(X(p.x) - mx) < Math.abs(X(pts[best].x) - mx)) { best = i; }
+      });
+      return best;
+    }
+    svg.addEventListener('pointermove', function (e) { show(nearest(e.clientX)); });
+    svg.addEventListener('pointerdown', function (e) { show(nearest(e.clientX)); });
+    // A finger lifting also "leaves"; keep the reading up on touch.
+    svg.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') { show(-1); } });
+    svg.addEventListener('blur', function () { show(-1); });
+    svg.addEventListener('keydown', function (e) {
+      var d = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+      if (!d) { return; }
+      e.preventDefault();
+      show(active < 0 ? pts.length - 1 : Math.max(0, Math.min(pts.length - 1, active + d)));
+    });
+
+    draw();
+    if (window.ResizeObserver) {
+      new ResizeObserver(function () { if (inner.clientWidth !== W) { draw(); } }).observe(inner);
+    }
   }).catch(function (e) {
     $('chart-state').textContent = (e && e.nofile)
       ? 'No snapshots yet — the curve begins with the snapshot workflow’s first weekly run. Live totals above are unaffected.'
