@@ -1220,13 +1220,25 @@ public class AudioServicePlugin implements FlutterPlugin, ActivityAware {
     static Map<String, Object> bundleToMap(Bundle bundle) {
         if (bundle == null) return null;
         Map<String, Object> map = new HashMap<>();
-        for (String key : bundle.keySet()) {
-            // TODO: use typesafe version once SDK 33 is released.
-            @SuppressWarnings("deprecation")
-            Object value = bundle.getSerializable(key);
-            if (value != null) {
-                map.put(key, value);
+        // SAGA PATCH: these bundles come from other apps (custom actions,
+        // browse and search options). Keep only values the method channel can
+        // carry: anything else made invokeMethod throw on the main thread, and
+        // a bundle holding a class this app doesn't have throws while it is
+        // being read. Either ended the process mid-listen.
+        try {
+            for (String key : bundle.keySet()) {
+                // TODO: use typesafe version once SDK 33 is released.
+                @SuppressWarnings("deprecation")
+                Object value = bundle.get(key);
+                if (value instanceof String || value instanceof Boolean
+                        || value instanceof Integer || value instanceof Long
+                        || value instanceof Short || value instanceof Byte
+                        || value instanceof Float || value instanceof Double) {
+                    map.put(key, value);
+                }
             }
+        } catch (RuntimeException e) {
+            // Unreadable (BadParcelableException): what was read so far stands.
         }
         return map;
     }

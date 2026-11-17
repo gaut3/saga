@@ -15,6 +15,7 @@ import '../../core/build_channel.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/plex/plex_api.dart';
 import '../../core/plex/plex_client.dart';
+import '../../core/plex/rating_key.dart';
 import '../../core/audio/m4b_chapter_reader.dart';
 import '../../core/storage/artwork_cache.dart';
 import '../../core/storage/bookmark_store.dart';
@@ -2188,7 +2189,16 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   @override
   Future<dynamic> customAction(String name,
       [Map<String, dynamic>? extras]) async {
-    final book = extras?['book'] as String?;
+    // Not only the widget's: any app can send a custom action to the media
+    // session, or straight to the exported service, so the book it names is
+    // outside input like a media id is. One that isn't a rating key is
+    // dropped here, before it is a storage key or part of a server URL.
+    final named = extras?['book'];
+    final book = named is String && isRatingKey(named) ? named : null;
+    if (named != null && book == null) {
+      AppLog.log('playback', 'custom action: not a book id, ignored');
+      return null;
+    }
     try {
       switch (name) {
         case 'widgetPlay':
@@ -2217,7 +2227,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       [Map<String, dynamic>? extras]) async {
     final bookKey = BrowseId.bookKeyOf(mediaId);
     if (bookKey == null) {
-      AppLog.log('playback', 'playFromMediaId: not a book id ($mediaId)');
+      // The id itself stays out of the log: it is another app's text.
+      AppLog.log('playback', 'playFromMediaId: not a book id, ignored');
       return;
     }
     try {

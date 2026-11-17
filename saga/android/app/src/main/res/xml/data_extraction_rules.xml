@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nothing of Saga's leaves the phone through Android's own backup or transfer.
+
+  android:allowBackup="false" covers cloud backup and adb backup. From Android
+  12 it no longer covers a phone-to-phone transfer (cable or Wi-Fi, at setup):
+  that copies an app's files regardless. For Saga the copy is worse than
+  useless. The Hive boxes and the stored key arrive, but the Keystore key that
+  unlocks them never leaves the old phone, so the new one would hold data it
+  cannot open, and the app would fail at every start until its data was
+  cleared. Downloads, covers and the diagnostics log would travel as well.
+
+  So both routes exclude everything, and Saga starts clean on a new phone.
+  Moving places across is Settings > Data and backup > Export / Import.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="."/>
+        <exclude domain="file" path="."/>
+        <exclude domain="database" path="."/>
+        <exclude domain="sharedpref" path="."/>
+        <exclude domain="external" path="."/>
+        <exclude domain="device_root" path="."/>
+        <exclude domain="device_file" path="."/>
+        <exclude domain="device_database" path="."/>
+        <exclude domain="device_sharedpref" path="."/>
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="."/>
+        <exclude domain="file" path="."/>
+        <exclude domain="database" path="."/>
+        <exclude domain="sharedpref" path="."/>
+        <exclude domain="external" path="."/>
+        <exclude domain="device_root" path="."/>
+        <exclude domain="device_file" path="."/>
+        <exclude domain="device_database" path="."/>
+        <exclude domain="device_sharedpref" path="."/>
+    </device-transfer>
+</data-extraction-rules>

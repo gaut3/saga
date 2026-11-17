@@ -5,6 +5,7 @@ import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/settings_store.dart';
 import 'player_service.dart';
 import 'report_gate.dart';
+import 'track_position_math.dart';
 
 enum _StartKind { resume, beginning, trackKey, trackIndex, synced }
 
@@ -106,6 +107,7 @@ class BookStartPoint {
   required BookStartPoint start,
   required List<String> trackRatingKeys,
   required BookPosition? saved,
+  List<int> trackDurationsMs = const [],
 }) {
   const fromScratch = (trackIndex: 0, positionMs: 0, applyResumeRewind: false);
   if (trackRatingKeys.isEmpty) return null;
@@ -115,12 +117,30 @@ class BookStartPoint {
       return fromScratch;
 
     case _StartKind.resume:
-      // Nothing saved, or a saved position whose track is gone (the book was
-      // re-imported and every key changed): resume is what was asked for, so
-      // the start of the book is the honest answer rather than a refusal.
       if (saved == null) return fromScratch;
       final idx = trackRatingKeys.indexOf(saved.trackRatingKey);
-      if (idx < 0) return fromScratch;
+      if (idx < 0) {
+        // The saved track isn't in this list: the book was re-imported and
+        // its keys changed, or the server's answer came back a file short.
+        // The place is still known as time into the book, so that is where
+        // it resumes. Starting over instead was silent, and the next save
+        // then replaced the place with one near 0:00. Only with every file's
+        // length known and the place inside the book; otherwise the start is
+        // all there is to offer.
+        final known = trackDurationsMs.length == trackRatingKeys.length &&
+            trackDurationsMs.every((d) => d > 0);
+        final total = trackDurationsMs.fold<int>(0, (a, b) => a + b);
+        final absoluteMs = saved.absolutePositionMs;
+        final at = known && absoluteMs > 0 && absoluteMs < total
+            ? trackFromAbsolute(trackDurationsMs, absoluteMs)
+            : null;
+        if (at == null) return fromScratch;
+        return (
+          trackIndex: at.index,
+          positionMs: at.positionMs,
+          applyResumeRewind: true,
+        );
+      }
       return (
         trackIndex: idx,
         positionMs: saved.positionMs,
@@ -195,6 +215,7 @@ Future<bool> startBook({
       start: start,
       trackRatingKeys: [for (final t in tracks) t.ratingKey],
       saved: BookmarkStore.load(bookRatingKey),
+      trackDurationsMs: [for (final t in tracks) t.durationMs],
     );
     if (resolved == null) {
       AppLog.log('playback', 'no start point resolved for book $bookRatingKey');

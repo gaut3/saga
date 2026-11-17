@@ -59,6 +59,10 @@ class DownloadStore {
     await _box.delete(ServerScope.key(trackRatingKey));
   }
 
+  /// Every raw storage key in the box, all servers: for cache housekeeping
+  /// across boxes, as `BookmarkStore.rawKeys`.
+  static Set<String> rawKeys() => {for (final k in _box.keys) k.toString()};
+
   static Map<String, String> allDownloads() {
     return {
       for (final key in _box.keys)

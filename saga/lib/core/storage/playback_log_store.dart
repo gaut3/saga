@@ -28,13 +28,29 @@ class AudioLogEvent {
         'ts': timestamp.millisecondsSinceEpoch,
       };
 
-  factory AudioLogEvent.fromMap(Map m) => AudioLogEvent(
-        type: m['t'] as String,
-        trackRatingKey: m['rk'] as String,
-        positionMs: m['p'] as int,
-        timestamp:
-            DateTime.fromMillisecondsSinceEpoch(m['ts'] as int),
-      );
+  /// The event in [m], or null when it isn't one. A read never throws on a
+  /// stored record: [PlaybackLogStore.getLog] runs for every book at startup
+  /// (the dangling-session reconcile), so one malformed event, restored from
+  /// a backup, used to stop the app from starting at all.
+  static AudioLogEvent? tryFromMap(Object? m) {
+    if (m is! Map) return null;
+    final type = m['t'];
+    final track = m['rk'];
+    final position = m['p'];
+    final ts = m['ts'];
+    if (type is! String ||
+        track is! String ||
+        position is! int ||
+        !isValidEpochMs(ts)) {
+      return null;
+    }
+    return AudioLogEvent(
+      type: type,
+      trackRatingKey: track,
+      positionMs: position,
+      timestamp: DateTime.fromMillisecondsSinceEpoch(ts as int),
+    );
+  }
 }
 
 class PlaybackLogStore {
@@ -77,8 +93,12 @@ class PlaybackLogStore {
 
   static List<AudioLogEvent> getLog(String bookRatingKey) {
     final key = ServerScope.prefixed(_logPrefix, bookRatingKey);
-    final list = (_box.get(key) as List?)?.cast<Map>() ?? [];
-    return list.map(AudioLogEvent.fromMap).toList();
+    final list = _box.get(key);
+    if (list is! List) return [];
+    return [
+      for (final m in list)
+        if (AudioLogEvent.tryFromMap(m) case final event?) event,
+    ];
   }
 
   /// When [bookRatingKey] was last *played* — the newest `play` event — or
@@ -92,7 +112,7 @@ class PlaybackLogStore {
     } else {
       int? scanned;
       for (final m in (_box.get(key) as List?) ?? const []) {
-        if (m is Map && m['t'] == 'play' && m['ts'] is int) {
+        if (m is Map && m['t'] == 'play' && isValidEpochMs(m['ts'])) {
           final ts = m['ts'] as int;
           if (scanned == null || ts > scanned) scanned = ts;
         }
@@ -144,10 +164,15 @@ class PlaybackLogStore {
       // Retention applies to every server's logs, not just the current one —
       // dead weight is dead weight regardless of which library wrote it.
       if (!key.toString().contains(_logPrefix)) continue;
-      final list = (_box.get(key) as List?)?.cast<Map>() ?? const <Map>[];
+      final stored = _box.get(key);
+      final list = stored is List ? stored : const [];
+      // Kept: a whole event that is recent enough. A record that isn't an
+      // event at all goes with the old ones.
       final kept = [
         for (final m in list)
-          if (m['ts'] is int && (m['ts'] as int) >= cutoff) m
+          if (AudioLogEvent.tryFromMap(m) != null &&
+              ((m as Map)['ts'] as int) >= cutoff)
+            m
       ];
       if (kept.length == list.length) continue;
       removed += list.length - kept.length;
@@ -169,14 +194,19 @@ class PlaybackLogStore {
       // Backups carry the unscoped shape; restore lands on the current server.
       final key = ServerScope.prefixed(
           _logPrefix, entry.key.substring(_logPrefix.length));
-      final incoming = (entry.value as List?)?.cast<Map>() ?? const <Map>[];
-      final existing =
-          (_box.get(key) as List?)?.cast<Map>() ?? const <Map>[];
+      final incoming = entry.value is List ? entry.value as List : const [];
+      final stored = _box.get(key);
+      final existing = stored is List ? stored : const [];
       final seen = <String>{};
       final all = <Map>[];
       for (final m in [...existing, ...incoming]) {
+        // Only whole events are stored: what goes in here is read back at
+        // every start.
+        if (AudioLogEvent.tryFromMap(m) == null) continue;
+        m as Map;
         if (seen.add('${m['ts']}_${m['t']}_${m['rk']}')) all.add(m);
       }
+      if (all.isEmpty) continue;
       all.sort((a, b) => (a['ts'] as int).compareTo(b['ts'] as int));
       final capped =
           all.length > _maxPerBook ? all.sublist(all.length - _maxPerBook) : all;

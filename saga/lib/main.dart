@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
+import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:material_ui/material_ui.dart';
@@ -24,6 +24,7 @@ import 'core/storage/chapter_store.dart';
 import 'core/storage/completed_books_store.dart';
 import 'core/storage/custom_collection_store.dart';
 import 'core/storage/download_store.dart';
+import 'core/storage/hive_key.dart';
 import 'core/storage/listen_days_store.dart';
 import 'core/storage/listening_history_store.dart';
 import 'core/storage/named_bookmark_store.dart';
@@ -193,13 +194,18 @@ void _reconcileDanglingSessions() {
 Future<List<int>> _loadHiveKey() async {
   const storage = FlutterSecureStorage();
   const keyName = 'hive_enc_key';
-  final existing = await storage.read(key: keyName);
-  if (existing != null) {
-    return base64Decode(existing);
-  }
-  final key = Hive.generateSecureKey();
-  await storage.write(key: keyName, value: base64Encode(key));
-  return key;
+  return loadHiveKey(
+    read: () => storage.read(key: keyName),
+    write: (value) => storage.write(key: keyName, value: value),
+    // The positions box is the first one opened on a first run, so its file
+    // stands for "this install has data". Hive.initFlutter keeps boxes in the
+    // documents directory.
+    boxesExist: () async {
+      final dir = await getApplicationDocumentsDirectory();
+      return File('${dir.path}/positions.hive').exists();
+    },
+    generate: Hive.generateSecureKey,
+  );
 }
 
 class _ErrorApp extends StatelessWidget {

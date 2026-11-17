@@ -6,9 +6,12 @@
 library;
 
 /// `lastViewedAt` → a time, or null when it's absent or not a sane value
-/// (non-numeric, not positive, not finite).
+/// (non-numeric, not positive, not finite, or past the year 2500: a number
+/// that large made the DateTime below throw, which dropped the whole track
+/// from the book's file list).
 DateTime? plexLastViewedAt(Object? seconds) {
   if (seconds is! num || !seconds.isFinite || seconds <= 0) return null;
+  if (seconds > 16725225600) return null;
   return DateTime.fromMillisecondsSinceEpoch((seconds * 1000).round(),
       isUtc: true);
 }

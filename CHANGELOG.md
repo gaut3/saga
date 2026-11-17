@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+These come from a review of how Saga handles your sign-in, your server connection and your saved data. None of them was reported as a problem in use; several close gaps before they could become one.
+
+### Changed
+- **Each server now gets its own key, not the key to your Plex account.** When you sign in, Plex gives Saga a key to your whole account, and a separate key for each server you can reach. Saga used to send the account key to whichever server you had selected. For your own server that changes little, but for a server someone else shared with you it meant its owner could have read a key to your account and your own servers. Saga now sends a server only that server's key, and your account key goes to plex.tv alone. An existing install switches over the first time it opens after updating; you don't need to sign in again. If your library stops loading after this update, please [open an issue](https://github.com/gaut3/saga/issues).
+- **Saga only connects to an address that proves it is your server.** When Saga looks for the best way to reach your server, it now checks that whatever answers is that server. Before, any answer at one of your server's addresses was accepted, so on someone else's network a different device at the same local address could have been taken for your server and sent your key. Saga also no longer sends a key while testing an unencrypted address.
+- **Saga's data stays out of phone-to-phone transfers.** Cloud backup was already off. Android's "copy apps and data" at setup of a new phone could still copy Saga's files, but not the key that unlocks them, which never leaves the old phone: the copied Saga would then have failed to start until its data was cleared. Saga now starts fresh on a new phone instead. To bring your places along, use Settings → Data and backup → Export progress on the old phone and Import progress on the new one.
+- **Two permissions Saga never used are gone.** The storage permissions for Android 12 and older were left over from before downloads moved into Saga's private storage.
+
+### Fixed
+- **A damaged backup file can no longer stop Saga from starting.** Importing a backup whose listening sessions were incomplete (a hand-edited file, for instance) passed the check, and Saga then failed at every start until its data was cleared. Such a file is now refused before anything is restored, and Saga skips a damaged entry it already holds instead of stopping on it.
+- **A book should no longer start over when your server's file list changes.** If the file you were in was missing from what the server sent (after the book was re-added to Plex, or when one file's details came back unreadable), Resume began at 0:00 and the next save replaced your place. Saga now resumes at the same time into the book.
+- **Saga no longer signs you out because of something that isn't Plex.** A refusal from your server's address used to sign you out, even when it came from another device at that address, or from a server that had lost its own connection to Plex. Only plex.tv saying your sign-in is no longer valid signs you out now; a refusal from the server makes Saga ask plex.tv first.
+- **Another app on your phone can no longer make Saga send requests of its choosing to your server, or crash Saga.** The home-screen widget's buttons reach Saga through a door Android leaves open to other apps. A book id arriving that way is now checked like every other one, and a malformed request is ignored instead of ending playback.
+- **Saga refuses to open its data with the wrong key.** If the phone ever failed to hand Saga its storage key, Saga would have made a new one, and opening your places and history with a new key erases them. Saga now stops at the "Failed to start" screen in that case and leaves your data untouched for the next start.
+- **Downloads from two servers can no longer overwrite each other.** A book with the same title and file numbers on a second server shared a file with the first, so downloading one replaced the other and deleting one deleted both. A book with a very long title can now be downloaded too.
+- **Restoring a backup no longer undoes changes you made since.** A collection you had renamed, reordered or added books to was replaced by the backup's older copy, and a bookmark you had renamed or added a note to went back to how the backup had it. A restore now keeps your collection as it is and adds any books only the backup has, and leaves a bookmark that's already on the phone alone. Which of two places is newer is also judged correctly when a backup is restored in another timezone.
+- **Saga's stored book details and chapters no longer grow without limit.** Saga kept the details of every book you ever opened, and the chapters of every single-file book, for as long as it was installed, and read all of it at each start. Both now have a ceiling; books you have a place in or have downloaded are always kept, and anything dropped is fetched again when you next open the book. A cover image has a maximum size too.
+- **Reading chapters from a misbehaving server can no longer run Saga out of memory.** A server that sent a whole book, or an endless answer, when asked for a few bytes of it could have ended Saga while it looked for chapters. The answer is now cut off at the size asked for, and chapter titles have a maximum length.
+
 ## [1.3.0-beta.1] - 2026-11-17
 
 <!-- Beta only: delete this block for the final 1.3.0. -->

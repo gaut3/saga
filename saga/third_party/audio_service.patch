@@ -1,5 +1,5 @@
 diff --git a/android/src/main/java/com/ryanheise/audioservice/AudioService.java b/android/src/main/java/com/ryanheise/audioservice/AudioService.java
-index a4afa37..46d7950 100644
+index a4afa37..2bd936e 100644
 --- a/android/src/main/java/com/ryanheise/audioservice/AudioService.java
 +++ b/android/src/main/java/com/ryanheise/audioservice/AudioService.java
 @@ -38,7 +38,6 @@ import androidx.media.app.NotificationCompat.MediaStyle;
@@ -46,7 +46,7 @@ index a4afa37..46d7950 100644
  
          PowerManager pm = (PowerManager)getSystemService(Context.POWER_SERVICE);
          wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, AudioService.class.getName());
-@@ -344,14 +353,63 @@ public class AudioService extends MediaBrowserServiceCompat {
+@@ -344,14 +353,71 @@ public class AudioService extends MediaBrowserServiceCompat {
  
          flutterEngine = AudioServicePlugin.getFlutterEngine(this);
          System.out.println("flutterEngine warmed up");
@@ -74,9 +74,17 @@ index a4afa37..46d7950 100644
 +        // queue on the Java side until Dart's "configure".
 +        if (intent != null && ACTION_CUSTOM.equals(intent.getAction())) {
 +            if (!notificationCreated) startPlaceholderForeground();
-+            final String name = intent.getStringExtra(EXTRA_CUSTOM_ACTION_NAME);
-+            if (name != null) {
-+                mediaSessionCallback.onCustomAction(name, intent.getBundleExtra(EXTRA_CUSTOM_ACTION_EXTRAS));
++            // The service is exported, so this intent can come from any app,
++            // with extras of its choosing. Reading them must not be able to
++            // throw out of onStartCommand: that ends the process, and the
++            // book playing in it.
++            try {
++                final String name = intent.getStringExtra(EXTRA_CUSTOM_ACTION_NAME);
++                if (name != null) {
++                    mediaSessionCallback.onCustomAction(name, intent.getBundleExtra(EXTRA_CUSTOM_ACTION_EXTRAS));
++                }
++            } catch (RuntimeException e) {
++                android.util.Log.w("AudioService", "custom action ignored: " + e.getClass().getSimpleName());
 +            }
 +            return START_NOT_STICKY;
 +        }
@@ -110,7 +118,7 @@ index a4afa37..46d7950 100644
      public void stop() {
          deactivateMediaSession();
          stopSelf();
-@@ -360,6 +418,7 @@ public class AudioService extends MediaBrowserServiceCompat {
+@@ -360,6 +426,7 @@ public class AudioService extends MediaBrowserServiceCompat {
      @Override
      public void onDestroy() {
          super.onDestroy();
@@ -118,7 +126,7 @@ index a4afa37..46d7950 100644
          if (listener != null) {
              listener.onDestroy();
              listener = null;
-@@ -703,6 +762,8 @@ public class AudioService extends MediaBrowserServiceCompat {
+@@ -703,6 +770,8 @@ public class AudioService extends MediaBrowserServiceCompat {
      }
  
      private void enterPlayingState() {
@@ -128,7 +136,7 @@ index a4afa37..46d7950 100644
          if (!mediaSession.isActive())
              mediaSession.setActive(true);
 diff --git a/android/src/main/java/com/ryanheise/audioservice/AudioServicePlugin.java b/android/src/main/java/com/ryanheise/audioservice/AudioServicePlugin.java
-index b776a84..2679725 100644
+index b776a84..fd88ba9 100644
 --- a/android/src/main/java/com/ryanheise/audioservice/AudioServicePlugin.java
 +++ b/android/src/main/java/com/ryanheise/audioservice/AudioServicePlugin.java
 @@ -143,6 +143,11 @@ public class AudioServicePlugin implements FlutterPlugin, ActivityAware {
@@ -178,7 +186,39 @@ index b776a84..2679725 100644
                      result.success(null);
                      break;
                  }
-@@ -1234,7 +1248,8 @@ public class AudioServicePlugin implements FlutterPlugin, ActivityAware {
+@@ -1206,13 +1220,25 @@ public class AudioServicePlugin implements FlutterPlugin, ActivityAware {
+     static Map<String, Object> bundleToMap(Bundle bundle) {
+         if (bundle == null) return null;
+         Map<String, Object> map = new HashMap<>();
+-        for (String key : bundle.keySet()) {
+-            // TODO: use typesafe version once SDK 33 is released.
+-            @SuppressWarnings("deprecation")
+-            Object value = bundle.getSerializable(key);
+-            if (value != null) {
+-                map.put(key, value);
++        // SAGA PATCH: these bundles come from other apps (custom actions,
++        // browse and search options). Keep only values the method channel can
++        // carry: anything else made invokeMethod throw on the main thread, and
++        // a bundle holding a class this app doesn't have throws while it is
++        // being read. Either ended the process mid-listen.
++        try {
++            for (String key : bundle.keySet()) {
++                // TODO: use typesafe version once SDK 33 is released.
++                @SuppressWarnings("deprecation")
++                Object value = bundle.get(key);
++                if (value instanceof String || value instanceof Boolean
++                        || value instanceof Integer || value instanceof Long
++                        || value instanceof Short || value instanceof Byte
++                        || value instanceof Float || value instanceof Double) {
++                    map.put(key, value);
++                }
+             }
++        } catch (RuntimeException e) {
++            // Unreadable (BadParcelableException): what was read so far stands.
+         }
+         return map;
+     }
+@@ -1234,7 +1260,8 @@ public class AudioServicePlugin implements FlutterPlugin, ActivityAware {
  
      static Map<String, Object> mapOf(Object... args) {
          Map<String, Object> map = new HashMap<>();

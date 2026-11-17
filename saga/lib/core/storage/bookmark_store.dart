@@ -53,7 +53,9 @@ class BookPosition {
       positionMs: positionMs < 0 ? 0 : positionMs,
       absolutePositionMs: absoluteMs < 0 ? 0 : absoluteMs,
       totalDurationMs: (totalMs != null && totalMs > 0) ? totalMs : null,
-      savedAt: DateTime.parse(map['savedAt'] as String),
+      // Local time in memory whatever the text says: a backup carries UTC
+      // (with a Z), records on this phone carry local time with no offset.
+      savedAt: DateTime.parse(map['savedAt'] as String).toLocal(),
       reportHoldMs: (holdMs != null && holdMs >= 0) ? holdMs : null,
     );
   }
@@ -97,6 +99,22 @@ class BookmarkStore {
   /// under the same [ServerScope.key]). Anything reading *positions* wants
   /// [allPositions], which is scoped.
   static Set<String> rawKeys() => {for (final k in _box.keys) k.toString()};
+
+  /// The raw storage key of the track each saved place is in, all servers:
+  /// the place's server prefix on its track key, which is how the per-track
+  /// stores file it. For cache housekeeping, like [rawKeys].
+  static Set<String> rawTrackKeys() {
+    final out = <String>{};
+    for (final k in _box.keys) {
+      final raw = _box.get(k);
+      final track = raw is Map ? raw['trackRatingKey'] : null;
+      if (track is! String) continue;
+      final key = k.toString();
+      final split = key.indexOf('|');
+      out.add(split < 0 ? track : '${key.substring(0, split + 1)}$track');
+    }
+    return out;
+  }
 
   static Map<String, BookPosition> allPositions() {
     final result = <String, BookPosition>{};

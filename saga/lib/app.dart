@@ -21,6 +21,14 @@ class App extends ConsumerWidget {
       ref.read(isAuthenticatedProvider.notifier).state = false;
     };
 
+    // A 401 from the media server is not a sign-out (PlexClient._onError):
+    // plex.tv is asked, which renews the server's token or, if the account
+    // token is the dead one, answers 401 itself and lands in the callback
+    // above.
+    PlexClient.instance.onServerUnauthorized = () {
+      ref.read(recheckServerProvider)('the server answered 401');
+    };
+
     final isAuthenticated = ref.watch(isAuthenticatedProvider);
     final serverUri = ref.watch(activeServerUriProvider);
     final themeVariant = ref.watch(sagaThemeVariantProvider);

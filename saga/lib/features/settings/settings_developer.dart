@@ -90,6 +90,9 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
               'release never shows or reads it.',
               style: TextStyle(color: SagaColors.fgMuted, fontSize: 13)),
         ),
+        _SectionHeader('Connection'),
+        ..._connection(subtle),
+        const SizedBox(height: 16),
         _SectionHeader('Sync with Plex'),
         _SegmentedTile(
           icon: Icons.sync_alt_rounded,
@@ -331,8 +334,68 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
 
   /// The newest `[sync]` lines from the diagnostics log: when reports were
   /// held and opened, and what the queue check did with each entry.
-  Widget _syncLog(TextStyle subtle) {
-    final lines = AppLog.recent('sync');
+  /// Which key the server is sent, and how Saga reaches it. Facts only:
+  /// neither key and no address (the page's rule), so "is it the server's own
+  /// key, and does it differ from the account's" is answered without showing
+  /// either.
+  List<Widget> _connection(TextStyle subtle) {
+    final facts = ref.read(plexClientProvider).connectionFacts;
+    final lines = <String>[];
+    String title;
+    if (facts == null) {
+      title = 'No server connection';
+    } else {
+      title = facts.serverKeyStored
+          ? "Sending the server's own key"
+          : 'Sending your account key';
+      lines.add(!facts.serverKeyStored
+          ? 'No key for this server is stored yet. One arrives the next time '
+              'the server list is read: tap Check the connection.'
+          : facts.sameAsAccountKey
+              ? 'Plex issued the same key for this server as for your '
+                  'account (usual for a server you own).'
+              : 'It differs from your account key, which goes to plex.tv '
+                  'only.');
+      lines.add('${facts.encrypted ? 'Encrypted (https)' : 'Not encrypted (http)'}'
+          '${facts.plexDirect ? ', a plex.direct address' : ''}');
+    }
+    // Newest first across both tags; the lines start with their timestamp.
+    final log = [...AppLog.recent('server', count: 4), ...AppLog.recent('auth', count: 4)]
+      ..sort((a, b) => b.compareTo(a));
+    return [
+      Material(
+        color: SagaColors.surface,
+        child: ListTile(
+          leading: Icon(
+              facts == null
+                  ? Icons.link_off_rounded
+                  : facts.serverKeyStored
+                      ? Icons.key_rounded
+                      : Icons.key_off_rounded,
+              color: SagaColors.accent),
+          title: Text(title, style: TextStyle(color: SagaColors.fg)),
+          subtitle:
+              lines.isEmpty ? null : Text(lines.join('\n'), style: subtle),
+        ),
+      ),
+      _SettingsTile(
+        icon: Icons.refresh_rounded,
+        title: 'Check the connection',
+        subtitle: 'Read the server list from plex.tv again and pick the best '
+            'address, as a network change does',
+        onTap: () async {
+          await ref.read(recheckServerProvider)('developer options');
+          if (mounted) setState(() {});
+        },
+      ),
+      _logLines(log.take(6).toList(), subtle),
+    ];
+  }
+
+  Widget _syncLog(TextStyle subtle) =>
+      _logLines(AppLog.recent('sync'), subtle);
+
+  Widget _logLines(List<String> lines, TextStyle subtle) {
     return Material(
       color: SagaColors.surface,
       child: Padding(

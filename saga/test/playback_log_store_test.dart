@@ -42,6 +42,23 @@ void main() {
     expect(log.last.timestamp, base.add(const Duration(minutes: 249)));
   });
 
+  test('a malformed stored event is skipped, never thrown on', () async {
+    // What an older import could leave behind. getLog runs for every book
+    // at startup, so a throw here was an app that no longer started.
+    final ts = DateTime(2026, 6, 1);
+    await Hive.box('playback_log').put('log_42', [
+      {'ts': ts.millisecondsSinceEpoch},
+      {'t': 'play', 'rk': 'track-1', 'p': 1.5, 'ts': ts.millisecondsSinceEpoch},
+      {'t': 'play', 'rk': 'track-1', 'p': 1, 'ts': 9000000000000000000},
+      'not an event',
+      rawEvent(ts),
+    ]);
+    final log = PlaybackLogStore.getLog('42');
+    expect(log.length, 1);
+    expect(log.single.timestamp, ts);
+    expect(PlaybackLogStore.lastPlayAt('42'), ts);
+  });
+
   test('importAll dedupes, sorts, and caps', () async {
     final base = DateTime(2026, 6, 1);
     PlaybackLogStore.log(bookRatingKey: '42', event: event(base));

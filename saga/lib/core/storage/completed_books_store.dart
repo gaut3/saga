@@ -1,5 +1,6 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../utils/date_math.dart';
 import 'server_scope.dart';
 import 'user_box.dart';
 
@@ -46,7 +47,10 @@ class CompletedBooksStore {
   static List<int> _timestampsAt(String storageKey) {
     final v = _box.get(storageKey);
     if (v == null) return [];
-    if (v is List) return v.cast<int>();
+    // Only timestamps a DateTime can hold: one that isn't (a restored backup
+    // carried a number too large) used to throw from every screen that asks
+    // whether a book is finished.
+    if (v is List) return [for (final t in v) if (isValidEpochMs(t)) t as int];
     return [];
   }
 
@@ -141,10 +145,12 @@ class CompletedBooksStore {
 
   static Future<void> importAll(Map<String, dynamic> raw) async {
     for (final entry in raw.entries) {
-      final incoming = (entry.value as List?)
-              ?.map((e) => (e as num).toInt())
-              .toList() ??
-          const <int>[];
+      final value = entry.value;
+      final incoming = <int>[
+        if (value is List)
+          for (final e in value)
+            if (e is num && e.isFinite && isValidEpochMs(e.toInt())) e.toInt(),
+      ];
       if (incoming.isEmpty) continue;
       final merged = <int>{..._timestamps(entry.key), ...incoming}.toList()
         ..sort();

@@ -18,6 +18,7 @@ const _clientIdKey = 'plex_client_id';
 const _tokenKey = 'plex_token';
 const _serverUriKey = 'plex_server_uri';
 const _machineIdKey = 'plex_machine_id';
+const _serverTokenKey = 'plex_server_token';
 
 class PlexClient {
   static PlexClient? _instance;
@@ -26,6 +27,7 @@ class PlexClient {
   final Dio _dio;
   final FlutterSecureStorage _storage;
   String? _token;
+  String? _serverToken;
   String? _clientId;
   String? _serverUri;
   String? _machineIdentifier;
@@ -38,6 +40,12 @@ class PlexClient {
   void Function()? onUnauthorized;
   bool _handlingUnauthorized = false;
 
+  /// The media server answered 401. Not a sign-out: see [_onError]. Set to
+  /// re-read the server list from plex.tv, which renews the server's token
+  /// and, if the account token itself is dead, gets plex.tv's own 401.
+  void Function()? onServerUnauthorized;
+  DateTime? _lastServerUnauthorized;
+
   PlexClient._({
     required Dio dio,
     required FlutterSecureStorage storage,
@@ -47,11 +55,16 @@ class PlexClient {
   /// Test-only: a client with an injected [dio] and no platform channels.
   /// The storage is never touched by the methods under test.
   @visibleForTesting
-  PlexClient.forTest({required Dio dio, String? serverUri, String? token})
+  PlexClient.forTest(
+      {required Dio dio, String? serverUri, String? token, String? serverToken})
       : _dio = dio,
         _storage = const FlutterSecureStorage(),
         _serverUri = serverUri,
-        _token = token;
+        _token = token,
+        _serverToken = serverToken {
+    _dio.interceptors.add(
+        InterceptorsWrapper(onRequest: _onRequest, onError: _onError));
+  }
 
   static Future<PlexClient> init() async {
     const storage = FlutterSecureStorage();
@@ -69,7 +82,7 @@ class PlexClient {
       // wiping it would make every encrypted box — positions, history,
       // settings — unreadable on the next launch.
       for (final key in const [
-        _clientIdKey, _tokenKey, _serverUriKey, _machineIdKey,
+        _clientIdKey, _tokenKey, _serverUriKey, _machineIdKey, _serverTokenKey,
       ]) {
         try { await storage.delete(key: key); } catch (_) {}
       }
@@ -80,6 +93,8 @@ class PlexClient {
     try { serverUri = await storage.read(key: _serverUriKey); } catch (_) {}
     String? machineId;
     try { machineId = await storage.read(key: _machineIdKey); } catch (_) {}
+    String? serverToken;
+    try { serverToken = await storage.read(key: _serverTokenKey); } catch (_) {}
 
     final dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 10),
@@ -90,60 +105,116 @@ class PlexClient {
         'X-Plex-Version': '1.0.0',
         'X-Plex-Platform': 'Android',
         'X-Plex-Client-Identifier': clientId,
-        if (token != null) 'X-Plex-Token': token,
+        // No token here: which one a request carries depends on where it is
+        // going, and [_onRequest] decides that per request.
       },
     ));
 
     final client = PlexClient._(dio: dio, storage: storage);
     client._token = token;
+    client._serverToken = serverToken;
     client._clientId = clientId;
     client._serverUri = serverUri;
     client._machineIdentifier = machineId;
     _instance = client;
 
     dio.interceptors.add(InterceptorsWrapper(
-      // Developer options' "Simulate offline": every Plex API call fails as
-      // an unreachable server would, for the session. Not the audio (the
-      // player fetches it itself) and not the connection re-check (its own
-      // client).
-      onRequest: (options, handler) {
-        if (simulateOffline) {
-          handler.reject(DioException.connectionError(
-            requestOptions: options,
-            reason: 'simulated offline (developer options)',
-          ));
-          return;
-        }
-        handler.next(options);
-      },
-      onError: (err, handler) {
-        final status = err.response?.statusCode;
-        // 401 always means the token is no longer good. 403 does not: a media
-        // server returns it for content this account may not see (restricted
-        // libraries, managed users), and treating that as a bad token signed
-        // the listener out over a single unplayable item. Only plex.tv's 403
-        // is about the credential itself.
-        // Dot-boundary match: a media server named e.g. `not-plex.tv` (server
-        // URIs can be owner-controlled custom domains) must not pass for
-        // plex.tv, or its ordinary per-item 403s would sign the user out.
-        final host = err.requestOptions.uri.host;
-        final isPlexTv = host == 'plex.tv' || host.endsWith('.plex.tv');
-        final tokenRejected = status == 401 || (status == 403 && isPlexTv);
-        if (tokenRejected && !client._handlingUnauthorized) {
-          // Explains any surprise sign-out: the server rejected the token.
-          AppLog.log('auth',
-              '$status from ${err.requestOptions.uri} — clearing token');
-          client._handlingUnauthorized = true;
-          client._token = null;
-          dio.options.headers.remove('X-Plex-Token');
-          storage.delete(key: _tokenKey); // fire-and-forget
-          client.onUnauthorized?.call();
-        }
-        handler.next(err);
-      },
-    ));
+        onRequest: client._onRequest, onError: client._onError));
 
     return client;
+  }
+
+  /// Whether [host] is plex.tv. Dot-boundary match: a media server named
+  /// e.g. `not-plex.tv` (server URIs can be owner-controlled custom domains)
+  /// must not pass for it.
+  static bool _isPlexTv(String host) =>
+      host == 'plex.tv' || host.endsWith('.plex.tv');
+
+  /// Whether [uri] is on the selected media server: same scheme, host and
+  /// port as the saved address.
+  bool _isServer(Uri uri) {
+    final saved = _serverUri == null ? null : Uri.tryParse(_serverUri!);
+    return saved != null &&
+        uri.scheme == saved.scheme &&
+        uri.host == saved.host &&
+        uri.port == saved.port;
+  }
+
+  /// Puts the right credential on a request, by where it is going.
+  ///
+  /// The account token opens the whole Plex account: every server, the
+  /// account's details. It goes to plex.tv and nowhere else. A media server
+  /// gets the token plex.tv issued for that one server ([serverToken]), which
+  /// is what Plex's own apps send. This matters most for a server someone
+  /// else shared with you: sent the account token, its owner (or anything
+  /// logging on it) held a key to your account and your own servers.
+  ///
+  /// Any other host gets no credential at all.
+  void _onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    // Developer options' "Simulate offline": every Plex API call fails as an
+    // unreachable server would, for the session. Not the audio (the player
+    // fetches it itself) and not the connection re-check (its own client).
+    if (simulateOffline) {
+      handler.reject(DioException.connectionError(
+        requestOptions: options,
+        reason: 'simulated offline (developer options)',
+      ));
+      return;
+    }
+    final uri = options.uri;
+    final String? credential;
+    if (_isPlexTv(uri.host)) {
+      // The network config refuses cleartext to plex.tv; this refuses to
+      // build the request at all.
+      credential = uri.scheme == 'https' ? _token : null;
+    } else if (_isServer(uri)) {
+      credential = serverToken;
+    } else {
+      credential = null;
+    }
+    if (credential != null) {
+      options.headers['X-Plex-Token'] = credential;
+    } else {
+      options.headers.remove('X-Plex-Token');
+    }
+    handler.next(options);
+  }
+
+  /// Decides what a refusal means.
+  ///
+  /// Only plex.tv can say the account token is dead, so only its 401 or 403
+  /// signs the listener out. A media server's 403 is about one item
+  /// (restricted libraries, managed users). Its 401 used to sign out as well,
+  /// and that deleted a good token whenever something else answered at the
+  /// server's address: another Plex server on the same LAN address in someone
+  /// else's house, a server that had lost its own sign-in, anything on an
+  /// unencrypted network. Now it asks plex.tv ([onServerUnauthorized]), at
+  /// most once a minute; plex.tv either renews the server's token or refuses
+  /// the account token itself, which is the sign-out above.
+  void _onError(DioException err, ErrorInterceptorHandler handler) {
+    final status = err.response?.statusCode;
+    final uri = err.requestOptions.uri;
+    if (_isPlexTv(uri.host)) {
+      if ((status == 401 || status == 403) && !_handlingUnauthorized) {
+        // Explains any surprise sign-out: plex.tv rejected the token.
+        AppLog.log('auth', '$status from plex.tv — clearing token');
+        _handlingUnauthorized = true;
+        _token = null;
+        _serverToken = null;
+        _storage.delete(key: _tokenKey); // fire-and-forget
+        _storage.delete(key: _serverTokenKey);
+        onUnauthorized?.call();
+      }
+    } else if (status == 401 && _token != null) {
+      final now = DateTime.now();
+      final last = _lastServerUnauthorized;
+      if (last == null || now.difference(last) > const Duration(minutes: 1)) {
+        _lastServerUnauthorized = now;
+        AppLog.log('auth', '401 from the media server — asking plex.tv');
+        onServerUnauthorized?.call();
+      }
+    }
+    handler.next(err);
   }
 
   static Future<String> _ensureClientId(FlutterSecureStorage storage) async {
@@ -163,8 +234,42 @@ class PlexClient {
   Future<void> saveToken(String token) async {
     _handlingUnauthorized = false; // new token — reset intercept guard
     _token = token;
-    _dio.options.headers['X-Plex-Token'] = token;
     await _storage.write(key: _tokenKey, value: token);
+  }
+
+  /// The credential for the selected media server: the token plex.tv issued
+  /// for it, or the account token while none is stored (an install from
+  /// before per-server tokens, until its first re-read of the server list).
+  String? get serverToken => _serverToken ?? _token;
+
+  /// Whether the server's own token is stored. False on an install that
+  /// hasn't re-read the server list since per-server tokens arrived.
+  bool get hasServerToken => _serverToken != null;
+
+  /// Which key the server is being sent, as facts that are safe on a screen:
+  /// for developer options. Neither key, and no address, is in it. Null with
+  /// no server selected or signed out.
+  ({bool serverKeyStored, bool sameAsAccountKey, bool encrypted, bool plexDirect})?
+      get connectionFacts {
+    final uri = _serverUri == null ? null : Uri.tryParse(_serverUri!);
+    if (uri == null || _token == null) return null;
+    return (
+      serverKeyStored: _serverToken != null,
+      sameAsAccountKey: _serverToken == null || _serverToken == _token,
+      encrypted: uri.scheme == 'https',
+      plexDirect: uri.host.endsWith('.plex.direct'),
+    );
+  }
+
+  /// Stores the token plex.tv issued for the selected server, or clears it
+  /// when the list carried none.
+  Future<void> saveServerToken(String? token) async {
+    _serverToken = token;
+    if (token == null) {
+      await _storage.delete(key: _serverTokenKey);
+    } else {
+      await _storage.write(key: _serverTokenKey, value: token);
+    }
   }
 
   Future<void> saveServerUri(String uri) async {
@@ -206,9 +311,9 @@ class PlexClient {
     // than one that looks signed in with no token behind it.
     await _storage.delete(key: _tokenKey);
     _token = null;
+    _serverToken = null;
     _serverUri = null;
     _machineIdentifier = null;
-    _dio.options.headers.remove('X-Plex-Token');
 
     Future<void> bestEffort(String step, Future<void> Function() run) async {
       try {
@@ -221,6 +326,7 @@ class PlexClient {
     await bestEffort('clearing server address', () async {
       await _storage.delete(key: _serverUriKey);
       await _storage.delete(key: _machineIdKey);
+      await _storage.delete(key: _serverTokenKey);
     });
     // Re-point storage now rather than on next launch, so a signed-out session
     // reads the same (last-active server's) records it will read after a
@@ -272,8 +378,11 @@ class PlexClient {
     return ok;
   }
 
+  /// The header for a request to the media server made outside this client's
+  /// own Dio: audio, covers, downloads, the chapter reader. Never the account
+  /// token when the server has its own (see [_onRequest]).
   Map<String, String> get authHeaders => {
-    if (_token != null) 'X-Plex-Token': _token!,
+    if (serverToken != null) 'X-Plex-Token': serverToken!,
   };
 
   Future<Response<T>> get<T>(
@@ -346,8 +455,11 @@ class PlexClient {
   /// failed to reach, and would sit loading forever (#24) — with the account
   /// token in them, spent for nothing.
   Future<({String token, bool isDelegated})?> _urlSafeToken() async {
-    final accountToken = _token;
-    if (accountToken == null || _serverUri == null) return null;
+    // The fallback when the server won't mint a delegated token: the server's
+    // own token where there is one, so even the weaker case exposes one
+    // server, not the account.
+    final fallback = serverToken;
+    if (fallback == null || _serverUri == null) return null;
     try {
       // Same endpoint Plex's own clients use to hand a stream to something that
       // can't authenticate. `scope=all` is Plex's only supported scope here.
@@ -384,7 +496,7 @@ class PlexClient {
     } catch (e) {
       AppLog.log('cast', 'delegated token unavailable: $e');
     }
-    return (token: accountToken, isDelegated: false);
+    return (token: fallback, isDelegated: false);
   }
 
   /// The URLs a Cast device needs, and nothing more than it needs.

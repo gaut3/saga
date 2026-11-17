@@ -22,6 +22,7 @@ import '../core/providers.dart'
     show
         activeServerUriProvider,
         connectivityProvider,
+        plexClientProvider,
         recheckServerProvider,
         sagaThemeVariantProvider,
         tabIndexProvider;
@@ -63,7 +64,14 @@ class _MainShellState extends ConsumerState<MainShell>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _checkForUpdate();
+      if (!mounted) return;
+      _checkForUpdate();
+      // An install from before per-server tokens has only the account token,
+      // and sends that to the media server until the server list is read
+      // again. Read it now rather than whenever the network next changes.
+      if (!ref.read(plexClientProvider).hasServerToken) {
+        ref.read(recheckServerProvider)('no token for this server yet');
+      }
     });
     _castErrors =
         ref.read(playerServiceProvider).cast.errorStream.listen((reason) {

@@ -134,6 +134,16 @@ class NamedBookmarkStore {
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
+  /// Restores a bookmark from a backup unless it is already here: the one on
+  /// the phone may have been renamed or given a note since the backup was
+  /// made, and the backup's copy used to replace it. Returns whether it was
+  /// added.
+  static Future<bool> restore(NamedBookmark bookmark) async {
+    if (_box.containsKey(bookmark.id)) return false;
+    await save(bookmark);
+    return true;
+  }
+
   static Future<void> update(NamedBookmark bookmark) => save(bookmark);
 
   static Future<void> delete(String id) async {

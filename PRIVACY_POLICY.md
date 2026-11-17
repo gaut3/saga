@@ -17,7 +17,7 @@ All data lives on your device and nowhere else:
 
 Positions, bookmarks, history and settings are encrypted at rest using AES-256 (Hive) with a key stored in the Android Keystore. Downloaded audio files are **not** encrypted — they are ordinary audio files, and an audio player must be able to read them directly. Their protection is the app's private internal storage directory, inaccessible to other apps without root.
 
-`android:allowBackup` is disabled — none of this data can be swept into Google cloud backup or extracted via `adb backup`.
+`android:allowBackup` is disabled — none of this data can be swept into Google cloud backup or extracted via `adb backup`. It is also excluded from Android's phone-to-phone transfer when you set up a new phone, so Saga starts fresh there; the manual export below is how you move your places.
 
 ---
 
@@ -33,7 +33,7 @@ Saga contacts exactly two external services (plus one strictly opt-in check, bel
 
 Your Plex account is subject to [Plex's own Privacy Policy](https://www.plex.tv/about/privacy-legal/).
 
-**2. Your own Plex server** — for everything else: browsing your library, streaming audio, fetching cover art, and reporting playback progress.
+**2. Your own Plex server** — for everything else: browsing your library, streaming audio, fetching cover art, and reporting playback progress. The server is sent the token plex.tv issued for that server. Your account token, which opens your whole Plex account, is sent to plex.tv only; this matters most when the server you selected is one somebody else shared with you.
 
 **3. api.github.com — only if you turn it on.** Settings → About has a "Check for updates automatically" toggle, **off by default**. When enabled, the app makes a single anonymous GET request to `api.github.com/repos/gaut3/saga/releases/latest` when it starts, and again when you return to it if it has stayed open for more than a day since the last check, to compare the latest release tag with your installed version. A beta version asks for `api.github.com/repos/gaut3/saga/releases` instead, the list that includes betas, so it can be told about the next beta as well as the release. The request carries no account data, no token, and nothing about your library; GitHub sees your IP address, as with any web request. Turning the toggle off stops the request entirely.
 

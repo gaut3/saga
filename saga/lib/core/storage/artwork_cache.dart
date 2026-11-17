@@ -28,6 +28,12 @@ class ArtworkCache {
   /// matter on any phone that can install the app.
   static const _maxBytes = 64 * 1024 * 1024;
 
+  /// Ceiling for one cover. A cover is a few hundred kilobytes; a server
+  /// that answers a cover request with something enormous is cut off here,
+  /// before it fills the phone's storage (the cache's own ceiling only prunes
+  /// after a file is complete).
+  static const _maxCoverBytes = 10 * 1024 * 1024;
+
   /// Downloads in flight, by final path. `loadBook` and the track-change
   /// listener both prefetch the book's cover, and two writers into one file is
   /// how a cover gets corrupted — and a cover on disk is served forever.
@@ -210,10 +216,18 @@ class ArtworkCache {
     Map<String, String> authHeaders,
   ) async {
     final part = File('$filePath.part');
+    final cancel = CancelToken();
     try {
       await _dio.download(
         url,
         part.path,
+        cancelToken: cancel,
+        onReceiveProgress: (received, total) {
+          if ((received > _maxCoverBytes || total > _maxCoverBytes) &&
+              !cancel.isCancelled) {
+            cancel.cancel('cover over the size limit');
+          }
+        },
         options: Options(
           headers: authHeaders,
           receiveTimeout: const Duration(seconds: 15),

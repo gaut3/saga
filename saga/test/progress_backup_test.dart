@@ -204,6 +204,48 @@ void main() {
     expect(BookmarkStore.load('101')!.positionMs, 123456);
   });
 
+  test('a restore keeps what changed on the phone since the backup', () async {
+    await seedStores();
+    final json = jsonEncode(ProgressBackup.buildBackupMap());
+
+    // Since the backup: the bookmark was renamed, the collection renamed,
+    // reordered, and given a book.
+    final bookmark = NamedBookmarkStore.getForBook('101').single;
+    await NamedBookmarkStore.update(NamedBookmark(
+      id: bookmark.id,
+      bookRatingKey: bookmark.bookRatingKey,
+      trackRatingKey: bookmark.trackRatingKey,
+      positionMs: bookmark.positionMs,
+      label: 'Renamed since',
+      createdAt: bookmark.createdAt,
+    ));
+    await CustomCollectionStore.restoreCollection(const CustomCollection(
+        id: 'col-2', name: 'Only on the phone', bookRatingKeys: ['9']));
+    await CustomCollectionStore.addBook('col-1', '303');
+    await CustomCollectionStore.removeBook('col-1', '101');
+
+    await ProgressBackup.restore(ProgressBackup.parseBackupJson(json)!);
+
+    expect(NamedBookmarkStore.getForBook('101').single.label, 'Renamed since');
+    // Its own books in its own order, then the one only the backup had.
+    expect(CustomCollectionStore.get('col-1')!.bookRatingKeys,
+        ['202', '303', '101']);
+    expect(CustomCollectionStore.get('col-2'), isNotNull);
+    await CustomCollectionStore.delete('col-2');
+  });
+
+  test('a backup carries its save times in UTC, and reads back as local',
+      () async {
+    await seedStores();
+    final map = ProgressBackup.buildBackupMap();
+    final exported = (map['positions'] as Map).values.first as Map;
+    expect(exported['savedAt'], endsWith('Z'));
+    final data = ProgressBackup.parseBackupJson(jsonEncode(map))!;
+    final back = data.positions.values.first.savedAt;
+    expect(back.isUtc, isFalse);
+    expect(back, BookmarkStore.allPositions().values.first.savedAt);
+  });
+
   test('unknown backup versions are rejected', () {
     expect(ProgressBackup.parseBackupJson('{"version": 99}'), isNull);
     expect(ProgressBackup.parseBackupJson('{"version": 0}'), isNull);
@@ -259,6 +301,38 @@ void main() {
       expect(
           () => ProgressBackup.parseBackupJson(withSection(
               'playbackLog', '{"log_101": [{"t": "play", "ts": "noon"}]}')),
+          throwsFormatException);
+    });
+
+    test('a playback-log event missing its type, track or position throws',
+        () {
+      // Only `ts` used to be checked. The rest was hard-cast when the log was
+      // read at the next start, which then failed on every launch.
+      for (final event in [
+        '{"ts": 1700000000000}',
+        '{"t": "play", "rk": "5", "p": 1.5, "ts": 1700000000000}',
+        '{"t": "play", "rk": "5", "p": 1, "ts": 9000000000000000000}',
+      ]) {
+        expect(
+            () => ProgressBackup.parseBackupJson(
+                withSection('playbackLog', '{"log_101": [$event]}')),
+            throwsFormatException,
+            reason: event);
+      }
+    });
+
+    test('numbers no date or total can hold throw', () {
+      expect(
+          () => ProgressBackup.parseBackupJson(
+              withSection('completedDetailed', '{"101": [1e300]}')),
+          throwsFormatException);
+      expect(
+          () => ProgressBackup.parseBackupJson(
+              withSection('completedDetailed', '{"101": [1e400]}')),
+          throwsFormatException);
+      expect(
+          () => ProgressBackup.parseBackupJson(
+              withSection('listeningHistory', '{"t_2026-01-01": 1e400}')),
           throwsFormatException);
     });
 

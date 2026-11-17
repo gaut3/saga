@@ -17,10 +17,33 @@ jobs:
       run:
         working-directory: saga
     steps:
-      # SHA-pinned — see the note in ci.yml. This job matters most: it decodes
-      # the signing keystore to disk and holds its passwords in the environment
-      # for every step that follows, in one shared runner.
+      # SHA-pinned — see the note in ci.yml. This job matters most: it holds
+      # the signing key. The APKs are built without it (Gradle signs them with
+      # the debug key), and one step that runs only apksigner re-signs them:
+      # the keystore is on disk and its passwords are in the environment for
+      # that step alone, so no dependency's build script, test or Dart hook
+      # ever runs within reach of them.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The whole history: the tag is checked against main below.
+          fetch-depth: 0
+
+      # A release is what main says it is. A tag that names another version
+      # than pubspec.yaml, or sits on a commit main doesn't contain (the v2 or
+      # ios worktree, a stray local branch), would otherwise be built, signed
+      # and offered to every install that checks for updates.
+      - name: Check the tag
+        run: |
+          version="$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pubspec.yaml's $version"
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME is not on main"
+            exit 1
+          fi
 
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
@@ -38,12 +61,12 @@ jobs:
           # tested on; move this in ci.yml, release.yml and codeql.yml together
           # as a deliberate upgrade (3.50.0: Material moved to package:material_ui).
           flutter-version: 3.50.0
-          cache: true
+          # No cache here: a cache is written by other runs, and this is the
+          # job that signs. A release is rare enough to download its SDK.
 
-      - name: Decode keystore
-        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
-
-      - run: flutter pub get
+      # The committed lockfile, exactly: a release must not resolve to a
+      # dependency version no one has built or tested.
+      - run: flutter pub get --enforce-lockfile
 
       - run: flutter analyze
 
@@ -53,30 +76,59 @@ jobs:
           TZ: Europe/Oslo
         run: flutter test
 
-      - name: Build signed release APK
-        env:
-          KEYSTORE_PATH: keystore.jks
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      # No keystore and no passwords here: build.gradle.kts falls back to the
+      # debug key and says so in the log. The signing step below replaces
+      # that signature.
+      - name: Build release APK
         run: flutter build apk --release --obfuscate --split-debug-info=build/symbols
 
       # arm64-only APK for IzzyOnDroid (their repo has a ~30 MB per-app
       # budget; the universal APK is ~50 MB). saga.apk stays the headline
       # asset for direct downloads.
       - name: Build arm64-only APK
+        run: flutter build apk --release --obfuscate --split-debug-info=build/symbols --split-per-abi --target-platform android-arm64
+
+      # The only step that touches the signing key, and it runs nothing but
+      # apksigner. Output goes to dist/ under the stable filenames.
+      - name: Sign the APKs
         env:
-          KEYSTORE_PATH: keystore.jks
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        run: flutter build apk --release --obfuscate --split-debug-info=build/symbols --split-per-abi --target-platform android-arm64
-
-      - name: Rename to stable filenames
         run: |
+          keystore="$RUNNER_TEMP/keystore.jks"
+          trap 'rm -f "$keystore"' EXIT
+          echo "$KEYSTORE_BASE64" | base64 -d > "$keystore"
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/saga.apk
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/saga-arm64-v8a.apk
+          sign() {
+            "$apksigner" sign --ks "$keystore" --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD \
+              --out "dist/$2" "build/app/outputs/flutter-apk/$1"
+          }
+          sign app-release.apk saga.apk
+          sign app-arm64-v8a-release.apk saga-arm64-v8a.apk
+          rm -f dist/*.idsig
+
+      # What gets published must carry Saga's own certificate: the one every
+      # installed copy was signed with, and the only one Android accepts as
+      # an update to it. The fingerprint is public (it is in every APK, and
+      # in the README under "To check a download").
+      - name: Check the signing certificate
+        env:
+          EXPECTED_SHA256: aebf195e125b791faaa3f93517964be7fa04a7bc282dbeae588c335eb2202242
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          for apk in dist/saga.apk dist/saga-arm64-v8a.apk; do
+            actual="$("$apksigner" verify --print-certs "$apk" \
+              | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+            if [ "$actual" != "$EXPECTED_SHA256" ]; then
+              echo "::error::$apk is signed with $actual, not Saga's certificate"
+              exit 1
+            fi
+            echo "$apk: $actual"
+          done
 
       - name: Generate SHA-256 checksums
         run: |

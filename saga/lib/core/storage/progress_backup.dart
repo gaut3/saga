@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../plex/plex_client.dart';
+import '../utils/date_math.dart';
 import 'bookmark_store.dart';
 import 'completed_books_store.dart';
 import 'custom_collection_store.dart';
@@ -74,7 +75,14 @@ class ProgressBackup {
       if (serverMachineIdentifier != null)
         'serverMachineIdentifier': serverMachineIdentifier,
       'positions': {
-        for (final e in positions.entries) e.key: e.value.toMap(),
+        // The save time in UTC. On the phone it is local time with no offset,
+        // which a restore in another timezone read as its own local time, and
+        // so misjudged which of two places was newer by the difference.
+        for (final e in positions.entries)
+          e.key: {
+            ...e.value.toMap(),
+            'savedAt': e.value.savedAt.toUtc().toIso8601String(),
+          },
       },
       // Flat key set kept for older app versions reading a new backup; v3 readers
       // prefer the detailed map below (preserves counts + dates).
@@ -199,7 +207,8 @@ class ProgressBackup {
     required Map<String, dynamic> playbackLog,
   }) {
     for (final e in history.entries) {
-      if (e.key.startsWith('t_') && e.value is! num) {
+      if (e.key.startsWith('t_') &&
+          (e.value is! num || !(e.value as num).isFinite)) {
         throw FormatException('listeningHistory "${e.key}" is not a number');
       }
       if (e.key.startsWith('d_') && e.value != null) {
@@ -217,7 +226,10 @@ class ProgressBackup {
     }
     for (final e in completedDetailed.entries) {
       final v = e.value;
-      if (v != null && (v is! List || v.any((t) => t is! num))) {
+      if (v != null &&
+          (v is! List ||
+              v.any((t) =>
+                  t is! num || !t.isFinite || !isValidEpochMs(t.toInt())))) {
         throw FormatException(
             'completedDetailed "${e.key}" is not a timestamp list');
       }
@@ -237,7 +249,10 @@ class ProgressBackup {
     }
     for (final e in playbackLog.entries) {
       final v = e.value;
-      if (v != null && (v is! List || v.any((m) => m is! Map || m['ts'] is! int))) {
+      // The whole event, as the store reads it back: the log is read for
+      // every book at startup.
+      if (v != null &&
+          (v is! List || v.any((m) => AudioLogEvent.tryFromMap(m) == null))) {
         throw FormatException('playbackLog "${e.key}" is malformed');
       }
     }
@@ -286,7 +301,7 @@ class ProgressBackup {
       await PlaybackLogStore.importAll(data.playbackLog);
     }
     for (final bookmark in data.namedBookmarks) {
-      await NamedBookmarkStore.save(bookmark);
+      await NamedBookmarkStore.restore(bookmark);
     }
     for (final col in data.collections) {
       await CustomCollectionStore.restoreCollection(col);

@@ -128,4 +128,30 @@ void main() {
     ];
     expect(unexpected, isEmpty);
   });
+
+  test('no audio player runs just_audio\'s localhost proxy', () {
+    // The proxy is a cleartext HTTP server on 127.0.0.1 serving the
+    // listener's audiobooks to any app on the phone. It is off by one
+    // constructor argument per player, and by nothing else in Dart.
+    final players = <String>[
+      for (final f in _libFiles())
+        for (final m in RegExp(r'\bAudioPlayer\(([^;]*?);', dotAll: true)
+            .allMatches(_code(f)))
+          if (!m.group(1)!.contains('useProxyForRequestHeaders: false'))
+            _path(f),
+    ];
+    expect(players, isEmpty);
+    // The source types that start the proxy whatever the argument says.
+    expect(
+        _offenders(RegExp(r'\b(StreamAudioSource|LockCachingAudioSource)\b')),
+        isEmpty);
+  });
+
+  test('a rating key reaches a server path only through PlexApi\'s check', () {
+    // Ids come from the server, from stored records and from other apps. The
+    // check lives where the path is built, so a new caller can't skip it.
+    final api = File('lib/core/plex/plex_api.dart').readAsStringSync();
+    final raw = RegExp(r"/library/(sections|metadata)/\$(?!\{_id\()");
+    expect(raw.allMatches(api), isEmpty);
+  });
 }

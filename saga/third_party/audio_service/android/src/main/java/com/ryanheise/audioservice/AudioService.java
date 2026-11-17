@@ -377,9 +377,17 @@ public class AudioService extends MediaBrowserServiceCompat {
         // queue on the Java side until Dart's "configure".
         if (intent != null && ACTION_CUSTOM.equals(intent.getAction())) {
             if (!notificationCreated) startPlaceholderForeground();
-            final String name = intent.getStringExtra(EXTRA_CUSTOM_ACTION_NAME);
-            if (name != null) {
-                mediaSessionCallback.onCustomAction(name, intent.getBundleExtra(EXTRA_CUSTOM_ACTION_EXTRAS));
+            // The service is exported, so this intent can come from any app,
+            // with extras of its choosing. Reading them must not be able to
+            // throw out of onStartCommand: that ends the process, and the
+            // book playing in it.
+            try {
+                final String name = intent.getStringExtra(EXTRA_CUSTOM_ACTION_NAME);
+                if (name != null) {
+                    mediaSessionCallback.onCustomAction(name, intent.getBundleExtra(EXTRA_CUSTOM_ACTION_EXTRAS));
+                }
+            } catch (RuntimeException e) {
+                android.util.Log.w("AudioService", "custom action ignored: " + e.getClass().getSimpleName());
             }
             return START_NOT_STICKY;
         }

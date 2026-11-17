@@ -1,4 +1,5 @@
 import '../plex_time.dart';
+import '../rating_key.dart';
 
 class PlexTrack {
   final String ratingKey;
@@ -68,19 +69,20 @@ class PlexTrack {
     final part = (media?['Part'] as List<dynamic>?)?.firstOrNull;
 
     return PlexTrack(
-      // Null-guarded: Plex can return partially-indexed items with missing
-      // fields, and one bad track must not crash the whole list parse.
-      ratingKey: json['ratingKey']?.toString() ?? '',
+      // Throws on a key that isn't one (rating_key.dart). Every caller parses
+      // per item, so one bad track is dropped, not the list. The other fields
+      // are null-guarded: Plex can return partially-indexed items.
+      ratingKey: requireRatingKey(json['ratingKey']),
       key: json['key'] as String? ?? '',
       title: json['title'] as String? ?? '',
       bookTitle: json['parentTitle'] as String?,
       authorName: json['grandparentTitle'] as String?,
-      thumbPath: json['parentThumb'] as String?,
+      thumbPath: serverPathOrNull(json['parentThumb']),
       // num, not int: some servers emit durations as floats, and PlexBook
       // already reads this same field the tolerant way.
       durationMs: (json['duration'] as num?)?.toInt() ?? 0,
       index: (json['index'] as num?)?.toInt() ?? 0,
-      partKey: part?['key'] as String? ?? '',
+      partKey: serverPathOrNull(part?['key']) ?? '',
       partFile: part?['file'] as String?,
       viewOffsetMs: plexViewOffsetMs(json['viewOffset']),
       lastViewedAt: plexLastViewedAt(json['lastViewedAt']),

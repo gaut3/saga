@@ -42,7 +42,9 @@ jobs:
           flutter-version: 3.50.0
           cache: true
 
-      - run: flutter pub get
+      # The committed lockfile, exactly, as release.yml does: a lockfile that
+      # has drifted fails here, not at release time.
+      - run: flutter pub get --enforce-lockfile
 
       - run: flutter analyze
 

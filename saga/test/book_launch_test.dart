@@ -123,6 +123,49 @@ void main() {
     });
   });
 
+  group('a saved place whose track is not in the list', () {
+    final saved = BookPosition(
+      trackRatingKey: 'gone',
+      positionMs: 30000,
+      absolutePositionMs: 630000,
+      savedAt: DateTime(2026, 1, 1),
+    );
+
+    test('resumes at the same time into the book', () {
+      expect(
+        resolveBookStart(
+          start: const BookStartPoint.resume(),
+          trackRatingKeys: const ['a', 'b', 'c'],
+          saved: saved,
+          trackDurationsMs: const [600000, 1200000, 900000],
+        ),
+        (trackIndex: 1, positionMs: 30000, applyResumeRewind: true),
+      );
+    });
+
+    test('starts over only when the lengths cannot place it', () {
+      const fromScratch =
+          (trackIndex: 0, positionMs: 0, applyResumeRewind: false);
+      // A file of unknown length, no lengths at all, a place past the end.
+      for (final durations in const [
+        [600000, 0, 900000],
+        <int>[],
+        [100000, 100000, 100000],
+      ]) {
+        expect(
+          resolveBookStart(
+            start: const BookStartPoint.resume(),
+            trackRatingKeys: const ['a', 'b', 'c'],
+            saved: saved,
+            trackDurationsMs: durations,
+          ),
+          fromScratch,
+          reason: '$durations',
+        );
+      }
+    });
+  });
+
   test('a book with no tracks can never be started', () {
     for (final start in const [
       BookStartPoint.resume(),

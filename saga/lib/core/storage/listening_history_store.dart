@@ -108,7 +108,9 @@ class ListeningHistoryStore {
       if (!key.startsWith('t_') && !key.startsWith('d_')) continue;
       if (key.startsWith('t_')) {
         final existing = (_box.get(key, defaultValue: 0) as num).toInt();
-        final incoming = (entry.value as num).toInt();
+        final value = entry.value;
+        if (value is! num || !value.isFinite) continue;
+        final incoming = value.toInt();
         // Keep the higher value (don't overwrite local data with older backup)
         if (incoming > existing) await _box.put(key, incoming);
       } else {

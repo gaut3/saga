@@ -7,11 +7,20 @@ import 'models/plex_tag.dart';
 import 'models/plex_library.dart';
 import 'models/plex_track.dart';
 import 'plex_client.dart';
+import 'rating_key.dart';
 
 class PlexApi {
   final PlexClient _client;
 
   PlexApi(this._client);
+
+  /// An id on its way into a request path. Checked here, where the
+  /// interpolation happens, so no caller can skip it: ids reach these methods
+  /// from the server's own lists, from stored records, and from other apps
+  /// (the media session's play-from-id and the widget's actions). One with a
+  /// `../` or a `?` in it would turn "this book's files" into a request for
+  /// any path on the server, sent with the token. Throws [FormatException].
+  static String _id(String id) => requireRatingKey(id);
 
   Future<List<T>> _fetchList<T>(
     String path, {
@@ -59,7 +68,7 @@ class PlexApi {
     final results = <PlexBook>[];
     while (true) {
       final response = await _client.get<Map<String, dynamic>>(
-        '/library/sections/$sectionKey/all',
+        '/library/sections/${_id(sectionKey)}/all',
         queryParameters: {
           'type': 9,
           'X-Plex-Container-Start': start,
@@ -96,34 +105,34 @@ class PlexApi {
 
   Future<List<PlexBook>> fetchRecentlyAdded(String sectionKey,
           {int limit = 20}) =>
-      _fetchList('/library/sections/$sectionKey/recentlyAdded',
+      _fetchList('/library/sections/${_id(sectionKey)}/recentlyAdded',
           queryParameters: {'type': 9, 'X-Plex-Container-Size': limit},
           fromJson: PlexBook.fromJson);
 
   Future<List<PlexAuthor>> fetchAuthors(String sectionKey) =>
-      _fetchList('/library/sections/$sectionKey/all',
+      _fetchList('/library/sections/${_id(sectionKey)}/all',
           queryParameters: {'type': 8}, fromJson: PlexAuthor.fromJson);
 
   Future<List<PlexBook>> fetchBooksByAuthor(String authorRatingKey) =>
-      _fetchList('/library/metadata/$authorRatingKey/children',
+      _fetchList('/library/metadata/${_id(authorRatingKey)}/children',
           fromJson: PlexBook.fromJson);
 
   Future<List<PlexBook>> fetchBooksInCollection(
       String sectionKey, String collectionRatingKey) async {
     // Approach 1: direct children endpoint (used by plexapi and most Plex clients)
     final direct = await _fetchList(
-        '/library/metadata/$collectionRatingKey/children',
+        '/library/metadata/${_id(collectionRatingKey)}/children',
         fromJson: PlexBook.fromJson);
     if (direct.isNotEmpty) return direct;
 
     // Approach 2: section filter using collection.id (Plex filter API)
-    final byId = await _fetchList('/library/sections/$sectionKey/all',
+    final byId = await _fetchList('/library/sections/${_id(sectionKey)}/all',
         queryParameters: {'type': 9, 'collection.id': collectionRatingKey},
         fromJson: PlexBook.fromJson);
     if (byId.isNotEmpty) return byId;
 
     // Approach 3: filter using collection tag ID
-    return _fetchList('/library/sections/$sectionKey/all',
+    return _fetchList('/library/sections/${_id(sectionKey)}/all',
         queryParameters: {'type': 9, 'collection.tag.id': collectionRatingKey},
         fromJson: PlexBook.fromJson);
   }
@@ -138,7 +147,7 @@ class PlexApi {
   /// Returns null when the server has no such item.
   Future<Map<String, dynamic>?> fetchBookMetadataRaw(String ratingKey) async {
     final response = await _client.get<Map<String, dynamic>>(
-      '/library/metadata/$ratingKey',
+      '/library/metadata/${_id(ratingKey)}',
     );
     final items =
         response.data?['MediaContainer']?['Metadata'] as List<dynamic>?;
@@ -150,7 +159,7 @@ class PlexApi {
   }
 
   Future<List<PlexBook>> fetchCollections(String sectionKey) =>
-      _fetchList('/library/sections/$sectionKey/collections',
+      _fetchList('/library/sections/${_id(sectionKey)}/collections',
           fromJson: PlexBook.fromJson);
 
   /// Every narrator in the section, in one request.
@@ -160,7 +169,7 @@ class PlexApi {
   /// without fetching each book's record separately.
   Future<List<PlexTag>> fetchNarrators(String sectionKey) async {
     final items = await _fetchList(
-      '/library/sections/$sectionKey/style',
+      '/library/sections/${_id(sectionKey)}/style',
       containerKey: 'Directory',
       fromJson: PlexTag.fromJson,
     );
@@ -170,12 +179,12 @@ class PlexApi {
   /// The books credited to one narrator (Style), server-side filtered.
   Future<List<PlexBook>> fetchBooksByNarrator(
           String sectionKey, String styleId) =>
-      _fetchList('/library/sections/$sectionKey/all',
+      _fetchList('/library/sections/${_id(sectionKey)}/all',
           queryParameters: {'type': 9, 'style': styleId},
           fromJson: PlexBook.fromJson);
 
   Future<List<PlexBook>> searchBooks(String sectionKey, String query) =>
-      _fetchList('/library/sections/$sectionKey/search',
+      _fetchList('/library/sections/${_id(sectionKey)}/search',
           queryParameters: {'type': 9, 'query': query},
           fromJson: PlexBook.fromJson);
 
@@ -188,7 +197,7 @@ class PlexApi {
   Future<({List<PlexTrack> tracks, DateTime? serverDate})> fetchBookProgress(
       String bookRatingKey) async {
     final response = await _client.get<Map<String, dynamic>>(
-        '/library/metadata/$bookRatingKey/children');
+        '/library/metadata/${_id(bookRatingKey)}/children');
     final container = response.data?['MediaContainer'];
     final items = container is Map ? container['Metadata'] : null;
     final tracks = <PlexTrack>[];

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -12,10 +13,12 @@ import '../../core/cast/cast_service.dart';
 import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/plex/plex_client.dart';
+import '../../core/plex/rating_key.dart';
 import '../../core/providers.dart';
 import '../../core/storage/artwork_cache.dart';
 import '../../core/storage/book_download_store.dart';
 import '../../core/storage/download_store.dart';
+import '../../core/storage/server_scope.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/storage/track_cache_store.dart';
 import '../../shared/widgets/saga_toast.dart';
@@ -387,8 +390,16 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
       };
       final rawExt = (track.partFile?.split('.').last ?? '').toLowerCase();
       final ext = audioExtensions.contains(rawExt) ? rawExt : 'mp3';
+      // Tracks from the server are checked when parsed; one read back from
+      // a cache written before that check is refused here, since the key is
+      // about to be a filename.
+      if (!isRatingKey(key)) {
+        AppLog.log('download', 'track skipped: its key is not a usable id');
+        _markFailed(key);
+        return;
+      }
       final dir = await _downloadDir(track);
-      filePath = '${dir.path}/$key.$ext';
+      filePath = '${dir.path}/${downloadFileName(key, ext)}';
 
       // connectTimeout fails fast on an unreachable server; receiveTimeout is an
       // inactivity timeout (no bytes for the duration) so a stalled connection
@@ -463,6 +474,16 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
     );
   }
 
+  /// The file a track downloads to, inside its book's folder.
+  ///
+  /// Named by the track's *scoped* key: two servers can each have a book of
+  /// the same title whose track has the same number, and they shared one
+  /// path, so downloading one overwrote the other and deleting one deleted
+  /// both. The first server's names are unchanged (its keys are unscoped).
+  @visibleForTesting
+  static String downloadFileName(String trackRatingKey, String ext) =>
+      '${ServerScope.key(trackRatingKey).replaceAll('|', '_')}.$ext';
+
   Future<Directory> _downloadDir(PlexTrack track) async {
     final base = await getApplicationDocumentsDirectory();
     final raw = track.bookTitle ?? track.ratingKey;
@@ -470,7 +491,12 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
         .replaceAll('..', '_')
         .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_')
         .trim();
-    final dirName = sanitized.isEmpty ? track.ratingKey : sanitized;
+    // 80 characters stays under the filesystem's 255-byte name limit in any
+    // script; past it the folder couldn't be created and the book could
+    // never be downloaded.
+    final clipped =
+        sanitized.length > 80 ? sanitized.substring(0, 80).trim() : sanitized;
+    final dirName = clipped.isEmpty ? track.ratingKey : clipped;
     final dir = Directory('${base.path}/downloads/$dirName');
     await dir.create(recursive: true);
     return dir;

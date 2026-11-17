@@ -1,3 +1,5 @@
+import '../rating_key.dart';
+
 class PlexBook {
   final String ratingKey;
   final String title;
@@ -59,10 +61,10 @@ class PlexBook {
 
   factory PlexBook.fromJson(Map<String, dynamic> json) {
     return PlexBook(
-      ratingKey: json['ratingKey'].toString(),
+      ratingKey: requireRatingKey(json['ratingKey']),
       title: json['title'] as String? ?? '',
       authorName: json['parentTitle'] as String?,
-      thumbPath: json['thumb'] as String?,
+      thumbPath: serverPathOrNull(json['thumb']),
       year: json['year'] as int?,
       leafCount: json['leafCount'] as int?,
       summary: json['summary'] as String?,

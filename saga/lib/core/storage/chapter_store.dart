@@ -2,6 +2,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../audio/m4b_chapter_reader.dart';
 
+import 'bookmark_store.dart';
+import 'download_store.dart';
 import 'server_scope.dart';
 import 'user_box.dart';
 
@@ -26,6 +28,10 @@ class ChapterStore {
   /// Plenty for the current book plus everything Home lists, and small enough
   /// that a large library can't grow this without bound.
   static const _maxCached = 64;
+
+  /// Ceiling for the box itself: one entry per single-file book ever opened,
+  /// never deleted until now, and all of it read into memory at every start.
+  static const _maxStored = 400;
 
   static Future<void> init(List<int> encKey) async {
     _decoded.clear();
@@ -66,6 +72,17 @@ class ChapterStore {
           .map((c) => {'title': c.title, 'startMs': c.start.inMilliseconds})
           .toList(),
     );
+    // Over the ceiling, other books' chapters go, except those of a book
+    // with a saved place or a download: those are the ones opened again, and
+    // re-reading chapters from a stream costs megabytes.
+    await evictOver(
+        _box,
+        _maxStored,
+        () => {
+              ServerScope.key(trackRatingKey),
+              ...BookmarkStore.rawTrackKeys(),
+              ...DownloadStore.rawKeys(),
+            });
     // Keep the cache honest: chapters are often written *after* the book has
     // started playing, so a stale "no chapters" entry would otherwise stick for
     // the rest of the session.

@@ -7,6 +7,13 @@
 /// helper here uses the constructor form and always returns local midnight.
 library;
 
+/// Whether [ms] is a timestamp `DateTime.fromMillisecondsSinceEpoch` accepts.
+/// Outside ±8.64e15 it throws a RangeError, and a stored value that large
+/// (a hand-edited backup, a number that saturated on its way to an int) would
+/// throw from every read of the record it sits in.
+bool isValidEpochMs(Object? ms) =>
+    ms is int && ms >= -8640000000000000 && ms <= 8640000000000000;
+
 /// Local midnight of [d]'s calendar day.
 DateTime dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 

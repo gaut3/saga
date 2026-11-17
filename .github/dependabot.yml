@@ -35,6 +35,8 @@ updates:
       # the fork means re-extracting the package and re-applying the RMS patch
       # by hand. That is a deliberate session, never a merge button.
       - dependency-name: just_audio
+      # Vendored the same way (third_party/audio_service, with its patch).
+      - dependency-name: audio_service
       # Majors by hand only, via `flutter pub upgrade --major-versions`. The
       # ones that would hurt are all in this list — hive_flutter and
       # flutter_secure_storage hold saved positions and the key that decrypts
@@ -47,3 +49,35 @@ updates:
         update-types: ['version-update:semver-major']
     commit-message:
       prefix: deps
+
+  # Saga's own Android code (the Cast bridge and the widget): the Google Cast
+  # framework and AndroidX mediarouter. Nothing else watched these. A bump
+  # here is a real change to what ships, and CI does not compile Android
+  # (ci.yml is analyze + tests): build an APK and try a cast before merging.
+  - package-ecosystem: gradle
+    directory: /saga/packages/saga_native/android
+    schedule:
+      interval: monthly
+    groups:
+      native:
+        patterns: ['*']
+    commit-message:
+      prefix: deps
+
+  # The vendored just_audio's Android side, for media3 (ExoPlayer): the
+  # decoder for audio that arrives from a server, so the dependency where a
+  # security fix matters most. Security updates only (the limit of 0 turns
+  # version updates off and leaves those on): moving media3 for its own sake
+  # is part of re-vendoring just_audio, and the RMS patch compiles against
+  # its API.
+  - package-ecosystem: gradle
+    directory: /saga/third_party/just_audio/android
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: deps
+
+  # Not listed on purpose: /saga/android. Its only versions are the Android
+  # Gradle plugin, Kotlin and the Gradle wrapper, which move with Flutter
+  # upgrades (see the pinned flutter-version in the workflows), not alone.

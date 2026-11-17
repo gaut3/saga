@@ -1,3 +1,5 @@
+import '../rating_key.dart';
+
 class PlexAuthor {
   final String ratingKey;
   final String title;
@@ -15,9 +17,9 @@ class PlexAuthor {
     // Tolerant like PlexTrack.fromJson: one partially-indexed artist must not
     // empty the whole author list.
     return PlexAuthor(
-      ratingKey: json['ratingKey'].toString(),
+      ratingKey: requireRatingKey(json['ratingKey']),
       title: json['title'] as String? ?? '',
-      thumbPath: json['thumb'] as String?,
+      thumbPath: serverPathOrNull(json['thumb']),
       bookCount: (json['childCount'] as num?)?.toInt() ?? 0,
     );
   }

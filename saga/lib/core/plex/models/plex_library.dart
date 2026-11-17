@@ -1,3 +1,5 @@
+import '../rating_key.dart';
+
 class PlexLibrary {
   final String key;
   final String title;
@@ -13,7 +15,7 @@ class PlexLibrary {
     // Tolerant like PlexTrack.fromJson: Plex servers vary by version, and a
     // hard cast here turned one odd section into "no libraries at all".
     return PlexLibrary(
-      key: json['key'].toString(),
+      key: requireRatingKey(json['key']),
       title: json['title'] as String? ?? '',
       type: json['type'] as String? ?? '',
     );

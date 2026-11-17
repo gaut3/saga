@@ -3,6 +3,7 @@ import 'package:audio_service/audio_service.dart';
 import '../../core/book_progress.dart';
 import '../../core/local_library.dart';
 import '../../core/plex/models/plex_book.dart';
+import '../../core/plex/rating_key.dart';
 import '../../core/storage/artwork_cache.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/custom_collection_store.dart';
@@ -38,16 +39,6 @@ class BrowseId {
           ? mediaId.substring(_collectionPrefix.length)
           : null;
 
-  /// A rating key shape: what Plex actually mints, and nothing that could be
-  /// read as a path.
-  ///
-  /// Plex rating keys are integers; this is deliberately looser than that, so a
-  /// server with an unusual key doesn't lose the ability to play. What it does
-  /// exclude is the punctuation that makes a key stop being a key — dots,
-  /// slashes, `?`, `%` — because the key is interpolated into a server URL
-  /// (`/library/metadata/$key/children`), and this is the one value in that URL
-  /// that arrives from outside the app.
-  static final _ratingKeyShape = RegExp(r'^[A-Za-z0-9_-]+$');
 
   /// The book rating key inside a playable node, else null.
   ///
@@ -59,7 +50,7 @@ class BrowseId {
   static String? bookKeyOf(String mediaId) {
     if (!mediaId.startsWith(_bookPrefix)) return null;
     final key = mediaId.substring(_bookPrefix.length);
-    return _ratingKeyShape.hasMatch(key) ? key : null;
+    return isRatingKey(key) ? key : null;
   }
 }
 

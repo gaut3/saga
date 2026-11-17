@@ -56,8 +56,11 @@ class PlexServerDiscovery {
   /// So results are recorded by position and the decision is made by walking
   /// the priority order from the front, which also means no waiting once the
   /// answer can't change — a reachable top choice returns immediately.
-  Future<String?> findReachableUri(PlexServer server) =>
-      selectReachable(server.connections, _probe);
+  Future<String?> findReachableUri(PlexServer server) => selectReachable(
+      server.connections,
+      (uri) => _probe(uri,
+          machineIdentifier: server.machineIdentifier,
+          token: server.accessToken));
 
   /// The selection itself, with [probe] injected — this is the part that had
   /// the bug, and it is decided entirely by which probes answer and in what
@@ -105,54 +108,88 @@ class PlexServerDiscovery {
     return completer.future;
   }
 
-  /// Whether [uri] answers as a Plex server, **without spending the token to
-  /// find out**.
+  /// Whether [uri] answers as **this** Plex server, without spending a token
+  /// to find out.
   ///
   /// `/identity` is one of the few endpoints Plex serves unauthenticated, and
   /// this runs against every connection the account lists — local, remote,
-  /// relay, plaintext — including the ones that are about to lose. Attaching an
-  /// account-wide credential to all of them to discover which single one to use
-  /// put it in far more places than the app ever goes on to talk to.
+  /// relay, plaintext — including the ones that are about to lose. Attaching a
+  /// credential to all of them to discover which single one to use put it in
+  /// far more places than the app ever goes on to talk to.
   ///
-  /// A server that does demand auth here is retried once with the token rather
-  /// than dropped, so this can't quietly cost anyone their connection; the log
-  /// line says when that happened.
-  Future<bool> _probe(String uri) async {
+  /// The answer has to name [machineIdentifier]. A 200 alone used to do, so
+  /// whatever answered at a listed address was taken for the server: a LAN
+  /// address like 192.168.1.10:32400 is somebody else's Plex server in
+  /// somebody else's house, and a plain-HTTP address proves nothing about
+  /// who is behind it. The winner is sent the token on every request.
+  ///
+  /// A server that does demand auth here is retried once with its own
+  /// [token], over HTTPS only, so a token never rides a plaintext probe; the
+  /// log line says when that happened.
+  Future<bool> _probe(String uri,
+      {required String machineIdentifier, String? token}) async {
     // connectTimeout covers the TCP connect phase, which send/receive timeouts
     // do not — without it an unresponsive host hangs the probe.
     final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 5)));
-    Future<int?> identity({required bool authenticated}) async {
-      final response = await dio.get<dynamic>(
-        '$uri/identity',
-        options: Options(
-          sendTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 5),
-          headers: {
-            'Accept': 'application/json',
-            if (authenticated) ..._client.authHeaders,
-          },
-          // Report the status instead of throwing on it, so 401 is a decision
-          // to make rather than an exception to swallow.
-          validateStatus: (_) => true,
-        ),
-      );
-      return response.statusCode;
-    }
+    Future<Response<dynamic>> identity({required bool authenticated}) =>
+        dio.get<dynamic>(
+          '$uri/identity',
+          options: Options(
+            sendTimeout: const Duration(seconds: 5),
+            receiveTimeout: const Duration(seconds: 5),
+            // Probes are answered by whatever is at the address: no
+            // redirects to follow, and nothing large to read.
+            followRedirects: false,
+            headers: {
+              'Accept': 'application/json',
+              if (authenticated && token != null) 'X-Plex-Token': token,
+            },
+            // Report the status instead of throwing on it, so 401 is a
+            // decision to make rather than an exception to swallow.
+            validateStatus: (_) => true,
+          ),
+        );
 
     try {
-      final status = await identity(authenticated: false);
-      if (status == 200) return true;
-      if (status == 401 || status == 403) {
+      var response = await identity(authenticated: false);
+      final status = response.statusCode;
+      if ((status == 401 || status == 403) &&
+          token != null &&
+          uri.startsWith('https://')) {
         AppLog.log('plex', '/identity refused an anonymous probe ($status) — '
             'retrying with the token');
-        return await identity(authenticated: true) == 200;
+        response = await identity(authenticated: true);
       }
+      if (response.statusCode != 200) return false;
+      if (identityNames(response.data, machineIdentifier)) return true;
+      AppLog.log('server', 'a connection answered as a different server — '
+          'skipped');
       return false;
     } catch (_) {
       return false;
     } finally {
       dio.close();
     }
+  }
+
+  /// Whether an `/identity` body names [machineIdentifier]: the JSON Plex
+  /// sends when asked for it, or the XML an older server sends regardless.
+  @visibleForTesting
+  static bool identityNames(Object? body, String machineIdentifier) {
+    if (body is Map) {
+      final container = body['MediaContainer'];
+      final id = container is Map ? container['machineIdentifier'] : null;
+      return id == machineIdentifier;
+    }
+    if (body is String) {
+      final match =
+          RegExp(r'machineIdentifier="([^"]*)"').firstMatch(body);
+      if (match != null) return match[1] == machineIdentifier;
+      // JSON delivered as text (no JSON content type on the answer).
+      return RegExp('"machineIdentifier"\\s*:\\s*"${RegExp.escape(machineIdentifier)}"')
+          .hasMatch(body);
+    }
+    return false;
   }
 
   /// Picks the saved server's best reachable connection again, from a fresh
@@ -179,8 +216,14 @@ class PlexServerDiscovery {
     if (!_client.isAuthenticated) return false;
     final servers = await fetchServers();
     final saved = _client.machineIdentifier;
+    final savedUri = _client.serverUri;
+    // With no saved id (an install from before it was stored), the server is
+    // the one that lists the saved address. Never "the first in the list":
+    // that can be a server somebody else shared with this account.
     final server = saved == null
-        ? servers.firstOrNull
+        ? servers
+            .where((s) => s.connections.any((c) => c.uri == savedUri))
+            .firstOrNull
         : servers.where((s) => s.machineIdentifier == saved).firstOrNull;
     if (server == null) {
       if (servers.isNotEmpty) {
@@ -194,6 +237,9 @@ class PlexServerDiscovery {
       }
       return false;
     }
+    // The server's token is renewed even if no connection answers below: a
+    // 401 from the server is one of the reasons this runs.
+    if (saved != null) await _client.saveServerToken(server.accessToken);
     return selectServer(server);
   }
 
@@ -214,6 +260,9 @@ class PlexServerDiscovery {
     AppLog.log('server',
         'selected connection ${index + 1}/${server.connections.length} '
         '($kind, ${conn.https ? 'https' : 'http'})');
+    // The token before the address: the next request to the new address must
+    // already carry this server's token, not the previous server's.
+    await _client.saveServerToken(server.accessToken);
     await _client.saveServerUri(uri);
     await _client.saveMachineIdentifier(server.machineIdentifier);
     // Re-point per-book storage at the newly selected server before anything

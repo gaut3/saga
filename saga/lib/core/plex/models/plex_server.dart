@@ -36,10 +36,20 @@ class PlexServer {
   final String machineIdentifier;
   final List<PlexConnection> connections;
 
+  /// The token plex.tv issues for this one server. It is what goes to the
+  /// server; the account token stays with plex.tv. Null when the list
+  /// carried none.
+  final String? accessToken;
+
+  /// False for a server someone else shared with this account.
+  final bool owned;
+
   PlexServer({
     required this.name,
     required this.machineIdentifier,
     required this.connections,
+    this.accessToken,
+    this.owned = true,
   });
 
   factory PlexServer.fromJson(Map<String, dynamic> json) {
@@ -58,6 +68,11 @@ class PlexServer {
       // entry and keeps the rest of the list.
       machineIdentifier: json['clientIdentifier'] as String,
       connections: connections,
+      accessToken: switch (json['accessToken']) {
+        final String t when t.isNotEmpty => t,
+        _ => null,
+      },
+      owned: json['owned'] != false && json['owned'] != 0,
     );
   }
 }

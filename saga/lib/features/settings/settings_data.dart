@@ -101,17 +101,21 @@ class _DataPageState extends ConsumerState<_DataPage> {
 
       if (skipKeys == null || !mounted) return;
 
-      await ProgressBackup.restore(data, skipPositionKeys: skipKeys);
-      // Restore writes five stores; every surface gated on a revision has to
-      // hear about it, or the imported data stays invisible until a restart
-      // (collections and history did exactly that).
-      ref.read(completionRevisionProvider.notifier).state++;
-      ref.read(bookmarkRevisionProvider.notifier).state++;
-      ref.read(customCollectionRevisionProvider.notifier).state++;
-      ref.read(historyRevisionProvider.notifier).state++;
-      // Named bookmarks bypass the notifier on restore — drop its per-book
-      // caches so the player's bookmark sheet re-reads the store.
-      ref.invalidate(bookmarkNotifierProvider);
+      try {
+        await ProgressBackup.restore(data, skipPositionKeys: skipKeys);
+      } finally {
+        // Restore writes five stores; every surface gated on a revision has
+        // to hear about it, or the imported data stays invisible until a
+        // restart (collections and history did exactly that). In a finally:
+        // a restore that fails partway has still written what came before.
+        ref.read(completionRevisionProvider.notifier).state++;
+        ref.read(bookmarkRevisionProvider.notifier).state++;
+        ref.read(customCollectionRevisionProvider.notifier).state++;
+        ref.read(historyRevisionProvider.notifier).state++;
+        // Named bookmarks bypass the notifier on restore — drop its per-book
+        // caches so the player's bookmark sheet re-reads the store.
+        ref.invalidate(bookmarkNotifierProvider);
+      }
 
       AppLog.log('backup',
           'restored ${data.positions.length} positions '

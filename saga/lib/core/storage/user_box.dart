@@ -4,13 +4,18 @@ import '../diagnostics/app_log.dart';
 
 /// Opens a box of user data — the kind that cannot be re-derived if lost.
 ///
-/// Wipes and recreates only on decryption/corruption failures (wrong key on
-/// first run after a re-install). Anything else — I/O errors, a truncated file
-/// from an unclean OS kill — is rethrown so startup surfaces a real error
-/// instead of silently deleting positions, history or bookmarks over a
-/// transient failure. This was [BookmarkStore.init]'s behaviour alone while
-/// every other user-data box wiped on any `HiveError`; one function so the
-/// stores can't drift apart again.
+/// Wipes and recreates only when Hive itself reports a wrong key or
+/// corruption. Anything else (an I/O error, a lock) is rethrown so startup
+/// surfaces a real error instead of silently deleting positions, history or
+/// bookmarks over a transient failure. One function so the stores can't
+/// drift apart.
+///
+/// What this does not catch: Hive rarely throws for either case. A frame that
+/// fails its checksum (a torn write, or every frame under a wrong key) is
+/// taken for crash damage and the file is truncated there, silently. A torn
+/// last frame after a kill is the case that recovery exists for. The
+/// wrong-key case is kept out at the door instead: `loadHiveKey` never hands
+/// a new key to an install that already has boxes.
 ///
 /// Derived caches (chapters, cached tracks, book metadata, the timeline queue)
 /// keep the simpler wipe-on-any-error open — their contents re-fetch.
@@ -45,6 +50,29 @@ Future<Box> openCacheBox(String name, List<int> encKey) async {
     await Hive.deleteBoxFromDisk(name);
     return Hive.openBox(name, encryptionCipher: cipher);
   }
+}
+
+/// Holds a cache box to [max] entries: once over, deletes entries whose key
+/// isn't in [keep] until it is back at the limit. A cache that writes per
+/// book and never deletes grows for as long as the app is installed, and a
+/// Hive box is read into memory whole at every start.
+///
+/// Hive orders keys by value, not by age, so which unkept entries go is
+/// arbitrary. That is fine for a cache: each one re-fetches when its book is
+/// next opened. [keep] is for the entries that can't (the book in hand, books
+/// with a place or a download, which must still open with no server).
+///
+/// [keep] is only asked once the box is over the limit.
+Future<int> evictOver(Box box, int max, Set<String> Function() keep) async {
+  final excess = box.length - max;
+  if (excess <= 0) return 0;
+  final kept = keep();
+  final doomed = [
+    for (final k in box.keys)
+      if (!kept.contains(k.toString())) k,
+  ].take(excess).toList();
+  await box.deleteAll(doomed);
+  return doomed.length;
 }
 
 /// Caps a decoded-entry cache at [max] entries by dropping the oldest (Dart

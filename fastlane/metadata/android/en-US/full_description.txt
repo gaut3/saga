@@ -18,7 +18,7 @@ Privacy and security:
 
 • Plex token stored in the Android Keystore, never logged
 • Positions, history and settings AES-256 encrypted; downloads kept in app-private storage
-• Cloud backup disabled
+• Cloud backup and phone-to-phone transfer disabled
 • Every endpoint and permission documented in the README network audit
 
 Requires a Plex Media Server with an audiobook library. Saga is an independent, third-party client and is not affiliated with Plex Inc.

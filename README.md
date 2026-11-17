@@ -100,7 +100,7 @@ Saga isn't on the Play Store. Each [release](https://github.com/gaut3/saga/relea
 
 **Keep to the one you picked.** Android refuses an update that looks older than what's installed, and the arm64 build is numbered higher than the universal one, so the universal APK can't install over the arm64 one. Moving from universal to arm64 works.
 
-**To check a download,** compare it with the `.sha256` file beside it (`sha256sum -c saga-arm64-v8a.apk.sha256`), or confirm GitHub built it from this repository: `gh attestation verify saga-arm64-v8a.apk --repo gaut3/saga`.
+**To check a download,** compare it with the `.sha256` file beside it (`sha256sum -c saga-arm64-v8a.apk.sha256`), or confirm GitHub built it from this repository: `gh attestation verify saga-arm64-v8a.apk --repo gaut3/saga`. Every release is signed with the same certificate, SHA-256 `aebf195e125b791faaa3f93517964be7fa04a7bc282dbeae588c335eb2202242`; `apksigner verify --print-certs saga-arm64-v8a.apk` shows it, and Android refuses an update signed with any other.
 
 **To update,** install the new APK over the old one; your places, downloads and settings stay. Saga can tell you when there's a new release: Settings → About → "Check for updates automatically" (off by default). Or let [Obtainium](https://github.com/ImranR98/Obtainium) do it: add `https://github.com/gaut3/saga`, and set its APK filter to `arm64-v8a` if that's the build you use. Turn on "Include prereleases" only if you want betas.
 
@@ -150,7 +150,8 @@ Saga is local-first with no analytics, no crash reporting SDK, and nothing trans
 
 - Plex token stored in the Android Keystore via `flutter_secure_storage`
 - All local data (bookmarks, history, settings) encrypted with AES-256 via Hive
-- `android:allowBackup="false"` — data cannot be swept into Google cloud backup or pulled via `adb backup`
+- `android:allowBackup="false"`, and everything excluded from phone-to-phone transfer — data cannot be swept into Google cloud backup, pulled via `adb backup`, or copied to a new phone by Android's setup
+- Your account token goes to `plex.tv` only; a server is sent the token Plex issued for that one server
 - Progress export is credentials-free (no token, no server URL)
 - Diagnostics are written to a small local log for bug reports — never transmitted, and never sent anywhere by Saga at all. "Copy diagnostics" puts it on your clipboard; it goes somewhere only if you paste it there. Your token, your server's address and its machine identifier are masked before anything is written, and again when it's copied
 - No Google Fonts, no Firebase, no third-party analytics of any kind
@@ -179,7 +180,6 @@ Saga is local-first with no analytics, no crash reporting SDK, and nothing trans
 | `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_MEDIA_PLAYBACK` | Background playback with the media notification |
 | `WAKE_LOCK` | Keep playback alive with the screen off |
 | `POST_NOTIFICATIONS` | The media playback notification (Android 13+) |
-| `WRITE_EXTERNAL_STORAGE` (≤ Android 9) / `READ_EXTERNAL_STORAGE` (≤ Android 12) | Legacy download support on old Android versions; auto-dropped on modern Android |
 | `ACCESS_NETWORK_STATE` | Wi-Fi-only downloads setting (merged in by `connectivity_plus`; read-only network-type query) |
 
 The built manifest also carries `com.gaut3.saga.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, which AndroidX defines and grants to Saga alone so its own runtime broadcast receivers aren't reachable by other apps. It grants no access to anything on the device.

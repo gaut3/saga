@@ -153,16 +153,15 @@ class M4bChapterReader {
           Dio(BaseOptions(connectTimeout: const Duration(seconds: 10)));
 
       // Probe the first bytes for the file size and the moov/mdat order.
-      final probe = await dio.get<List<int>>(
-        url,
-        options: Options(
-          responseType: ResponseType.bytes,
-          headers: {'Range': 'bytes=0-511', ...?headers},
-          receiveTimeout: const Duration(seconds: 10),
-          sendTimeout: const Duration(seconds: 10),
-        ),
-      );
-      if (probe.data == null) return [];
+      // Only the headers are used. A server that ignores Range answers with
+      // the whole book, so the body is cut off after the 512 bytes asked for.
+      final probe = await _getBounded(dio, url,
+          range: 'bytes=0-511',
+          headers: headers,
+          limit: 512,
+          truncate: true,
+          receiveTimeout: const Duration(seconds: 10));
+      if (probe == null) return [];
 
       // Prefer Content-Range, but fall back to Content-Length: a server that
       // ignores the Range header (or answers 200) still tells us the size, and
@@ -563,13 +562,29 @@ class M4bChapterReader {
   /// Encoders vary — some omit the length prefix, and some write UTF-16 with a
   /// BOM — so this trusts the prefix only when it's consistent with the sample
   /// size, and sniffs the BOM.
-  static String _decodeTextSample(Uint8List sample) {
+  static String _decodeTextSample(Uint8List sample) =>
+      _clipTitle(_decodeTextSampleBytes(sample));
+
+  /// A chapter title is a line of text. The format allows 64 KB per title
+  /// and 5000 titles can point at the same bytes, so an uncapped title let a
+  /// 4 MB file become hundreds of megabytes of strings, then get saved.
+  static const _maxTitleBytes = 1024;
+  static const _maxTitleLength = 200;
+
+  static String _clipTitle(String title) => title.length > _maxTitleLength
+      ? title.substring(0, _maxTitleLength)
+      : title;
+
+  static String _decodeTextSampleBytes(Uint8List sample) {
     var bytes = sample;
     if (bytes.length >= 2) {
       final declared = (bytes[0] << 8) | bytes[1];
       if (declared <= bytes.length - 2) {
         bytes = bytes.sublist(2, 2 + declared);
       }
+    }
+    if (bytes.length > _maxTitleBytes) {
+      bytes = Uint8List.sublistView(bytes, 0, _maxTitleBytes);
     }
     if (bytes.length >= 2) {
       final b0 = bytes[0], b1 = bytes[1];
@@ -695,27 +710,79 @@ class M4bChapterReader {
     int to, {
     Map<String, String>? headers,
   }) async {
+    // A server that ignores Range answers 200 with the whole file, and one
+    // that over-answers a 206 can send any amount. Either is refused, and
+    // the body is dropped at the first byte past what was asked for.
+    final resp = await _getBounded(dio, url,
+        range: 'bytes=$from-${to - 1}',
+        headers: headers,
+        limit: to - from,
+        truncate: false,
+        receiveTimeout: const Duration(seconds: 30));
+    if (resp == null || resp.statusCode != 206) return null;
+    return resp.bytes;
+  }
+
+  /// One GET that can't take more memory or time than it was given.
+  ///
+  /// The body is read as a stream and abandoned once it passes [limit] bytes:
+  /// buffered whole, a server that ignored the range (or kept sending) put
+  /// the book, or an endless body, in memory before any check could run.
+  /// [truncate] keeps the first [limit] bytes of an over-long answer; without
+  /// it an over-long answer is null. The whole request also has a deadline:
+  /// `receiveTimeout` only measures silence, so a slow trickle never trips
+  /// it. Null on any failure.
+  static Future<({int? statusCode, Headers headers, Uint8List bytes})?>
+      _getBounded(
+    Dio dio,
+    String url, {
+    required String range,
+    required int limit,
+    required bool truncate,
+    required Duration receiveTimeout,
+    Map<String, String>? headers,
+  }) async {
+    final cancel = CancelToken();
     try {
-      final resp = await dio.get<List<int>>(
-        url,
-        options: Options(
-          responseType: ResponseType.bytes,
-          headers: {'Range': 'bytes=$from-${to - 1}', ...?headers},
-          receiveTimeout: const Duration(seconds: 30),
-          sendTimeout: const Duration(seconds: 10),
-        ),
-      );
-      final data = resp.data;
-      if (data == null) return null;
-      // A server that ignores Range answers 200 with the whole file. The walk
-      // issues dozens of 16-byte reads, and dio buffers each response in full
-      // before we see it — against such a server that is the book in memory
-      // per read, so refuse anything that isn't partial content (or that
-      // over-answers a 206) rather than copying it once more below.
-      if (resp.statusCode != 206 || data.length > to - from) return null;
-      return Uint8List.fromList(data);
+      return await () async {
+        final resp = await dio.get<ResponseBody>(
+          url,
+          cancelToken: cancel,
+          options: Options(
+            responseType: ResponseType.stream,
+            headers: {'Range': range, ...?headers},
+            receiveTimeout: receiveTimeout,
+            sendTimeout: const Duration(seconds: 10),
+          ),
+        );
+        final body = resp.data;
+        if (body == null) return null;
+        final bytes = BytesBuilder(copy: false);
+        var over = false;
+        await for (final chunk in body.stream) {
+          if (bytes.length + chunk.length > limit) {
+            over = true;
+            if (truncate) {
+              bytes.add(Uint8List.sublistView(
+                  chunk, 0, limit - bytes.length));
+            }
+            break;
+          }
+          bytes.add(chunk);
+        }
+        if (over && !truncate) return null;
+        return (
+          statusCode: resp.statusCode,
+          headers: resp.headers,
+          bytes: bytes.takeBytes(),
+        );
+      }()
+          .timeout(receiveTimeout * 2);
     } catch (_) {
       return null;
+    } finally {
+      // Ends the transfer if it is still running (over-long, or timed out).
+      if (!cancel.isCancelled) cancel.cancel();
     }
   }
 

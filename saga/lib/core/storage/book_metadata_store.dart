@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../plex/models/plex_book.dart';
@@ -28,6 +30,15 @@ class BookMetadataStore {
   static final Map<String, PlexBook?> _decoded = {};
   static const _maxCached = 64;
 
+  /// Ceilings for the box: one raw server record per book ever opened, all
+  /// read into memory at every start. Books with a place or a download are
+  /// never evicted (their record is what names them with no server).
+  static const _maxStored = 1000;
+
+  /// A book's record is a few kilobytes. One far past that (a server sending
+  /// an enormous summary or tag list) is shown this once and not kept.
+  static const _maxRecordChars = 64 * 1024;
+
   static Future<void> init(List<int> encKey) async {
     _decoded.clear();
     _box = await openCacheBox(_boxName, encKey);
@@ -51,7 +62,24 @@ class BookMetadataStore {
 
   static Future<void> save(
       String bookRatingKey, Map<String, dynamic> raw) async {
-    await _box.put(ServerScope.key(bookRatingKey), raw);
+    var tooLarge = false;
+    try {
+      tooLarge = jsonEncode(raw).length > _maxRecordChars;
+    } catch (_) {
+      // Not JSON-shaped: nothing a server answer should be. Not kept.
+      tooLarge = true;
+    }
+    if (!tooLarge) {
+      await _box.put(ServerScope.key(bookRatingKey), raw);
+      await evictOver(
+          _box,
+          _maxStored,
+          () => {
+                ServerScope.key(bookRatingKey),
+                ...BookmarkStore.rawKeys(),
+                ...BookDownloadStore.rawKeys(),
+              });
+    }
     try {
       rememberCapped(_decoded, _maxCached, bookRatingKey, PlexBook.fromJson(raw));
     } catch (_) {

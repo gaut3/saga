@@ -155,8 +155,27 @@ class CustomCollectionStore {
     await _box.put(collectionId, col.copyWith(bookRatingKeys: merged).toMap());
   }
 
+  /// Restores a collection from a backup without undoing what was done to
+  /// it since. One that isn't here is added whole. One that is keeps its
+  /// name, cover and order, and gains the backup's books it lacks, at the
+  /// end: a backup is older than the phone it is restored onto, and it used
+  /// to replace the collection outright, dropping books added since.
   static Future<void> restoreCollection(CustomCollection col) async {
-    await _box.put(col.id, col.toMap());
+    final local = get(col.id);
+    if (local == null) {
+      await _box.put(col.id, col.toMap());
+      return;
+    }
+    final missing = [
+      for (final k in col.bookRatingKeys)
+        if (!local.bookRatingKeys.contains(k)) k,
+    ];
+    if (missing.isEmpty) return;
+    await _box.put(
+        col.id,
+        local
+            .copyWith(bookRatingKeys: [...local.bookRatingKeys, ...missing])
+            .toMap());
   }
 
   static Future<void> setCover(String collectionId, String? thumbPath) async {

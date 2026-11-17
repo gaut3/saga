@@ -5,7 +5,9 @@ import 'package:saga/core/storage/book_download_store.dart';
 import 'package:saga/core/storage/book_metadata_store.dart';
 import 'package:saga/core/storage/bookmark_store.dart';
 import 'package:saga/core/storage/server_scope.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:saga/core/storage/settings_store.dart';
+import 'package:saga/core/storage/user_box.dart';
 
 import 'helpers/hive_test_env.dart';
 
@@ -152,5 +154,37 @@ void main() {
       expect(BookMetadataStore.load('11')?.narratorLabel, 'A Narrator',
           reason: "the primary's copy of the same number is untouched");
     });
+  });
+
+  test('a record far larger than a book\'s is shown once and not kept',
+      () async {
+    final huge = raw()..['summary'] = 'x' * (70 * 1024);
+    await BookMetadataStore.save('42', huge);
+    expect(BookMetadataStore.load('42')?.title, 'A book');
+    await coldRestartHive();
+    await BookMetadataStore.init(testEncKey);
+    expect(BookMetadataStore.load('42'), isNull);
+  });
+
+  test('a box over its ceiling loses entries nobody is keeping', () async {
+    final box = await Hive.openBox('evict_test');
+    for (var i = 0; i < 10; i++) {
+      await box.put('k$i', i);
+    }
+    var asked = 0;
+    Set<String> keep() {
+      asked++;
+      return {'k0', 'k1', 'k9'};
+    }
+
+    expect(await evictOver(box, 10, keep), 0);
+    expect(asked, 0, reason: 'under the ceiling the keep-set is not built');
+    expect(await evictOver(box, 6, keep), 4);
+    expect(box.length, 6);
+    expect(box.containsKey('k0') && box.containsKey('k1') && box.containsKey('k9'),
+        isTrue);
+    // Everything left is kept: the ceiling yields rather than delete those.
+    expect(await evictOver(box, 2, () => {for (final k in box.keys) '$k'}), 0);
+    expect(box.length, 6);
   });
 }
