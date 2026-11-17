@@ -5,7 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [1.3.0-beta.1] - 2026-11-17
+
+<!-- Beta only: delete this block for the final 1.3.0. -->
+> **This is a beta: a test version of 1.3.0, ahead of its release.** Most of all it needs trying with headphones and cars: whether the new "Headphone buttons skip" setting works depends on how your phone and earbuds send their button presses, and only a few have been tried.
+>
+> - **Before you install it, export a backup:** Settings → Data and backup → Export progress. Android won't put 1.2.0 back over a beta without uninstalling Saga first, and uninstalling erases your places. The final 1.3.0 installs over the beta and keeps everything.
+> - **Turn on "Check for updates automatically"** (Settings → About) to be told about the next beta and the final release.
+> - **If you also use another Plex app,** such as Prologue, check that your place there stays where you left it in Saga. Two of the fixes below change what Saga tells your Plex server.
+> - **If anything goes wrong, and above all if Saga loses your place,** please [open an issue](https://github.com/gaut3/saga/issues). Settings → About → Copy diagnostics puts a log on your clipboard, with your server address and sign-in removed, ready to paste in.
 
 ### Added
 - **Headphone buttons can skip instead of changing chapter.** Turn on Settings → Playback → "Headphone buttons skip", and next and previous on your headphones jump forward and back by your skip lengths, like the player's skip buttons, instead of moving to the next or previous chapter. Car buttons that work over Bluetooth do the same, since Android sends Saga the two the same way. The player's own buttons and Android Auto's screen still change chapter, and the setting is off unless you turn it on. Requested by [@Enagan](https://github.com/Enagan) ([#25](https://github.com/gaut3/saga/issues/25)).

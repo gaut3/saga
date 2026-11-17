@@ -21,7 +21,7 @@
 - Skip silence — quiet stretches in the narration go by faster, audio untouched (off by default)
 - Volume boost (+3/+6/+9 dB) for quiet narrators, applied on the phone after decoding — works on any book without touching your server's files (off by default)
 - Background playback with lock-screen and notification controls: skip back, play-pause and skip forward, the skip buttons showing your skip lengths
-- Skip back and skip forward set separately (15 / 30 / 45 / 60 s each), used by the player, the notification, the lock screen, the widget and Android Auto
+- Skip back and skip forward set separately (15 / 30 / 45 / 60 s each), used by the player, the notification, the lock screen, the widget and Android Auto, and if you like by your headphones' and car's next and previous buttons *(1.3.0 beta)*
 - Undo after a scrub or a jump to a chapter, bookmark or session
 - Sleep timer — fixed duration or end-of-current-chapter, easing the volume down over the last fifteen seconds instead of cutting off mid-word
 - Smart rewind on resume — proportional seek-back after a pause, capped at 60 s
