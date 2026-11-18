@@ -7,7 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-These come from a review of how Saga handles your sign-in, your server connection and your saved data. None of them was reported as a problem in use; several close gaps before they could become one.
+Apart from the book refresh, these come from a review of how Saga handles your sign-in, your server connection and your saved data. None of those was reported as a problem in use; several close gaps before they could become one.
+
+### Added
+- **Refresh a book from your server.** Saga reads a book's details and chapters the first time you open it and keeps them, so a book you corrected afterwards (new chapter titles, a fixed narrator or title) kept showing what it had before. The book screen has a new ⋯ button, top right, with **Refresh from server**, which fetches them again. A downloaded book plays the copy on your phone, so its chapters follow that copy: remove the download and download it again to get a changed file, and Saga now reads the chapters from the new copy when it does. Before, even that kept the old titles. ([#28](https://github.com/gaut3/saga/issues/28))
 
 ### Changed
 - **Each server now gets its own key, not the key to your Plex account.** When you sign in, Plex gives Saga a key to your whole account, and a separate key for each server you can reach. Saga used to send the account key to whichever server you had selected. For your own server that changes little, but for a server someone else shared with you it meant its owner could have read a key to your account and your own servers. Saga now sends a server only that server's key, and your account key goes to plex.tv alone. An existing install switches over the first time it opens after updating; you don't need to sign in again. If your library stops loading after this update, please [open an issue](https://github.com/gaut3/saga/issues).

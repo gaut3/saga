@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/audio/m4b_chapter_reader.dart';
+import '../../core/book_refresh.dart';
 import '../../core/cast/cast_service.dart';
 import '../../core/diagnostics/app_log.dart';
 import '../../core/plex/models/plex_track.dart';
@@ -430,6 +431,15 @@ class DownloadNotifier extends StateNotifier<DownloadState> {
 
       await DownloadStore.save(key, filePath);
       BookDownloadStore.recordDownload(bookRatingKey, key);
+
+      // The file on the phone is now the one being played, so a single-file
+      // book's chapters are read from it again. The stored ones may be from
+      // a file the server has since replaced (GitHub #28: corrected chapter
+      // titles never showed, even after deleting and downloading again).
+      // Before the state update, so no screen reads the old list first.
+      if (TrackCacheStore.trackCount(bookRatingKey) == 1) {
+        await rereadChapters(key, () => readEmbeddedChapters('file://$filePath'));
+      }
 
       // Take the cover while the server is still in reach. Nothing else caches
       // it until the player loads the book, so a book downloaded for a trip and

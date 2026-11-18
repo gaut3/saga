@@ -34,6 +34,7 @@ import 'player_provider.dart';
 import 'player_service.dart';
 import 'sessions_sheet.dart';
 import 'sleep_speed_sheets.dart';
+import '../../shared/widgets/header_tile.dart';
 
 class PlayerScreen extends ConsumerWidget {
   const PlayerScreen({super.key});
@@ -188,7 +189,7 @@ class _HeaderTiles extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (chapterCount > 1) ...[
-          _HeaderTile(
+          HeaderTile(
             icon: Icons.list_rounded,
             label: 'Chapters',
             onTap: () =>
@@ -196,7 +197,7 @@ class _HeaderTiles extends ConsumerWidget {
           ),
           const SizedBox(width: 8),
         ],
-        _HeaderTile(
+        HeaderTile(
           icon: Icons.bookmarks_outlined,
           label: 'Bookmarks',
           onTap: () {
@@ -207,7 +208,7 @@ class _HeaderTiles extends ConsumerWidget {
         ),
         if (hasSessions) ...[
           const SizedBox(width: 8),
-          _HeaderTile(
+          HeaderTile(
             icon: Icons.history_rounded,
             label: 'Sessions',
             onTap: () {
@@ -218,40 +219,6 @@ class _HeaderTiles extends ConsumerWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-/// 2.0's header tile: 38px, radius 10, 18px glyph. The tooltip is also the
-/// screen-reader label, since the tile has no text of its own.
-class _HeaderTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _HeaderTile({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: label,
-      child: Material(
-        color: SagaColors.surface,
-        borderRadius: BorderRadius.circular(10),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: SizedBox(
-            width: 38,
-            height: 38,
-            child: Icon(icon, size: 18, color: SagaColors.fg),
-          ),
-        ),
-      ),
     );
   }
 }

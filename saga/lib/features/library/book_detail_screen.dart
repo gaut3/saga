@@ -4,13 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/audio/m4b_chapter_reader.dart';
 import '../../core/book_progress.dart';
+import '../../core/book_refresh.dart';
 import '../../core/plex/models/plex_book.dart';
 import '../../core/plex/models/plex_track.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/providers.dart';
 import '../../shared/widgets/book_cover_image.dart';
 import '../../shared/widgets/confirm_dialog.dart';
+import '../../shared/widgets/header_tile.dart';
 import '../../shared/widgets/meta_chip.dart';
+import '../../shared/widgets/saga_sheet.dart';
+import '../../shared/widgets/saga_toast.dart';
 import 'effective_chapter_count.dart';
 import '../../core/storage/bookmark_store.dart';
 import '../../core/storage/completed_books_store.dart';
@@ -96,6 +100,77 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     );
   }
 
+  /// The rare actions (the 2.0 spec's ⋯). One so far.
+  void _showMoreSheet() {
+    // The tab navigator's inset: system bar, nav bar and mini player.
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    showSagaSheet<void>(
+      context,
+      (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: bottomPad),
+        child: ListTile(
+          leading: Icon(Icons.refresh, color: SagaColors.fgMuted),
+          title: const Text('Refresh from server'),
+          subtitle: Text('Fetch this book\'s details and chapters again',
+              style: TextStyle(color: SagaColors.fgMuted)),
+          onTap: () {
+            Navigator.of(ctx).pop();
+            _refreshFromServer();
+          },
+        ),
+      ),
+    );
+  }
+
+  bool _refreshing = false;
+
+  Future<void> _refreshFromServer() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    // The container, not `ref`: reading a book's chapters from a stream takes
+    // seconds, and the providers must drop their old values even if the
+    // screen has been left by then.
+    final container = ProviderScope.containerOf(context, listen: false);
+    final api = ref.read(plexApiProvider);
+    final key = widget.book.ratingKey;
+    showSagaToast(context, 'Refreshing from your server…');
+    final BookRefreshResult result;
+    try {
+      result = await refreshBook(
+        bookRatingKey: key,
+        fetchMetadata: api.fetchBookMetadataRaw,
+        fetchTracks: api.fetchTracks,
+        readChapters: (track) async {
+          final url = PlexClient.instance.resolveTrackUrl(track);
+          return url == null ? const [] : readEmbeddedChapters(url);
+        },
+      );
+    } finally {
+      _refreshing = false;
+    }
+    if (result != BookRefreshResult.unreachable) {
+      container.invalidate(bookMetadataProvider(key));
+      container.invalidate(tracksProvider(key));
+      // The whole family: a track's entry is filed under its URL, which
+      // differs between the stream and a download.
+      container.invalidate(m4bChaptersProvider);
+    }
+    if (!mounted) return;
+    switch (result) {
+      case BookRefreshResult.unreachable:
+        showSagaToast(context, "Couldn't reach your server. Nothing changed.",
+            isError: true);
+      case BookRefreshResult.refreshed:
+        showSagaToast(context, 'Book refreshed');
+      case BookRefreshResult.refreshedDownloaded:
+        showSagaToast(
+            context,
+            'Book refreshed. Chapters come from the download: remove it and '
+            'download again if the file changed.',
+            duration: const Duration(seconds: 6));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // This screen lives pushed on a tab stack, which survives in the
@@ -138,9 +213,36 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
             pinned: true,
             backgroundColor: SagaColors.surface,
             foregroundColor: SagaColors.fg,
+            // No Material tint once content scrolls under: it turned the
+            // collapsed bar a purple-grey that is no colour of the theme, and
+            // the tiles, which are `surface`, stood out against it as blocks.
+            surfaceTintColor: Colors.transparent,
+            scrolledUnderElevation: 0,
+            // Tiles, as on the player: expanded, both sit on the cover, where
+            // a bare glyph in the theme's ink can vanish. Collapsed, the bar
+            // is the same surface and they read as plain glyphs.
+            leading: Center(
+              child: HeaderTile(
+                icon: Icons.arrow_back,
+                label: 'Back',
+                onTap: () => Navigator.of(context).maybePop(),
+              ),
+            ),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Center(
+                  child: HeaderTile(
+                    icon: Icons.more_horiz,
+                    label: 'More',
+                    onTap: _showMoreSheet,
+                  ),
+                ),
+              ),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               titlePadding: const EdgeInsetsDirectional.only(
-                  start: 56, end: 16, bottom: 14),
+                  start: 56, end: 62, bottom: 14),
               title: Text(
                 book.title,
                 style: const TextStyle(fontSize: 14),

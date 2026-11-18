@@ -577,6 +577,15 @@ final searchBooksProvider =
   return ref.watch(plexApiProvider).searchBooks(sectionKey, query);
 });
 
+/// Reads a file's embedded chapters from where it is now: a `file://` path
+/// for a download, a stream URL otherwise. Empty when it has none, or when
+/// they couldn't be read.
+Future<List<M4bChapter>> readEmbeddedChapters(String urlOrPath) =>
+    urlOrPath.startsWith('file://')
+        ? M4bChapterReader.fromFile(urlOrPath.substring(7))
+        : M4bChapterReader.fromUrl(urlOrPath,
+            headers: PlexClient.instance.authHeaders);
+
 /// Reads embedded M4B chapters, with persistent cache.
 /// Pass param as "trackRatingKey|urlOrPath".
 /// On cache hit the network/file is skipped entirely.
@@ -594,9 +603,7 @@ final m4bChaptersProvider =
 
   if (urlOrPath.isEmpty) return [];
 
-  final chapters = urlOrPath.startsWith('file://')
-      ? await M4bChapterReader.fromFile(urlOrPath.substring(7))
-      : await M4bChapterReader.fromUrl(urlOrPath, headers: PlexClient.instance.authHeaders);
+  final chapters = await readEmbeddedChapters(urlOrPath);
 
   if (ratingKey.isNotEmpty && chapters.isNotEmpty) {
     await ChapterStore.save(ratingKey, chapters);
