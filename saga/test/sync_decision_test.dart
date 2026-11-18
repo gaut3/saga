@@ -12,13 +12,13 @@ final _tl = DateTime.utc(2026, 11, 13, 10);
 /// Local place L at [lMs], saved at Tl; server place S at [sMs], heard
 /// [heardAfterTl] after Tl.
 SyncAction _decide(int lMs, int sMs, Duration heardAfterTl,
-    {bool finished = false}) {
+    {bool finished = false, bool erased = false}) {
   final ServerPosition server = (
     fileIndex: 0,
     positionMs: sMs,
     absoluteMs: sMs,
     at: _tl.add(heardAfterTl),
-    offsetErased: false,
+    offsetErased: erased,
   );
   return decideSync(
     local: (absoluteMs: lMs, savedAt: _tl),
@@ -127,6 +127,27 @@ void main() {
           _decide(300 * _min, 400 * _min, const Duration(minutes: 5),
               finished: true),
           SyncAction.ask);
+    });
+  });
+
+  group('a server place with no offset is a guess', () {
+    test('newer and ahead, but the offset is gone: ask, never apply', () {
+      // The other device is in the last tenth of file 3, or the library
+      // keeps no offsets: "start of file 3" may be most of a file short.
+      expect(_decide(60 * _min, 120 * _min, const Duration(hours: 2),
+              erased: true),
+          SyncAction.ask);
+    });
+
+    test('it changes nothing else', () {
+      expect(_decide(60 * _min, 0, const Duration(hours: 2), erased: true),
+          SyncAction.ask);
+      expect(_decide(60 * _min, 120 * _min, const Duration(seconds: 30),
+              erased: true),
+          SyncAction.keep);
+      expect(_decide(60 * _min, 60 * _min + 5 * _s, const Duration(hours: 2),
+              erased: true),
+          SyncAction.same);
     });
   });
 

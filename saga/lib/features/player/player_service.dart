@@ -2583,7 +2583,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         ? await SaveAuditStore.record(
             at: DateTime.now(),
             trigger: trigger,
-            bookKey: report.bookKey,
+            // The bare key: the scoped one starts with the server's machine
+            // identifier, and these rows are shown on a page that gets
+            // screenshotted.
+            bookKey: bookKey,
             positionMs: absolutePositionMs,
             report: !reportAllowed
                 ? ReportStatus.held
@@ -2662,14 +2665,29 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
           // there, so replaying a report older than what another device
           // has sent since would move that device's place back. Fetched
           // fresh, never from the track cache.
-          final tracks = await _api.fetchTracks(entry.key);
-          final serverNewest = newestViewedAt(tracks.map((t) => t.lastViewedAt));
+          final sentAt = DateTime.now();
+          final read = await _api.fetchBookProgress(entry.key);
+          final serverNewest =
+              newestViewedAt(read.tracks.map((t) => t.lastViewedAt));
+          // The two times are on two clocks (rule 4): the answer's own
+          // `Date` says how far apart they are right now.
+          final serverDate = read.serverDate;
+          final skew = serverDate == null
+              ? null
+              : measureSkew(
+                  sentAt: sentAt,
+                  receivedAt: DateTime.now(),
+                  serverDate: serverDate);
+          if (skew != null) lastMeasuredSkew = skew;
+          final clock = skew == null
+              ? ''
+              : ', clock ${skew.isNegative ? '' : '+'}${skew.inSeconds} s';
           if (!shouldReplayQueued(
-              queuedAt: t.savedAt, serverNewest: serverNewest)) {
+              queuedAt: t.savedAt, serverNewest: serverNewest, skew: skew)) {
             AppLog.log('sync',
                 'queued report for book ${entry.key} dropped: queued '
                 '${_hms(t.savedAt)}, Plex last heard of the book '
-                '${_hms(serverNewest!)}');
+                '${_hms(serverNewest!)}$clock');
             await TimelineQueueStore.remove(entry.key);
             continue;
           }
@@ -2678,13 +2696,16 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
             key: t.key,
             positionMs: t.positionMs,
             durationMs: t.durationMs,
-            state: t.state,
+            // Never the state it was queued with: a `playing` from hours
+            // ago would show as a live play in Plex's dashboard. Plex
+            // stores the offset the same for every state (the probe).
+            state: 'stopped',
           );
           await TimelineQueueStore.remove(entry.key);
           AppLog.log('sync',
               'queued report for book ${entry.key} replayed (queued '
               '${_hms(t.savedAt)}, Plex last heard of the book '
-              '${serverNewest == null ? 'never' : _hms(serverNewest)})');
+              '${serverNewest == null ? 'never' : _hms(serverNewest)}$clock)');
         } on DioException catch (e) {
           // A 4xx means the server saw the report and refused it — retrying
           // can't fix that, and one such entry would stop the loop at itself

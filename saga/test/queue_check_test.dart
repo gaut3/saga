@@ -95,6 +95,53 @@ void main() {
     });
   });
 
+  group('shouldReplayQueued, two clocks', () {
+    // skew = how far the server's clock is ahead of the phone's.
+    final server = DateTime.utc(2026, 11, 13, 12);
+
+    test('a fast phone does not make an old report look new', () {
+      // Queued at a true 11:58, stamped 12:03 by a phone 5 min fast; the
+      // other device reported at 12:00. Raw clocks say "3 min newer".
+      final queuedAt = server.add(const Duration(minutes: 3));
+      expect(shouldReplayQueued(queuedAt: queuedAt, serverNewest: server),
+          isTrue,
+          reason: 'the uncorrected comparison this fixes');
+      expect(
+          shouldReplayQueued(
+              queuedAt: queuedAt,
+              serverNewest: server,
+              skew: -const Duration(minutes: 5)),
+          isFalse);
+    });
+
+    test('a slow phone does not get a newer report dropped', () {
+      // Queued at a true 12:10, stamped 12:00 by a phone 10 min slow.
+      expect(
+          shouldReplayQueued(
+              queuedAt: server,
+              serverNewest: server,
+              skew: const Duration(minutes: 10)),
+          isTrue);
+    });
+
+    test('the margin still applies after the correction', () {
+      expect(
+          shouldReplayQueued(
+              queuedAt: server,
+              serverNewest: server,
+              skew: const Duration(seconds: 60)),
+          isFalse);
+    });
+  });
+
+  test('a queued report is replayed as stopped, never as playing', () {
+    final src = File('lib/features/player/player_service.dart').readAsStringSync();
+    final start = src.indexOf('Future<void> _flushTimelineQueue()');
+    final body = src.substring(start, src.indexOf('\n  }\n', start));
+    expect(body, contains("state: 'stopped'"));
+    expect(body, isNot(contains('state: t.state')));
+  });
+
   test('the replay loop asks before it sends', () {
     final src = File('lib/features/player/player_service.dart')
         .readAsLinesSync()
@@ -102,7 +149,7 @@ void main() {
         .join('\n');
     final start = src.indexOf('Future<void> _flushTimelineQueue()');
     final body = src.substring(start, src.indexOf('\n  }\n', start));
-    final fetch = body.indexOf('_api.fetchTracks(');
+    final fetch = body.indexOf('_api.fetchBookProgress(');
     final ask = body.indexOf('shouldReplayQueued(');
     final send = body.indexOf('_api.reportTimeline(');
     expect(fetch, isNot(-1), reason: 'reads the book from Plex, not a cache');

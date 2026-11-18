@@ -23,21 +23,47 @@ void main() {
       // § Shipping dark: the beta notes may say how to turn shadow on, and a
       // public changelog makes "hidden" mean "documented".
       for (var i = -1; i <= SyncMode.values.length; i++) {
-        expect(effectiveSyncMode(prerelease: false, storedIndex: i),
-            SyncMode.off,
-            reason: 'stored $i');
+        for (final dev in [true, false]) {
+          expect(
+              effectiveSyncMode(
+                  prerelease: false, developerOptions: dev, storedIndex: i),
+              SyncMode.off,
+              reason: 'stored $i');
+        }
       }
     });
 
     test('a beta or dev build uses the stored mode', () {
       for (final m in SyncMode.values) {
-        expect(effectiveSyncMode(prerelease: true, storedIndex: m.index), m);
+        expect(
+            effectiveSyncMode(
+                prerelease: true, developerOptions: true, storedIndex: m.index),
+            m);
+      }
+    });
+
+    test('hidden developer options mean off, whatever is stored', () {
+      // The page is the only place the mode shows: hidden, a tester stayed
+      // in Live with no sign of it.
+      for (final m in SyncMode.values) {
+        expect(
+            effectiveSyncMode(
+                prerelease: true,
+                developerOptions: false,
+                storedIndex: m.index),
+            SyncMode.off);
       }
     });
 
     test('a stored value out of range is off', () {
-      expect(effectiveSyncMode(prerelease: true, storedIndex: 7), SyncMode.off);
-      expect(effectiveSyncMode(prerelease: true, storedIndex: -1), SyncMode.off);
+      expect(
+          effectiveSyncMode(
+              prerelease: true, developerOptions: true, storedIndex: 7),
+          SyncMode.off);
+      expect(
+          effectiveSyncMode(
+              prerelease: true, developerOptions: true, storedIndex: -1),
+          SyncMode.off);
     });
   });
 

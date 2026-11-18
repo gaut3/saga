@@ -17,9 +17,17 @@ enum SyncMode {
 /// version) is always [SyncMode.off], whatever is stored: the stored value is
 /// ignored there, not erased, so a tester moving from a beta to the release
 /// simply stops syncing, and finds the setting again on the next beta.
-SyncMode effectiveSyncMode(
-    {required bool prerelease, required int storedIndex}) {
-  if (!prerelease) return SyncMode.off;
+///
+/// Off too while developer options are hidden: the page is the only place
+/// the mode shows, and a tester who hid it stayed in Live with no sign of it
+/// anywhere. Hidden is ignored the same way, not erased: bringing the page
+/// back brings the mode back.
+SyncMode effectiveSyncMode({
+  required bool prerelease,
+  required bool developerOptions,
+  required int storedIndex,
+}) {
+  if (!prerelease || !developerOptions) return SyncMode.off;
   if (storedIndex < 0 || storedIndex >= SyncMode.values.length) {
     return SyncMode.off;
   }

@@ -22,3 +22,9 @@ int? plexViewOffsetMs(Object? ms) {
   if (ms is! num || !ms.isFinite || ms < 0) return null;
   return ms.round();
 }
+
+/// `viewCount` → a count, or null when absent or not a sane one.
+int? plexViewCount(Object? n) {
+  if (n is! num || !n.isFinite || n < 0) return null;
+  return n.round();
+}

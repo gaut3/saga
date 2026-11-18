@@ -20,6 +20,12 @@ class PlexTrack {
   final int? viewOffsetMs;
   final DateTime? lastViewedAt;
 
+  /// How many times Plex counts this file as played; null when it sent
+  /// none. Shown in developer options only, to find out whether a file
+  /// played to 90% loses its offset (sync design, open questions). No rule
+  /// reads it yet.
+  final int? viewCount;
+
   const PlexTrack({
     required this.ratingKey,
     required this.key,
@@ -33,6 +39,7 @@ class PlexTrack {
     this.partFile,
     this.viewOffsetMs,
     this.lastViewedAt,
+    this.viewCount,
   });
 
   /// Flat map for local storage (offline track cache) — deliberately our own
@@ -86,6 +93,7 @@ class PlexTrack {
       partFile: part?['file'] as String?,
       viewOffsetMs: plexViewOffsetMs(json['viewOffset']),
       lastViewedAt: plexLastViewedAt(json['lastViewedAt']),
+      viewCount: plexViewCount(json['viewCount']),
     );
   }
 }

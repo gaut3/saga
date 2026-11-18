@@ -21,6 +21,20 @@ DateTime? newestViewedAt(Iterable<DateTime?> perFile) {
 /// another device since, and a replay would overwrite it (arrival order
 /// wins on Plex). A dropped entry costs nothing: the place is still saved on
 /// this phone, and the book's next open settles it (rule 3).
-bool shouldReplayQueued(
-        {required DateTime queuedAt, required DateTime? serverNewest}) =>
-    serverNewest == null || queuedAt.isAfter(serverNewest.add(syncClockMargin));
+///
+/// [queuedAt] is the phone's clock and [serverNewest] the server's. [skew] is
+/// how far the server's clock is ahead of the phone's ([measureSkew], from
+/// the same answer [serverNewest] came in), and moves [queuedAt] onto the
+/// server's clock first. Without it a phone five minutes fast (or a server
+/// five minutes slow) made a queued report look five minutes newer than it
+/// was, and the margin alone covers one. Null when the answer carried no
+/// usable `Date`: the raw clocks are compared, as before.
+bool shouldReplayQueued({
+  required DateTime queuedAt,
+  required DateTime? serverNewest,
+  Duration? skew,
+}) =>
+    serverNewest == null ||
+    queuedAt
+        .add(skew ?? Duration.zero)
+        .isAfter(serverNewest.add(syncClockMargin));

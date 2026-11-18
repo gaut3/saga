@@ -28,10 +28,12 @@ class BuildChannel {
   static bool get developerOptions =>
       _prerelease && SettingsStore.developerOptions;
 
-  /// The sync mode in effect: the stored one on a beta or dev build, always
-  /// off on a release ([effectiveSyncMode]).
+  /// The sync mode in effect: the stored one on a beta or dev build with
+  /// developer options on, off otherwise ([effectiveSyncMode]).
   static SyncMode get syncMode => effectiveSyncMode(
-      prerelease: _prerelease, storedIndex: SettingsStore.syncModeIndex);
+      prerelease: _prerelease,
+      developerOptions: SettingsStore.developerOptions,
+      storedIndex: SettingsStore.syncModeIndex);
 
   static Future<void> init() async {
     try {

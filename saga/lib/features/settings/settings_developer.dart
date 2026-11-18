@@ -71,6 +71,12 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
   static String _clock(DateTime t) =>
       '${fmtTime(t)}:${t.second.toString().padLeft(2, '0')}';
 
+  /// A book key without its server scope. `ServerScope.key` puts the
+  /// server's machine identifier in front on any server but the first, and
+  /// this page shows neither that nor an address. Rows saved by an earlier
+  /// build still carry it.
+  static String _bareKey(String key) => key.substring(key.lastIndexOf('|') + 1);
+
   static final _mono = TextStyle(
       color: SagaColors.fg,
       fontSize: 14,
@@ -160,6 +166,11 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
           subtitle: 'Tap the version in About seven times to bring them back',
           onTap: () async {
             await SettingsStore.setDeveloperOptions(false);
+            // Nothing this page switched on outlives it: the sync mode reads
+            // as off while it's hidden (effectiveSyncMode), and this one is
+            // in memory.
+            PlexClient.simulateOffline = false;
+            AppLog.log('dev', 'developer options hidden: sync off');
             if (!mounted) return;
             Navigator.of(this.context).pop();
           },
@@ -301,7 +312,8 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
         final off = tracks[i].viewOffsetMs;
         lines.add('  file ${i + 1}: '
             '${off == null ? 'no offset' : fmtDuration(Duration(milliseconds: off))}'
-            ' · heard ${_clock(tracks[i].lastViewedAt!.toLocal())}');
+            ' · heard ${_clock(tracks[i].lastViewedAt!.toLocal())}'
+            '${tracks[i].viewCount == null ? '' : ' · played ×${tracks[i].viewCount}'}');
       }
       if (seen.length > 4) lines.add('  … ${seen.length - 4} more files');
     }
@@ -458,7 +470,7 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
       if (last != null) {
         lines.add('Last sent: ${last.state} at '
             '${fmtDuration(Duration(milliseconds: last.positionMs))} in its '
-            'file · book ${last.bookKey}');
+            'file · book ${_bareKey(last.bookKey)}');
       }
     }
     return Material(
@@ -504,7 +516,7 @@ class _DeveloperPageState extends ConsumerState<_DeveloperPage> {
       leading: Icon(icon, color: color),
       title: Text(title, style: _mono),
       subtitle: Text(
-          '${s.trigger}${run ? ' ×${s.count}' : ''} · book ${s.bookKey} · '
+          '${s.trigger}${run ? ' ×${s.count}' : ''} · book ${_bareKey(s.bookKey)} · '
           '${_reportText(s)}',
           style: subtle),
     );

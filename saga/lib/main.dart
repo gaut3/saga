@@ -88,6 +88,14 @@ Future<void> _run() async {
     await NamedBookmarkStore.init(hiveKey);
     await PlaybackLogStore.init(hiveKey);
     await SettingsStore.init(hiveKey);
+    // A pasted log says which mode produced it. Only a beta or dev build
+    // has either setting; a release's launch line stays as it was.
+    if (BuildChannel.isPrerelease) {
+      AppLog.log(
+          'app',
+          'developer options ${BuildChannel.developerOptions ? 'on' : 'off'}'
+              ' · sync mode ${BuildChannel.syncMode.name}');
+    }
     await TimelineQueueStore.init(hiveKey);
     await TrackCacheStore.init(hiveKey);
     await WantToReadStore.init(hiveKey);

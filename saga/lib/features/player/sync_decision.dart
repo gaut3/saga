@@ -52,6 +52,7 @@ typedef SyncDecision = ({SyncAction action, String reason});
 /// | Plex knows nothing                     | same   |
 /// | \|S − L\| ≤ 10 s                        | same   |
 /// | Ts > Tl + 60 s, S ahead                | apply  |
+/// | Ts > Tl + 60 s, S ahead, offset erased | ask    |
 /// | Ts > Tl + 60 s, S behind               | ask    |
 /// | otherwise                              | keep   |
 ///
@@ -66,6 +67,12 @@ typedef SyncDecision = ({SyncAction action, String reason});
 /// A book finished here ([localFinished]) never gets `apply`: a sync never
 /// clears a finish on its own (rule 8). A newer server place there is
 /// offered, as `ask`.
+///
+/// A server place with no offset ([ServerPosition.offsetErased]) is a guess:
+/// "the start of that file" is right after a report under a minute, and up
+/// to a whole file short if Plex also drops the offset when a file is played
+/// to 90% (untested), or keeps none at all because the library's "Store
+/// track progress" is off. A guess is never taken silently: it asks.
 ///
 /// Rejected: silent last-write-wins (most "lost my place" reports), furthest
 /// wins (a stale report wins), asking on every difference (your own phone
@@ -96,6 +103,12 @@ SyncDecision decideSync({
   }
   if (localFinished) {
     return (action: SyncAction.ask, reason: 'finished here; Plex $where, $age');
+  }
+  if (server.offsetErased) {
+    return (
+      action: SyncAction.ask,
+      reason: 'Plex $where, $age, but has no offset for that file',
+    );
   }
   return (
     action: gapMs > 0 ? SyncAction.apply : SyncAction.ask,
