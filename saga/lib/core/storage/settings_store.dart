@@ -138,6 +138,24 @@ class SettingsStore {
   static Future<void> setDownloadWifiOnly(bool v) =>
       _box.put('downloadWifiOnly', v);
 
+  // Delete a book's download once it has been played to the end and another
+  // book is picked up (GitHub #29). Default OFF: it deletes files.
+  static bool get removeFinishedDownloads =>
+      _box.get('removeFinishedDownloads', defaultValue: false) as bool;
+
+  static Future<void> setRemoveFinishedDownloads(bool v) =>
+      _box.put('removeFinishedDownloads', v);
+
+  // Books played to the end whose download is waiting to be removed, as
+  // scoped storage keys (see finished_downloads.dart).
+  static List<String> get finishedDownloadsPending {
+    final raw = _box.get('finishedDownloadsPending');
+    return raw is List ? raw.whereType<String>().toList() : const [];
+  }
+
+  static Future<void> setFinishedDownloadsPending(List<String> keys) =>
+      _box.put('finishedDownloadsPending', keys);
+
   // Now-playing mark animation: 0 = reactive, 1 = gentle, 2 = pause bars.
   static int get markMotionIndex =>
       (_box.get('markMotion', defaultValue: 0) as num).toInt();

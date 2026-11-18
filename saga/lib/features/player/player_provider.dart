@@ -18,12 +18,14 @@ import '../../core/plex/rating_key.dart';
 import '../../core/providers.dart';
 import '../../core/storage/artwork_cache.dart';
 import '../../core/storage/book_download_store.dart';
+import '../../core/storage/book_metadata_store.dart';
 import '../../core/storage/download_store.dart';
 import '../../core/storage/server_scope.dart';
 import '../../core/storage/settings_store.dart';
 import '../../core/storage/track_cache_store.dart';
 import '../../shared/widgets/saga_toast.dart';
 import 'book_launch.dart';
+import 'finished_downloads.dart';
 import 'sync_prompt.dart';
 import 'play_next.dart';
 import 'player_service.dart';
@@ -35,8 +37,18 @@ final playerServiceProvider = Provider<AudioPlayerService>((ref) {
   final service = _serviceInstance!;
   service.onBookCompleted = () {
     ref.read(completionRevisionProvider.notifier).state++;
+    final finished = service.currentBookRatingKey;
+    if (finished != null) unawaited(noteFinishedDownload(finished));
     _maybeAutoAdvance(ref, service);
   };
+  // The finished book's download goes when the player holds something else
+  // (another book, or nothing after a dismissal), and once at startup for a
+  // finish the process didn't outlive. See finished_downloads.dart.
+  final loadedBookSub = service.mediaItem
+      .map((_) => service.currentBookRatingKey)
+      .distinct()
+      .listen((_) => _sweepFinishedDownloads(ref, service));
+  ref.onDispose(loadedBookSub.cancel);
   service.onBookmarkSaved = () {
     ref.read(bookmarkRevisionProvider.notifier).state++;
   };
@@ -117,6 +129,29 @@ final castServiceProvider = Provider<CastService>((ref) {
 });
 
 /// Seconds the finished panel counts down before the next book starts.
+Future<void> _sweepFinishedDownloads(
+    Ref ref, AudioPlayerService service) async {
+  try {
+    final removed = await sweepFinishedDownloads(
+      loadedBook: service.currentBookRatingKey,
+      delete: ref.read(downloadNotifierProvider.notifier).deleteBookByKeys,
+    );
+    if (removed.isEmpty) return;
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    final title = removed.length == 1
+        ? BookMetadataStore.load(removed.single)?.title
+        : null;
+    showSagaToast(
+        ctx,
+        removed.length > 1
+            ? 'Removed the downloads of ${removed.length} finished books'
+            : 'Removed the download of ${title ?? 'a finished book'}');
+  } catch (e) {
+    AppLog.log('download', 'finished-download sweep failed: $e');
+  }
+}
+
 const _kAutoAdvanceSeconds = 5;
 
 /// Starts the next book in the collection when one finishes, if the user has

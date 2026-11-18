@@ -12,6 +12,7 @@ class _DownloadsPage extends ConsumerStatefulWidget {
 
 class _DownloadsPageState extends ConsumerState<_DownloadsPage> {
   late bool _wifiOnly = SettingsStore.downloadWifiOnly;
+  late bool _removeFinished = SettingsStore.removeFinishedDownloads;
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +29,18 @@ class _DownloadsPageState extends ConsumerState<_DownloadsPage> {
               await SettingsStore.setDownloadWifiOnly(v);
               if (!mounted) return;
               setState(() => _wifiOnly = v);
+            },
+          ),
+          _SwitchTile(
+            icon: Icons.auto_delete_outlined,
+            title: 'Remove finished downloads',
+            subtitle: 'When you listen to the end of a book and move on to '
+                'another, its download is deleted',
+            value: _removeFinished,
+            onChanged: (v) async {
+              await SettingsStore.setRemoveFinishedDownloads(v);
+              if (!mounted) return;
+              setState(() => _removeFinished = v);
             },
           ),
           const _StorageTile(),
