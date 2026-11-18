@@ -121,14 +121,15 @@ jobs:
         run: |
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
           for apk in dist/saga.apk dist/saga-arm64-v8a.apk; do
-            # Every signer apksigner names, whatever it calls them: "Signer
-            # #1" or, from some versions, "Signer (minSdkVersion=…)". The
-            # first tag run with build-tools 37 matched no line under the
-            # "#1" form alone. One distinct digest must come out, and it
-            # must be Saga's: a second signer makes two lines and fails.
+            # Every certificate apksigner names, whatever it calls the
+            # signer: "Signer #1 certificate …" from build-tools 36,
+            # "V3.0 Signer: certificate …" from 37 (which is what failed the
+            # first two tag runs: the APK was signed correctly and the check
+            # read no line). One distinct digest must come out, and it must
+            # be Saga's: any other certificate makes two lines and fails.
             certs="$("$apksigner" verify --print-certs "$apk")"
             actual="$(printf '%s\n' "$certs" \
-              | sed -n 's/^Signer .*certificate SHA-256 digest: //p' | sort -u)"
+              | sed -n 's/^.*certificate SHA-256 digest: //p' | sort -u)"
             if [ "$actual" != "$EXPECTED_SHA256" ]; then
               # Certificates are public; this is what says why it failed.
               printf '%s\n' "$certs"
