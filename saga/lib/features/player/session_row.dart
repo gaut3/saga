@@ -147,7 +147,7 @@ class SessionRow extends ConsumerWidget {
                   Text(
                     where,
                     style:
-                        TextStyle(color: SagaColors.fgSubtle, fontSize: 12.5),
+                        TextStyle(color: SagaColors.fgSubtle, fontSize: 12),
                   ),
                 if (chapter != null)
                   Text(
@@ -155,7 +155,7 @@ class SessionRow extends ConsumerWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style:
-                        TextStyle(color: SagaColors.fgSubtle, fontSize: 12.5),
+                        TextStyle(color: SagaColors.fgSubtle, fontSize: 12),
                   ),
               ],
             ),

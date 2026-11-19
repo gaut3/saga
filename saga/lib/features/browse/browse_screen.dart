@@ -165,7 +165,7 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
           trailing: active && desc != null
               ? Text(isAsc ? ascLabel : descLabel,
                   style:
-                      TextStyle(color: SagaColors.accentText, fontSize: 12.5))
+                      TextStyle(color: SagaColors.accentText, fontSize: 12))
               : null,
           onTap: () {
             // Tapping the active option flips its direction; an inactive one
@@ -310,7 +310,7 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                 .read(narratorIndexProvider(widget.libraryKey).notifier)
                 .build(force: true),
             child: Text('Retry',
-                style: TextStyle(color: SagaColors.accentText, fontSize: 12.5)),
+                style: TextStyle(color: SagaColors.accentText, fontSize: 12)),
           ),
         ],
       ));
@@ -328,7 +328,7 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
           TextButton(
             onPressed: _ensureNarratorIndex,
             child: Text('Search narrators too',
-                style: TextStyle(color: SagaColors.accentText, fontSize: 12.5)),
+                style: TextStyle(color: SagaColors.accentText, fontSize: 12)),
           ),
         ],
       ));

@@ -187,7 +187,7 @@ class _DeviceSheetState extends ConsumerState<_DeviceSheet> {
       Divider(color: SagaColors.border, height: 1),
       const SizedBox(height: 16),
       Text('TV volume',
-          style: TextStyle(color: SagaColors.fgMuted, fontSize: 14.5)),
+          style: TextStyle(color: SagaColors.fgMuted, fontSize: 14)),
       Semantics(
         label: 'TV volume',
         child: Slider(
@@ -217,7 +217,7 @@ class _DeviceSheetState extends ConsumerState<_DeviceSheet> {
           },
           style: TextButton.styleFrom(foregroundColor: SagaColors.fgMuted),
           child: const Text('Stop casting',
-              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
         ),
       ),
     ];
@@ -291,7 +291,7 @@ class _DeviceRow extends StatelessWidget {
                       if (subtitle != null)
                         Text(subtitle!,
                             style: TextStyle(
-                                color: SagaColors.fgMuted, fontSize: 12.5)),
+                                color: SagaColors.fgMuted, fontSize: 12)),
                     ],
                   ),
                 ),
@@ -320,7 +320,7 @@ class _Chip extends StatelessWidget {
       ),
       // fg, not fgMuted: the AA floors are pinned on bg and surface, and
       // this sits on surfaceAlt.
-      child: Text(text, style: TextStyle(color: SagaColors.fg, fontSize: 12.5)),
+      child: Text(text, style: TextStyle(color: SagaColors.fg, fontSize: 12)),
     );
   }
 }

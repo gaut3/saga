@@ -693,7 +693,7 @@ class _NowPlayingCard extends StatelessWidget {
   static const _padding = EdgeInsets.fromLTRB(18, 14, 18, 16);
   static const _titleSize = 20.0;
   static const _titleHeight = 1.25;
-  static const _bookSize = 14.5;
+  static const _bookSize = 14.0;
   static const _bookHeight = 1.3;
   static const _chevronSize = 16.0;
 
@@ -1035,7 +1035,7 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
                       children: [
                         Text(fmtDuration(displayPos),
                             style: TextStyle(
-                                color: SagaColors.fgMuted, fontSize: 12.5)),
+                                color: SagaColors.fgMuted, fontSize: 12)),
                         // Remaining listening time at the current playback speed
                         // (the audiobook convention: 2 h left at 1.5× is really
                         // 1 h 20 m of your evening). Tap to toggle to book total.
@@ -1052,7 +1052,7 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
                                   ? fmtDuration(displayDur)
                                   : '-${fmtDuration(_remainingAtSpeed(displayPos, displayDur, speed))}',
                               style: TextStyle(
-                                  color: SagaColors.fgMuted, fontSize: 12.5),
+                                  color: SagaColors.fgMuted, fontSize: 12),
                             ),
                           ),
                         ),
@@ -1077,7 +1077,7 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                color: SagaColors.fgSubtle, fontSize: 12.5),
+                                color: SagaColors.fgSubtle, fontSize: 12),
                           ),
                         ),
                       ),

@@ -78,7 +78,7 @@ class _SessionsSheetState extends State<_SessionsSheet> {
             child: Text(
               'Tap the mark to hear where a session ended. '
               'Your place only moves when you tap Resume.',
-              style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12.5),
+              style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12),
             ),
           ),
           Expanded(

@@ -693,7 +693,7 @@ class _BookSessionPanelState extends State<_BookSessionPanel> {
         children: [
           Text(
             '${sessions.length} session${sessions.length == 1 ? '' : 's'}',
-            style: TextStyle(color: SagaColors.fgMuted, fontSize: 12.5),
+            style: TextStyle(color: SagaColors.fgMuted, fontSize: 12),
           ),
           for (final s in sessions)
             SessionRow(bookKey: widget.bookKey, session: s, showDay: false),

@@ -115,7 +115,7 @@ class _ResumeCardState extends ConsumerState<ResumeCard> {
                                     chapterLabel,
                                     style: TextStyle(
                                       color: SagaColors.fgMuted,
-                                      fontSize: 12.5,
+                                      fontSize: 12,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
