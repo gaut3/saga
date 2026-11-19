@@ -1267,8 +1267,7 @@ class _BottomActions extends ConsumerWidget {
                   if (!isActive && defaultMinutes != 0) {
                     _startDefaultSleepTimer(context, ref, defaultMinutes);
                   } else {
-                    showSleepTimerSheet(context, ref, isActive,
-                        service: service);
+                    showSleepTimerSheet(context, service: service);
                   }
                 },
               ),

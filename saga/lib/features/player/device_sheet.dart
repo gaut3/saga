@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/cast/cast_service.dart';
 import '../../core/theme/saga_theme.dart';
+import '../../shared/widgets/choice_row.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_sheet.dart';
 import '../../shared/widgets/saga_toast.dart';
@@ -88,7 +89,7 @@ class _DeviceSheetState extends ConsumerState<_DeviceSheet> {
         .toList();
 
     final rows = <Widget>[
-      _DeviceRow(
+      ChoiceRow(
         icon: Icons.smartphone_outlined,
         title: 'This phone',
         subtitle: 'Speaker or headphones',
@@ -101,7 +102,7 @@ class _DeviceSheetState extends ConsumerState<_DeviceSheet> {
         },
       ),
       if (connected)
-        _DeviceRow(
+        ChoiceRow(
           icon: Icons.tv_outlined,
           title: deviceName ?? 'Cast device',
           subtitle: casting ? 'Playing here' : 'Connected',
@@ -109,7 +110,7 @@ class _DeviceSheetState extends ConsumerState<_DeviceSheet> {
           onTap: () {},
         ),
       if (state == CastState.connecting)
-        _DeviceRow(
+        ChoiceRow(
           leading: const AnimatedSagaMark(
               size: 22, state: SagaMarkState.buffering),
           title: 'Connecting…',
@@ -117,7 +118,7 @@ class _DeviceSheetState extends ConsumerState<_DeviceSheet> {
           onTap: () {},
         ),
       for (final device in others)
-        _DeviceRow(
+        ChoiceRow(
           icon: Icons.tv_outlined,
           title: device.name,
           selected: false,
@@ -178,7 +179,7 @@ class _DeviceSheetState extends ConsumerState<_DeviceSheet> {
           if (state == CastState.idle) ...[
             const SizedBox(height: 14),
             Divider(color: SagaColors.border, height: 1),
-            _DeviceRow(
+            ChoiceRow(
               icon: Icons.headphones_outlined,
               title: 'Phone audio output',
               subtitle: 'Speaker, Bluetooth or wired',
@@ -245,87 +246,6 @@ class _DeviceSheetState extends ConsumerState<_DeviceSheet> {
 }
 
 /// A 56px "Play on" row: a 40px tile, the name, and a check when selected.
-class _DeviceRow extends StatelessWidget {
-  final IconData? icon;
-  final Widget? leading;
-  final String title;
-  final String? subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _DeviceRow({
-    this.icon,
-    this.leading,
-    required this.title,
-    this.subtitle,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      selected: selected,
-      button: true,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 56),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: selected ? SagaColors.accent : SagaColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  alignment: Alignment.center,
-                  child: leading ??
-                      Icon(icon,
-                          size: 22,
-                          color: selected
-                              ? SagaColors.accentFg
-                              : SagaColors.fgMuted),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color:
-                              selected ? SagaColors.accentText : SagaColors.fg,
-                          fontSize: 16,
-                          fontWeight:
-                              selected ? FontWeight.w600 : FontWeight.w400,
-                        ),
-                      ),
-                      if (subtitle != null)
-                        Text(subtitle!,
-                            style: TextStyle(
-                                color: SagaColors.fgMuted, fontSize: 12)),
-                    ],
-                  ),
-                ),
-                if (selected)
-                  Icon(Icons.check_rounded, color: SagaColors.accent, size: 20),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _Chip extends StatelessWidget {
   final String text;
   const _Chip(this.text);

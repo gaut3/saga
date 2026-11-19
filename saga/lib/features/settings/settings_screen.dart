@@ -35,7 +35,7 @@ import '../../core/update/update_checker.dart';
 import '../auth/server_selection_screen.dart';
 import '../home/history_shared.dart' show historyMonthAbbr;
 import '../player/player_provider.dart';
-import '../player/sleep_speed_sheets.dart' show showSpeedSheet;
+import '../player/sleep_speed_sheets.dart' show showSpeedSheet, showDefaultSleepTimerSheet;
 import '../../core/playback_speed.dart';
 import '../player/server_position.dart';
 import '../player/sync_decision.dart';

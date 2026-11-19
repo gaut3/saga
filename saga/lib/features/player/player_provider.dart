@@ -620,6 +620,19 @@ typedef _PlaybackPhase = ({bool playing, AudioProcessingState processing});
 const kEndOfChapterUnknownMessage =
     'Chapter length isn\'t known yet — try again in a moment.';
 
+/// A sleep countdown's time left after a step of [delta]: never under a
+/// minute (a step down must not be a cancel, or an instant pause) and never
+/// over [kMaxSleepTimer].
+Duration adjustedSleepRemaining(Duration remaining, Duration delta) {
+  final next = remaining + delta;
+  if (next < kMinSleepTimer) return kMinSleepTimer;
+  if (next > kMaxSleepTimer) return kMaxSleepTimer;
+  return next;
+}
+
+const kMinSleepTimer = Duration(minutes: 1);
+const kMaxSleepTimer = Duration(hours: 3);
+
 class SleepTimerNotifier extends StateNotifier<DateTime?> {
   // Fade the last moments of the countdown instead of cutting mid-sentence.
   // Floor of 0.05 rather than 0: the pause lands before silence, and a true
@@ -643,6 +656,7 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
   // End-of-chapter mode: what the target was computed from, so a seek or
   // speed change can recompute it. Null for a fixed-length timer.
   ({String? bookKey, List<M4bChapter>? chapters})? _chapterMode;
+  int? _presetMinutes;
   List<StreamSubscription<Object?>> _retargetSubs = const [];
   final AudioPlayerService _service;
 
@@ -655,8 +669,37 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
   void set(Duration duration) {
     _cancelAll();
     _service.logSleepTimer();
+    _presetMinutes = duration.inMinutes;
     _arm(duration);
     _watchPlayback();
+  }
+
+  /// The length a running timer was set with, until [adjust] moves it off
+  /// that; null for end of chapter. What the sheet marks as chosen.
+  int? get presetMinutes => state == null ? null : _presetMinutes;
+
+  bool get isEndOfChapter => state != null && _chapterMode != null;
+
+  /// Moves a running timed countdown by [delta], at once. Nothing for an
+  /// end-of-chapter timer: its end is the chapter's, not a length to tune.
+  void adjust(Duration delta) {
+    if (state == null || _chapterMode != null) return;
+    final r = remaining;
+    if (r == null) return;
+    final next = adjustedSleepRemaining(r, delta);
+    _presetMinutes = null;
+    // Stepping up out of the fade must bring the volume back (see _retarget).
+    _restoreVolume();
+    if (_pausedRemaining != null) {
+      // Frozen (paused): resuming re-arms with this.
+      _pausedRemaining = next;
+      _fadeBase = next < _fadeWindow ? next : _fadeWindow;
+      // The end time means nothing while frozen ([remaining] reads the
+      // frozen value); set anyway so watchers redraw.
+      state = DateTime.now().add(next);
+      return;
+    }
+    _arm(next);
   }
 
   /// Pauses at the end of the current chapter/track. Returns false — leaving
@@ -917,6 +960,7 @@ class SleepTimerNotifier extends StateNotifier<DateTime?> {
     }
     _retargetSubs = const [];
     _chapterMode = null;
+    _presetMinutes = null;
     _pausedRemaining = null;
     state = null;
     if (restoreVolume) _restoreVolume();

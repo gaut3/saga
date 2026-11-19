@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Add or take away time on a running sleep timer.** Open the sleep sheet while a timer counts down and the time left is at the top, with − and + either side: each tap moves it five minutes, at once, and the sheet stays open. So ten more minutes is two taps, not a cancel and a new timer. It won't go below one minute or above three hours. An end-of-chapter timer shows its time left there too, without the buttons, since it ends where the chapter does.
+
+### Changed
+- **The sleep timer sheet is easier to read.** The four lengths are a row of buttons, the running one filled in, and End of chapter is a row of its own above them, the same shapes the speed and Device sheets use. Default sleep timer, under Settings → Playback, opens a sheet of the same kind and now sits next to Default speed.
+
 ## [1.3.0-beta.3] - 2026-11-19
 
 <!-- Beta only: delete this block for the final 1.3.0. -->

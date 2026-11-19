@@ -11,15 +11,6 @@ class _PlaybackPage extends ConsumerStatefulWidget {
 class _PlaybackPageState extends ConsumerState<_PlaybackPage> {
   static const _skipOptions = [15, 30, 45, 60];
   static const _boostOptions = [0, 3, 6, 9];
-  static const _sleepTimerOptions = [
-    (label: 'Off', minutes: 0),
-    (label: '15 min', minutes: 15),
-    (label: '30 min', minutes: 30),
-    (label: '45 min', minutes: 45),
-    (label: '60 min', minutes: 60),
-    (label: 'End of chapter', minutes: -1),
-  ];
-
   static String _sleepTimerLabel(int minutes) {
     if (minutes == 0) return 'Off';
     if (minutes == -1) return 'End of chapter';
@@ -114,6 +105,19 @@ class _PlaybackPageState extends ConsumerState<_PlaybackPage> {
                     !SettingsStore.hasBookSpeed(bookKey)) {
                   player.setSpeed(v);
                 }
+              },
+            ),
+          ),
+          _SettingsTile(
+            icon: Icons.bedtime_outlined,
+            title: 'Default sleep timer',
+            subtitle: _sleepTimerLabel(_defaultSleepTimer),
+            onTap: () => showDefaultSleepTimerSheet(
+              context,
+              selected: _defaultSleepTimer,
+              onChanged: (m) async {
+                await SettingsStore.setDefaultSleepTimerMinutes(m);
+                if (mounted) setState(() => _defaultSleepTimer = m);
               },
             ),
           ),
@@ -225,42 +229,8 @@ class _PlaybackPageState extends ConsumerState<_PlaybackPage> {
               setState(() => _mediaButtonsSkip = v);
             },
           ),
-          _SettingsTile(
-            icon: Icons.bedtime_outlined,
-            title: 'Default sleep timer',
-            subtitle: _sleepTimerLabel(_defaultSleepTimer),
-            onTap: () => _showDefaultSleepTimerPicker(context),
-          ),
       ],
     );
-  }
-
-  void _showDefaultSleepTimerPicker(BuildContext context) {
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-    showSagaSheet(context, (ctx) => Padding(
-      padding: EdgeInsets.only(bottom: bottomPad),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SagaSheetTitle('Default sleep timer',
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
-          ..._sleepTimerOptions.map((opt) => ListTile(
-                selected: _defaultSleepTimer == opt.minutes,
-                title: Text(opt.label, style: TextStyle(color: SagaColors.fg)),
-                trailing: _defaultSleepTimer == opt.minutes
-                    ? Icon(Icons.check_rounded, color: SagaColors.accent)
-                    : null,
-                onTap: () async {
-                  await SettingsStore.setDefaultSleepTimerMinutes(opt.minutes);
-                  if (mounted) setState(() => _defaultSleepTimer = opt.minutes);
-                  if (ctx.mounted) Navigator.pop(ctx);
-                },
-              )),
-          const SizedBox(height: 8),
-        ],
-      ),
-    ));
   }
 }
 
