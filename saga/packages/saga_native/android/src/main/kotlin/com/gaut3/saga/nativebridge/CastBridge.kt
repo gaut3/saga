@@ -3,6 +3,7 @@ package com.gaut3.saga.nativebridge
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.mediarouter.app.SystemOutputSwitcherDialogController
 import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.CastMediaControlIntent
@@ -309,6 +310,15 @@ internal object CastBridge {
                 result.success(null)
             }
             "getStatus" -> result.success(statusMap())
+            // Android's own output picker (speaker, Bluetooth, wired). Android
+            // does the routing; false where the system has no such dialog.
+            "showOutputSwitcher" -> result.success(
+                try {
+                    SystemOutputSwitcherDialogController.showDialog(context)
+                } catch (e: Exception) {
+                    false
+                }
+            )
             "stopCasting" -> {
                 castContext?.sessionManager?.endCurrentSession(true)
                 result.success(null)

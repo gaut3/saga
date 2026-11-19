@@ -7,6 +7,7 @@ import '../../core/cast/cast_service.dart';
 import '../../core/theme/saga_theme.dart';
 import '../../shared/widgets/saga_mark.dart' show AnimatedSagaMark, SagaMarkState;
 import '../../shared/widgets/saga_sheet.dart';
+import '../../shared/widgets/saga_toast.dart';
 import 'player_provider.dart';
 import 'player_service.dart';
 
@@ -171,6 +172,25 @@ class _DeviceSheetState extends ConsumerState<_DeviceSheet> {
                 style: TextStyle(color: SagaColors.fgSubtle, fontSize: 12),
               ),
             ),
+          // Android's own picker: it does the routing, so Saga adds no way to
+          // lose a place. Only for the phone's audio, so not while casting; and
+          // below the Cast note, apart from the list of places to play on.
+          if (state == CastState.idle) ...[
+            const SizedBox(height: 14),
+            Divider(color: SagaColors.border, height: 1),
+            _DeviceRow(
+              icon: Icons.headphones_outlined,
+              title: 'Phone audio output',
+              subtitle: 'Speaker, Bluetooth or wired',
+              selected: false,
+              onTap: () async {
+                final shown = await _cast.showOutputSwitcher();
+                if (!shown && context.mounted) {
+                  showSagaToast(context, 'This phone has no output picker');
+                }
+              },
+            ),
+          ],
           if (connected) ..._castControls(service),
         ],
       ),

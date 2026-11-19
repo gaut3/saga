@@ -391,6 +391,18 @@ class CastService {
     }
   }
 
+  /// Opens Android's output picker (speaker, Bluetooth, wired) for the
+  /// phone's own audio. False when the system has none to show.
+  Future<bool> showOutputSwitcher() async {
+    try {
+      return await _channel.invokeMethod<bool>('showOutputSwitcher') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   /// Connects to the device; [stateStream] emits `connected` when the Cast
   /// session is up (or back to `idle` if the session fails to start).
   Future<void> selectDevice(CastDevice device) async {
