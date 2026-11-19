@@ -10,7 +10,6 @@ class _PlaybackPage extends ConsumerStatefulWidget {
 
 class _PlaybackPageState extends ConsumerState<_PlaybackPage> {
   static const _skipOptions = [15, 30, 45, 60];
-  static const _speedOptions = [0.75, 1.0, 1.25, 1.5, 2.0];
   static const _boostOptions = [0, 3, 6, 9];
   static const _sleepTimerOptions = [
     (label: 'Off', minutes: 0),
@@ -92,29 +91,31 @@ class _PlaybackPageState extends ConsumerState<_PlaybackPage> {
               setState(() => _skipForward = v);
             },
           ),
-          _SegmentedTile(
+          _SettingsTile(
             icon: Icons.speed,
             title: 'Default speed',
-            options: _speedOptions.map((s) => '${s}x').toList(),
-            selectedIndex:
-                _speedOptions.indexOf(_defaultSpeed).clamp(0, 4),
-            onChanged: (i) async {
-              final v = _speedOptions[i];
-              await SettingsStore.setDefaultSpeed(v);
-              if (!mounted) return;
-              setState(() => _defaultSpeed = v);
-              // Apply immediately if a player is active — but only to a
-              // book riding the default. A book with its own saved speed
-              // keeps it: applying the new default anyway audibly
-              // changed the live session while the stored per-book
-              // speed survived, so the next load snapped back.
-              final player = ref.read(playerServiceProvider);
-              final bookKey = player.currentBookRatingKey;
-              if (bookKey == null ||
-                  !SettingsStore.hasBookSpeed(bookKey)) {
-                player.setSpeed(v);
-              }
-            },
+            subtitle: '${fmtSpeed(_defaultSpeed)}×',
+            onTap: () => showSpeedSheet(
+              context,
+              title: 'Default speed',
+              speed: _defaultSpeed,
+              onChanged: (v) async {
+                await SettingsStore.setDefaultSpeed(v);
+                if (!mounted) return;
+                setState(() => _defaultSpeed = v);
+                // Apply immediately if a player is active — but only to a
+                // book riding the default. A book with its own saved speed
+                // keeps it: applying the new default anyway audibly
+                // changed the live session while the stored per-book
+                // speed survived, so the next load snapped back.
+                final player = ref.read(playerServiceProvider);
+                final bookKey = player.currentBookRatingKey;
+                if (bookKey == null ||
+                    !SettingsStore.hasBookSpeed(bookKey)) {
+                  player.setSpeed(v);
+                }
+              },
+            ),
           ),
           _SegmentedTile(
             icon: Icons.volume_up_rounded,

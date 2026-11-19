@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/playback_speed.dart';
 import '../../core/plex/plex_client.dart';
 import '../../core/providers.dart';
 import '../../core/storage/settings_store.dart';
@@ -10,48 +11,154 @@ import '../../shared/widgets/saga_toast.dart';
 import 'player_provider.dart';
 import 'player_service.dart';
 
-const _speeds = [0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
-
-/// Speed picker sheet — same pattern as the sleep-timer picker, replacing
-/// the old tap-to-cycle button so every action-row control opens a sheet.
-void showSpeedSheet(BuildContext context,
-    {required AudioPlayerService service, String? bookKey}) {
+/// Speed picker sheet, for the playing book and for the default in Settings:
+/// a fine-tune row in 0.05 steps over the presets. The steps apply at once
+/// and leave the sheet open, so the change is heard while tuning; a preset
+/// sets and closes.
+void showSpeedSheet(
+  BuildContext context, {
+  String title = 'Playback speed',
+  required double speed,
+  required ValueChanged<double> onChanged,
+}) {
   final bottomPad = MediaQuery.of(context).padding.bottom;
-  showSagaSheet<void>(context, (_) => Consumer(
-    builder: (ctx, ref, _) {
-      final current = ref.watch(playbackSpeedProvider).valueOrNull ??
-          service.player.speed;
-      return Padding(
-        padding: EdgeInsets.only(bottom: bottomPad + 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SagaSheetTitle('Playback speed',
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
-            ..._speeds.map((s) => ListTile(
-                  // Announced as "selected" — the check mark alone is silent.
-                  selected: current == s,
-                  title:
-                      Text('$s×', style: TextStyle(color: SagaColors.fg)),
-                  trailing: current == s
-                      ? Icon(Icons.check_rounded, color: SagaColors.accent)
+  showSagaSheet<void>(
+      context,
+      (_) => _SpeedSheet(
+            title: title,
+            initial: snapSpeed(speed),
+            onChanged: onChanged,
+            bottomPad: bottomPad,
+          ));
+}
+
+class _SpeedSheet extends StatefulWidget {
+  final String title;
+  final double initial;
+  final ValueChanged<double> onChanged;
+  final double bottomPad;
+
+  const _SpeedSheet({
+    required this.title,
+    required this.initial,
+    required this.onChanged,
+    required this.bottomPad,
+  });
+
+  @override
+  State<_SpeedSheet> createState() => _SpeedSheetState();
+}
+
+class _SpeedSheetState extends State<_SpeedSheet> {
+  late double _speed = widget.initial;
+
+  void _set(double speed) {
+    if (speed == _speed) return;
+    setState(() => _speed = speed);
+    widget.onChanged(speed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.only(bottom: widget.bottomPad + 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SagaSheetTitle(widget.title,
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _StepButton(
+                  icon: Icons.remove_rounded,
+                  label: 'Slower',
+                  onTap: _speed > kMinSpeed
+                      ? () => _set(stepSpeed(_speed, -1))
                       : null,
-                  onTap: () {
-                    // playbackSpeedProvider follows the service's own state,
-                    // so setting the speed is all the UI update there is.
-                    service.setSpeed(s);
-                    if (bookKey != null) {
-                      SettingsStore.setBookSpeed(bookKey, s);
-                    }
-                    Navigator.pop(ctx);
-                  },
-                )),
-          ],
+                ),
+                SizedBox(
+                  width: 120,
+                  // Read out on each step: the number is the only feedback
+                  // a step gives besides the audio.
+                  child: Semantics(
+                    liveRegion: true,
+                    label: 'Speed ${fmtSpeed(_speed)}×',
+                    excludeSemantics: true,
+                    child: Text(
+                      '${fmtSpeed(_speed)}×',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: SagaColors.fg,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
+                ),
+                _StepButton(
+                  icon: Icons.add_rounded,
+                  label: 'Faster',
+                  onTap: _speed < kMaxSpeed
+                      ? () => _set(stepSpeed(_speed, 1))
+                      : null,
+                ),
+              ],
+            ),
+          ),
+          ...kSpeedPresets.map((s) => ListTile(
+                // Announced as "selected" — the check mark alone is silent.
+                selected: _speed == s,
+                title: Text('${fmtSpeed(s)}×',
+                    style: TextStyle(color: SagaColors.fg)),
+                trailing: _speed == s
+                    ? Icon(Icons.check_rounded, color: SagaColors.accent)
+                    : null,
+                onTap: () {
+                  _set(s);
+                  Navigator.pop(context);
+                },
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+/// 48px so it can be tapped repeatedly without aiming; on `surfaceAlt`
+/// because the sheet itself is `surface`.
+class _StepButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  const _StepButton({required this.icon, required this.label, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: label,
+      child: Material(
+        color: SagaColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Icon(icon,
+                size: 22,
+                color: onTap == null ? SagaColors.fgSubtle : SagaColors.fg),
+          ),
         ),
-      );
-    },
-  ));
+      ),
+    );
+  }
 }
 
 void showSleepTimerSheet(BuildContext context, WidgetRef ref, bool isActive,

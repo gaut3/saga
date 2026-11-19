@@ -35,6 +35,8 @@ import '../../core/update/update_checker.dart';
 import '../auth/server_selection_screen.dart';
 import '../home/history_shared.dart' show historyMonthAbbr;
 import '../player/player_provider.dart';
+import '../player/sleep_speed_sheets.dart' show showSpeedSheet;
+import '../../core/playback_speed.dart';
 import '../player/server_position.dart';
 import '../player/sync_decision.dart';
 import '../player/sync_check.dart' show lastMeasuredSkew;
@@ -87,7 +89,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final sleep = SettingsStore.defaultSleepTimerMinutes;
     return [
       back == forward ? '${back}s skips' : '${back}s back · ${forward}s forward',
-      '${SettingsStore.defaultSpeed}x',
+      '${fmtSpeed(SettingsStore.defaultSpeed)}x',
       if (sleep == -1) 'end of chapter' else if (sleep > 0) '$sleep min timer',
     ].join(' · ');
   }

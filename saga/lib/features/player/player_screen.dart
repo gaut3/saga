@@ -34,6 +34,7 @@ import 'player_provider.dart';
 import 'player_service.dart';
 import 'sessions_sheet.dart';
 import 'sleep_speed_sheets.dart';
+import '../../core/playback_speed.dart';
 import '../../shared/widgets/header_tile.dart';
 
 class PlayerScreen extends ConsumerWidget {
@@ -1233,12 +1234,21 @@ class _BottomActions extends ConsumerWidget {
           children: [
             for (final button in [
               _ActionButton(
-                label: '${speed}x',
+                label: '${fmtSpeed(speed)}x',
                 icon: Icons.speed,
                 active: speed != 1.0,
-                semanticLabel: 'Playback speed: $speed×',
-                onTap: () =>
-                    showSpeedSheet(context, service: service, bookKey: bookKey),
+                semanticLabel: 'Playback speed: ${fmtSpeed(speed)}×',
+                // playbackSpeedProvider follows the service's own state,
+                // so setting the speed is all the UI update there is.
+                onTap: () => showSpeedSheet(
+                  context,
+                  speed: speed,
+                  onChanged: (s) {
+                    service.setSpeed(s);
+                    final key = bookKey;
+                    if (key != null) SettingsStore.setBookSpeed(key, s);
+                  },
+                ),
               ),
               _ActionButton(
                 label: 'Bookmark',

@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Fine-tune the playback speed.** The speed sheet has a new row at the top, with − and + either side of the current speed, which moves it in steps of 0.05 anywhere from 0.5× to 3.0×: 0.9× for a narrator who is a little too quick, 1.15× for one who is a little too slow. The speed changes as you tap and the sheet stays open, so you can hear each step; the seven speeds listed below still set and close as before. Default speed, under Settings → Playback, opens the same sheet, so the speed new books start at can be any of them too. Suggested by [@cscott0108](https://github.com/cscott0108) ([#30](https://github.com/gaut3/saga/issues/30)).
+
 ## [1.3.0-beta.2] - 2026-11-18
 
 <!-- Beta only: delete this block for the final 1.3.0. -->
