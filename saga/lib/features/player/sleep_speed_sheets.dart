@@ -69,7 +69,7 @@ class _SpeedSheetState extends State<_SpeedSheet> {
           SagaSheetTitle(widget.title,
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8)),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -110,19 +110,32 @@ class _SpeedSheetState extends State<_SpeedSheet> {
               ],
             ),
           ),
-          ...kSpeedPresets.map((s) => ListTile(
-                // Announced as "selected" — the check mark alone is silent.
-                selected: _speed == s,
-                title: Text('${fmtSpeed(s)}×',
-                    style: TextStyle(color: SagaColors.fg)),
-                trailing: _speed == s
-                    ? Icon(Icons.check_rounded, color: SagaColors.accent)
-                    : null,
-                onTap: () {
-                  _set(s);
-                  Navigator.pop(context);
-                },
-              )),
+          // Inset to the text margin like the Device sheet's dividers.
+          Divider(
+              color: SagaColors.border, height: 1, indent: 16, endIndent: 16),
+          // One row of tiles, not a list: the chosen speed is the filled
+          // one, found at a glance instead of by reading down to a check
+          // mark — and none is filled when the speed sits between them.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                for (final s in kSpeedPresets) ...[
+                  if (s != kSpeedPresets.first) const SizedBox(width: 6),
+                  Expanded(
+                    child: _PresetTile(
+                      speed: s,
+                      selected: _speed == s,
+                      onTap: () {
+                        _set(s);
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -245,4 +258,54 @@ void showSleepTimerSheet(BuildContext context, WidgetRef ref, bool isActive,
         );
       },
     ), scrollable: false);
+}
+
+/// A preset on the speed sheet. Filled with the accent when chosen, as the
+/// segments in Settings are.
+class _PresetTile extends StatelessWidget {
+  final double speed;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PresetTile(
+      {required this.speed, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${fmtSpeed(speed)}×',
+      excludeSemantics: true,
+      child: Material(
+        color: selected ? SagaColors.accent : SagaColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(10),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            height: 48,
+            child: Center(
+              // Seven share the width; at large text the label shrinks
+              // rather than wraps.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    fmtSpeed(speed),
+                    style: TextStyle(
+                      color: selected ? SagaColors.accentFg : SagaColors.fg,
+                      fontSize: 14,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
