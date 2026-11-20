@@ -86,4 +86,15 @@ void main() {
       );
     });
   });
+
+  group('maskAddress', () {
+    test('shows bullets for the host, not their percent-encoding', () {
+      expect(maskAddress('https://10-0-0-5.abc123.plex.direct:32400'),
+          'https://••••••••:32400');
+    });
+
+    test('keeps the scheme, drops a default port', () {
+      expect(maskAddress('http://192.168.1.20'), 'http://••••••••');
+    });
+  });
 }

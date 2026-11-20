@@ -13,6 +13,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - **The sleep timer sheet is easier to read.** The four lengths are a row of buttons, the running one filled in, and End of chapter is a row of its own above them, the same shapes the speed and Device sheets use. Default sleep timer, under Settings → Playback, opens a sheet of the same kind and now sits next to Default speed.
 
+### Fixed
+- **A hidden server address reads as dots.** With "Redact server address" on, Settings → Server showed the address as `https://%E2%80%A2%E2%80%A2…` instead of `https://••••••••`.
+
 ## [1.3.0-beta.3] - 2026-11-19
 
 <!-- Beta only: delete this block for the final 1.3.0. -->

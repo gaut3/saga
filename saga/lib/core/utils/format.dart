@@ -56,10 +56,14 @@ String relativeDayLabel(DateTime dt, {DateTime? now}) {
 
 /// Replaces the host of [uri] with bullets for privacy display.
 /// Protocol and port remain visible so the tile still reads as "connected".
+///
+/// Built by hand: `Uri.replace(host: '••••')` percent-encodes the bullets,
+/// and the tile read `https://%E2%80%A2%E2%80%A2…`.
 String maskAddress(String uri) {
   try {
     final parsed = Uri.parse(uri);
-    return parsed.replace(host: '••••••••').toString();
+    final port = parsed.hasPort ? ':${parsed.port}' : '';
+    return '${parsed.scheme}://••••••••$port';
   } catch (_) {
     return '[address hidden]';
   }
