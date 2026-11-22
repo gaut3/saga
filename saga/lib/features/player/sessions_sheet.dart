@@ -87,11 +87,14 @@ class _SessionsSheetState extends State<_SessionsSheet> {
                     child: Text('No sessions yet',
                         style: TextStyle(color: SagaColors.fgMuted)),
                   )
-                : ListView.builder(
+                : ListView.separated(
                     controller: ctrl,
                     padding: EdgeInsets.fromLTRB(
                         16, 0, 16, 24 + widget.bottomInset),
                     itemCount: sessions.length,
+                    // The list's own padding is the 16 inset already.
+                    separatorBuilder: (_, _) =>
+                        Divider(color: SagaColors.border, height: 1),
                     itemBuilder: (_, i) => SessionRow(
                       bookKey: widget.bookKey,
                       session: sessions[i],

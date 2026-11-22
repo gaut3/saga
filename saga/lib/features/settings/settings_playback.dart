@@ -273,7 +273,7 @@ class _PlayerAnimationTile extends StatelessWidget {
             // Shows the selected motion for real: live audio when something is
             // playing, otherwise a recorded speech trace.
             const _MotionPreview(),
-            ..._options.asMap().entries.map((e) {
+            ...sagaDivided(_options.asMap().entries.map((e) {
               final selected = localMotion == e.key;
               return ListTile(
                 selected: selected,
@@ -290,10 +290,14 @@ class _PlayerAnimationTile extends StatelessWidget {
                   setLocal(() => localMotion = e.key);
                 },
               );
-            }),
+            })),
             if (kDebugMode) _CaptureTraceTile(),
             if (localMotion == 0) ...[
-              Divider(color: SagaColors.border, height: 24),
+              Divider(
+                  color: SagaColors.border,
+                  height: 24,
+                  indent: 16,
+                  endIndent: 16),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                 child: Row(

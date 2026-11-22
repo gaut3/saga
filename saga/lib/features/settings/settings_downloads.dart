@@ -154,7 +154,7 @@ class _StorageTileState extends ConsumerState<_StorageTile> {
                   maxHeight: MediaQuery.of(ctx).size.height * 0.55),
               child: ListView(
                 shrinkWrap: true,
-                children: result.books.map((book) {
+                children: sagaDivided(result.books.map((book) {
                   final mb = (book.bytes / 1048576).toStringAsFixed(1);
                   return ListTile(
                     title: Text(book.title,
@@ -188,7 +188,7 @@ class _StorageTileState extends ConsumerState<_StorageTile> {
                       },
                     ),
                   );
-                }).toList(),
+                })),
               ),
             ),
             const SizedBox(height: 8),

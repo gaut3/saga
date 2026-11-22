@@ -191,6 +191,7 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
           children: [
             SagaSheetTitle('Sort',
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 4)),
+            ...sagaDivided([
             option(
                 label: 'Default (library order)',
                 asc: _SortOption.defaultOrder),
@@ -212,6 +213,7 @@ class _BrowseContentState extends ConsumerState<_BrowseContent> {
                 label: 'Narrator',
                 asc: _SortOption.byNarratorAsc,
                 desc: _SortOption.byNarratorDesc),
+            ]),
           ],
         ),
       );

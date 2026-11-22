@@ -102,10 +102,11 @@ class _M4bChapterList extends StatelessWidget {
       builder: (context, snap) {
         final pos = snap.data ?? Duration.zero;
         final activeIdx = _activeIndex(pos);
-        return ListView.builder(
+        return ListView.separated(
           controller: scrollController,
           padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
           itemCount: chapters.length,
+          separatorBuilder: (_, _) => const SagaSheetDivider(),
           itemBuilder: (context, i) {
             final chapter = chapters[i];
             final isActive = i == activeIdx;
@@ -170,11 +171,12 @@ class _PlexTrackList extends StatelessWidget {
       initialData: service.currentIndex,
       builder: (context, idxSnap) {
         final currentIdx = idxSnap.data ?? 0;
-        return ListView.builder(
+        return ListView.separated(
           controller: scrollController,
           padding:
               EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
           itemCount: tracks.length,
+          separatorBuilder: (_, _) => const SagaSheetDivider(),
           itemBuilder: (context, i) {
             final track = tracks[i];
             final isActive = i == currentIdx;

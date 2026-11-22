@@ -208,9 +208,10 @@ void showBookmarksListSheet(
                     ? Center(
                         child: Text('No bookmarks yet',
                             style: TextStyle(color: SagaColors.fgSubtle)))
-                    : ListView.builder(
+                    : ListView.separated(
                         controller: scrollController,
                         itemCount: bookmarks.length,
+                        separatorBuilder: (_, _) => const SagaSheetDivider(),
                         itemBuilder: (context, i) {
                           final bm = bookmarks[i];
                           return ListTile(

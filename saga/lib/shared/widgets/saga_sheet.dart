@@ -83,3 +83,23 @@ class SagaSheetTitle extends StatelessWidget {
     );
   }
 }
+
+/// The line between a sheet's rows: the border colour, inset 16 to the text
+/// margin, as the speed and sleep timer sheets draw it. One widget so every
+/// sheet's list reads the same.
+class SagaSheetDivider extends StatelessWidget {
+  const SagaSheetDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) => Divider(
+      color: SagaColors.border, height: 1, indent: 16, endIndent: 16);
+}
+
+/// [rows] with a [SagaSheetDivider] between each two, for a sheet that lists
+/// its rows in a Column or a plain ListView.
+List<Widget> sagaDivided(Iterable<Widget> rows) => [
+      for (final (i, row) in rows.indexed) ...[
+        if (i > 0) const SagaSheetDivider(),
+        row,
+      ],
+    ];

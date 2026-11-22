@@ -358,6 +358,7 @@ class _CollectionTile extends StatelessWidget {
                 onRename();
               },
             ),
+            const SagaSheetDivider(),
             ListTile(
               leading:
                   const Icon(Icons.delete_outline, color: Colors.redAccent),

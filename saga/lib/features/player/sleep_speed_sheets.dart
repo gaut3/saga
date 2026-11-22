@@ -290,6 +290,7 @@ class _SleepChoices extends StatelessWidget {
               selected: selected == 0,
               onTap: () => onPick(0),
             ),
+          if (showOff) Divider(color: SagaColors.border, height: 1),
           ChoiceRow(
             icon: Icons.skip_next_outlined,
             title: 'End of chapter',

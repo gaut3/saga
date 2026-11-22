@@ -52,7 +52,7 @@ Future<void> showCollectionPickerSheet(
                 child: ListView(
                   shrinkWrap: true,
                   children: [
-                    ...collections.map((col) {
+                    ...sagaDivided(collections.map((col) {
                       final selected = isSelected?.call(col) ?? false;
                       final count = col.bookRatingKeys.length;
                       return ListTile(
@@ -75,7 +75,7 @@ Future<void> showCollectionPickerSheet(
                           if (ctx.mounted) Navigator.pop(ctx);
                         },
                       );
-                    }),
+                    })),
                     const SizedBox(height: 8),
                   ],
                 ),

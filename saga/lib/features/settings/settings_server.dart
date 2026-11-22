@@ -92,7 +92,7 @@ class _LibraryPickerTile extends ConsumerWidget {
           children: [
             SagaSheetTitle('Select library',
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12)),
-            ...libraries.map((lib) {
+            ...sagaDivided(libraries.map((lib) {
               final isSelected = selectedKey == lib.key ||
                   (selectedKey == null && lib == libraries.first);
               return ListTile(
@@ -119,7 +119,7 @@ class _LibraryPickerTile extends ConsumerWidget {
                   Navigator.pop(context);
                 },
               );
-            }),
+            })),
           ],
         ),
       ), scrollable: false);
