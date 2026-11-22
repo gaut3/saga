@@ -20,6 +20,10 @@ const _notPrivateOutputs = {
 bool _isExternal(AudioDevice d) =>
     d.isOutput && !_notPrivateOutputs.contains(d.type);
 
+/// Whether losing these could leave the phone playing out loud, i.e. whether
+/// [leftOnlyPhoneOutputs] needs asking at all.
+bool lostPrivateOutput(Set<AudioDevice> removed) => removed.any(_isExternal);
+
 /// Whether a change of outputs has left the phone playing out loud: an output
 /// outside the phone went away and none is left (GitHub #31).
 ///
@@ -37,4 +41,4 @@ bool leftOnlyPhoneOutputs({
   required Set<AudioDevice> removed,
   required Set<AudioDevice> remaining,
 }) =>
-    removed.any(_isExternal) && !remaining.any(_isExternal);
+    lostPrivateOutput(removed) && !remaining.any(_isExternal);

@@ -390,14 +390,26 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// The unplug pause for when Android doesn't send "becoming noisy", as when
   /// Android Auto disconnects (GitHub #31). The rule is [leftOnlyPhoneOutputs].
   /// If the noisy signal did come, it has paused already and this does nothing.
+  /// Each check logs what it decided and what was left, so a book that kept
+  /// playing in a car shows whether the check ran and what it saw.
   Future<void> _pauseIfOnlyPhoneLeft(
       AudioSession session, Set<AudioDevice> removed) async {
+    if (!lostPrivateOutput(removed)) return;
     try {
       final remaining = await session.getDevices(includeInputs: false);
-      if (!_player.playing) return;
-      if (leftOnlyPhoneOutputs(removed: removed, remaining: remaining)) {
-        AppLog.log('playback', 'audio route → phone only, pausing');
+      final left = remaining
+          .where((d) => d.isOutput)
+          .map((d) => d.type.name)
+          .toSet();
+      final what =
+          'route check: left ${left.isEmpty ? 'nothing' : left.join(',')}';
+      if (!_player.playing) {
+        AppLog.log('playback', '$what → already paused');
+      } else if (leftOnlyPhoneOutputs(removed: removed, remaining: remaining)) {
+        AppLog.log('playback', '$what → pausing');
         _pauseFor('route lost');
+      } else {
+        AppLog.log('playback', '$what → still playing');
       }
     } catch (e) {
       AppLog.log('playback', 'route check failed: $e');
