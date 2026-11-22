@@ -16,6 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **A book's sessions in History open in place.** Tapping a book on the Day tab used to grow its session list out from the middle while the rows below slid down. Now the list fades in where it belongs.
 
 ### Fixed
+- **Leaving Android Auto pauses the book.** When the phone disconnected from the car, the book could carry on playing from the phone's speaker until you paused it. Saga pauses when your headphones go away because Android tells it they're going, and Android doesn't always say so when the car disconnects. Saga now also pauses whenever the last output outside the phone goes away, whether that's the car, Bluetooth headphones or a wired headset. A watch disconnecting or a call ending doesn't pause it, since the book's audio still has somewhere to go. Reported by [@Swervie99](https://github.com/Swervie99) ([#31](https://github.com/gaut3/saga/issues/31)).
 - **A hidden server address reads as dots.** With "Redact server address" on, Settings → Server showed the address as `https://%E2%80%A2%E2%80%A2…` instead of `https://••••••••`.
 
 ## [1.3.0-beta.3] - 2026-11-19

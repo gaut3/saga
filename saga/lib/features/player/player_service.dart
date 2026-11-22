@@ -31,6 +31,7 @@ import '../../core/storage/track_cache_store.dart';
 import 'book_launch.dart';
 import 'cast_queue.dart';
 import 'media_browse.dart';
+import 'output_loss.dart';
 import 'resume_rewind.dart';
 import 'session_restore.dart';
 import 'track_audio_source.dart';
@@ -370,6 +371,9 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
             'audio route: ${added.isEmpty ? '' : '+$added '}'
                 '${removed.isEmpty ? '' : '-$removed '}'
                 '(playing: ${_player.playing})');
+        if (removed.isNotEmpty && _player.playing) {
+          unawaited(_pauseIfOnlyPhoneLeft(session, event.devicesRemoved));
+        }
       }, onError: (Object e, StackTrace st) {
         AppLog.log('playback', 'listener error: $e');
       });
@@ -380,6 +384,23 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
         await Future<void>.delayed(const Duration(seconds: 2));
         await _setUpAudioSession(isRetry: true);
       }
+    }
+  }
+
+  /// The unplug pause for when Android doesn't send "becoming noisy", as when
+  /// Android Auto disconnects (GitHub #31). The rule is [leftOnlyPhoneOutputs].
+  /// If the noisy signal did come, it has paused already and this does nothing.
+  Future<void> _pauseIfOnlyPhoneLeft(
+      AudioSession session, Set<AudioDevice> removed) async {
+    try {
+      final remaining = await session.getDevices(includeInputs: false);
+      if (!_player.playing) return;
+      if (leftOnlyPhoneOutputs(removed: removed, remaining: remaining)) {
+        AppLog.log('playback', 'audio route → phone only, pausing');
+        _pauseFor('route lost');
+      }
+    } catch (e) {
+      AppLog.log('playback', 'route check failed: $e');
     }
   }
 
