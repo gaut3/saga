@@ -49,6 +49,19 @@ void main() {
         isFalse);
   });
 
+  test('the hands-free link never counts: it carries calls, not the book', () {
+    // Mid-drive blip on a car with A2DP (the 2026-11-20 log).
+    expect(
+        leftOnlyPhoneOutputs(removed: {sco}, remaining: {speaker, a2dp}),
+        isFalse);
+    // Getting in: SCO drops 2 ms before A2DP is listed (2026-11-21 21:38).
+    expect(leftOnlyPhoneOutputs(removed: {sco}, remaining: {speaker}),
+        isFalse);
+    // Headphones switched off with their hands-free link listed last.
+    expect(leftOnlyPhoneOutputs(removed: {a2dp}, remaining: {speaker, sco}),
+        isTrue);
+  });
+
   test('one of two Bluetooth devices going: keeps playing on the other', () {
     expect(
         leftOnlyPhoneOutputs(

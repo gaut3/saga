@@ -4,17 +4,21 @@
 
 import 'package:audio_session/audio_session.dart';
 
-/// Outputs that are part of the phone itself. Audio routed to one of these is
-/// audio the room can hear.
-const _phoneOutputs = {
+/// Outputs that don't take the book somewhere private: the phone's own, which
+/// the room can hear, and `bluetoothSco`, the hands-free link, which carries
+/// calls and never media. A car's hands-free link drops and comes back mid-drive
+/// (half a second, while its A2DP stays), and on connecting it can drop just
+/// before A2DP arrives; counting it would pause the book at either.
+const _notPrivateOutputs = {
   AudioDeviceType.builtInSpeaker,
   AudioDeviceType.builtInSpeakerSafe,
   AudioDeviceType.builtInEarpiece,
   AudioDeviceType.telephony,
+  AudioDeviceType.bluetoothSco,
 };
 
 bool _isExternal(AudioDevice d) =>
-    d.isOutput && !_phoneOutputs.contains(d.type);
+    d.isOutput && !_notPrivateOutputs.contains(d.type);
 
 /// Whether a change of outputs has left the phone playing out loud: an output
 /// outside the phone went away and none is left (GitHub #31).
