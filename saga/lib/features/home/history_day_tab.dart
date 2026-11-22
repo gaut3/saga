@@ -622,14 +622,17 @@ class _DayBookEntryState extends ConsumerState<_DayBookEntry> {
             ),
           ),
         ),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeInOut,
-          child: _expanded
-              ? _BookSessionPanel(
-                  bookKey: widget.bookKey, events: widget.events)
-              : const SizedBox.shrink(),
-        ),
+        // No size animation: nothing else in the app grows open, and
+        // AnimatedSize's centred clip slid the sessions in from their middle
+        // while the rows below crept down. The panel is just there, fading in.
+        if (_expanded)
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: const Duration(milliseconds: 150),
+            builder: (_, t, child) => Opacity(opacity: t, child: child),
+            child: _BookSessionPanel(
+                bookKey: widget.bookKey, events: widget.events),
+          ),
       ],
         ),
       ),

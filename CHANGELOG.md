@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - **The sleep timer sheet is easier to read.** The four lengths are a row of buttons, the running one filled in, and End of chapter is a row of its own above them, the same shapes the speed and Device sheets use. Default sleep timer, under Settings → Playback, opens a sheet of the same kind and now sits next to Default speed.
+- **A book's sessions in History open in place.** Tapping a book on the Day tab used to grow its session list out from the middle while the rows below slid down. Now the list fades in where it belongs.
 
 ### Fixed
 - **A hidden server address reads as dots.** With "Redact server address" on, Settings → Server showed the address as `https://%E2%80%A2%E2%80%A2…` instead of `https://••••••••`.
