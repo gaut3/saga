@@ -255,6 +255,7 @@ class _ConflictResolutionDialogState
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 280),
               child: ListView.separated(
+                primary: false,
                 shrinkWrap: true,
                 itemCount: widget.conflicts.length,
                 separatorBuilder: (_, _) => Divider(

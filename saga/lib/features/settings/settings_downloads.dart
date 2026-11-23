@@ -153,6 +153,7 @@ class _StorageTileState extends ConsumerState<_StorageTile> {
               constraints: BoxConstraints(
                   maxHeight: MediaQuery.of(ctx).size.height * 0.55),
               child: ListView(
+                primary: false,
                 shrinkWrap: true,
                 children: sagaDivided(result.books.map((book) {
                   final mb = (book.bytes / 1048576).toStringAsFixed(1);

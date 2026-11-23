@@ -154,4 +154,20 @@ void main() {
     final raw = RegExp(r"/library/(sections|metadata)/\$(?!\{_id\()");
     expect(raw.allMatches(api), isEmpty);
   });
+
+  test('a shrink-wrapped list is never the primary scroll view', () {
+    // A vertical ListView with no controller is primary, and Flutter gives
+    // it AlwaysScrollableScrollPhysics: it takes every vertical drag even
+    // with nothing to scroll. In a sheet that left only the handle (or the
+    // title) to pull the sheet down. A shrink-wrapped list sits inside
+    // something else, so it says `primary: false` or names a controller.
+    final lists = <String>[
+      for (final f in _libFiles())
+        for (final m in RegExp(r'\b(ListView|GridView)(\.\w+)?\(([^;]*?)shrinkWrap: true', dotAll: true)
+            .allMatches(_code(f)))
+          if (!RegExp(r'primary:|controller:').hasMatch(m.group(3)!))
+            _path(f),
+    ];
+    expect(lists, isEmpty);
+  });
 }

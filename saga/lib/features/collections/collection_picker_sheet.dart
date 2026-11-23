@@ -50,6 +50,7 @@ Future<void> showCollectionPickerSheet(
                       MediaQuery.of(ctx).size.height * 0.55 - bottomPad,
                 ),
                 child: ListView(
+                  primary: false,
                   shrinkWrap: true,
                   children: [
                     ...sagaDivided(collections.map((col) {
