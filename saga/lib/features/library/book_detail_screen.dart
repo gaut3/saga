@@ -870,15 +870,14 @@ class _ChapterListSliver extends ConsumerWidget {
               downloadState.completed.contains(track.ratingKey);
           final dlProgress =
               downloadState.progress[track.ratingKey];
-          final mins = track.durationMs ~/ 60000;
-          final secs =
-              ((track.durationMs % 60000) / 1000).round();
           return ListTile(
             leading: CircleAvatar(
               backgroundColor: isCurrent
                   ? SagaColors.accent
                   : SagaColors.surfaceAlt,
-              child: Text('${track.index}',
+              // Its place in the list, as the player's chapter sheet: Plex's
+              // own index is 0 on every file of a book merged from parts.
+              child: Text('${i + 1}',
                   style: TextStyle(
                       color: isCurrent ? SagaColors.accentFg : SagaColors.fgMuted,
                       fontSize: 12)),
@@ -889,8 +888,9 @@ class _ChapterListSliver extends ConsumerWidget {
                         ? SagaColors.accentText
                         : SagaColors.fg,
                     fontSize: 14)),
+            // "7:25:30", as the player's chapter sheet ("445m 30s" before).
             subtitle: Text(
-                '${mins}m ${secs.toString().padLeft(2, '0')}s',
+                fmtDuration(Duration(milliseconds: track.durationMs)),
                 style: TextStyle(color: SagaColors.fgMuted)),
             trailing: dlProgress != null
                 ? Semantics(
