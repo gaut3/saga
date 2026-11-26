@@ -26,6 +26,12 @@ class SwipeAwayPill extends StatefulWidget {
   /// Fired once the pill has left the screen.
   final VoidCallback onDismissed;
 
+  /// Fired the moment a swipe is certain to dismiss, before the pill flies
+  /// off. What the dismissal *means* starts here: the throw can take half a
+  /// second, and for that long the app would otherwise still act as if the
+  /// pill's subject were there.
+  final VoidCallback? onCommitted;
+
   /// Long-press handler. The swipe is unlabeled by design, so this is the
   /// discoverable, screen-reader-reachable route to the same thing — see
   /// `main_shell`'s options menu.
@@ -36,6 +42,7 @@ class SwipeAwayPill extends StatefulWidget {
   const SwipeAwayPill({
     super.key,
     required this.onDismissed,
+    this.onCommitted,
     required this.child,
     this.onLongPress,
   });
@@ -211,6 +218,7 @@ class _SwipeAwayPillState extends State<SwipeAwayPill>
     if (_unstuck && (at.abs() >= _commitDistance || flung)) {
       _dismissing = true;
       _catchUp.stop();
+      widget.onCommitted?.call();
       // Carry the throw out past the edge rather than tweening at a fixed rate.
       _offset
           .animateWith(SpringSimulation(

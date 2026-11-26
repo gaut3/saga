@@ -327,22 +327,9 @@ class _BottomArea extends ConsumerWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Mini player pill — only when something is loaded. stopAndClear()
-        // nulls mediaItem, which is what makes the pill (and the notification)
-        // actually go away after a swipe.
-        StreamBuilder<MediaItem?>(
-          stream: service.mediaItem,
-          builder: (context, snap) {
-            final item = snap.data;
-            if (item == null) return const SizedBox.shrink();
-            return SwipeAwayPill(
-              // Keyed on the book so dismiss state resets for the next one.
-              key: ValueKey(item.id),
-              onDismissed: service.stopAndClear,
-              onLongPress: () => _showPillOptions(context, service),
-              child: MiniPlayerPill(service: service, mediaItem: item),
-            );
-          },
+        _PillSlot(
+          service: service,
+          onLongPress: () => _showPillOptions(context, service),
         ),
         // Nav pill — gradient so content fades behind it
         Container(
@@ -530,4 +517,54 @@ class _NavProgressPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_NavProgressPainter old) => old.progress != progress;
+}
+
+/// The mini player pill's place above the nav bar: there only while
+/// something is loaded. `stopAndClear()` nulls `mediaItem`, which is what
+/// makes the pill (and the notification) go away after a swipe.
+///
+/// The session is cleared when the swipe is decided, not when the pill has
+/// finished flying off: for that half second the book still counted as
+/// loaded, and a tap on its Continue listening card opened the player
+/// without loading it, to be emptied when the pill landed. The pill thrown
+/// stays drawn ([_leaving]) until it's gone.
+class _PillSlot extends StatefulWidget {
+  final AudioPlayerService service;
+  final VoidCallback onLongPress;
+  const _PillSlot({required this.service, required this.onLongPress});
+
+  @override
+  State<_PillSlot> createState() => _PillSlotState();
+}
+
+class _PillSlotState extends State<_PillSlot> {
+  MediaItem? _leaving;
+  int _throws = 0;
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<MediaItem?>(
+        stream: widget.service.mediaItem,
+        builder: (context, snap) {
+          // Something loaded while the pill was flying: its own pill now.
+          // (Another book's replaces the thrown one, whose end never comes.)
+          if (snap.data != null) _leaving = null;
+          final item = snap.data ?? _leaving;
+          if (item == null) return const SizedBox.shrink();
+          return SwipeAwayPill(
+            // Keyed on the book so dismiss state resets for the next one,
+            // and on the throw, for the same book loaded again.
+            key: ValueKey((item.id, _throws)),
+            onCommitted: () {
+              setState(() => _leaving = item);
+              widget.service.stopAndClear();
+            },
+            onDismissed: () => setState(() {
+              _leaving = null;
+              _throws++;
+            }),
+            onLongPress: widget.onLongPress,
+            child: MiniPlayerPill(service: widget.service, mediaItem: item),
+          );
+        },
+      );
 }

@@ -248,4 +248,49 @@ void main() {
     await fastFlick(tester, kTouchSlop + unstick - 8);
     expect(dismissed(), 0);
   });
+
+  // The dismissal's meaning starts when the swipe is decided: the throw
+  // takes a while, and a book still "loaded" for that long let a tap on its
+  // card open a player that the landing pill then emptied.
+  testWidgets('says the swipe is decided before the pill has flown off',
+      (tester) async {
+    var committed = 0, dismissed = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: pillWidth,
+              child: SwipeAwayPill(
+                onCommitted: () => committed++,
+                onDismissed: () => dismissed++,
+                child: Material(
+                  child: InkWell(
+                    onTap: () {},
+                    child: const SizedBox(width: pillWidth, height: 64),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.byType(SwipeAwayPill)));
+    var at = Duration.zero;
+    for (var i = 0; i < 12; i++) {
+      at += const Duration(milliseconds: 24);
+      await gesture.moveBy(const Offset((kTouchSlop + commit + 30) / 12, 0),
+          timeStamp: at);
+      await tester.pump(const Duration(milliseconds: 24));
+    }
+    await gesture.up(timeStamp: at);
+    await tester.pump();
+    expect(committed, 1);
+    expect(dismissed, 0, reason: 'still flying');
+    await tester.pumpAndSettle();
+    expect((committed, dismissed), (1, 1));
+  });
 }

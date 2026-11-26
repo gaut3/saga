@@ -80,6 +80,10 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   bool _reloadInProgress = false;
   bool _restoringSession = false; // re-entry guard for _restoreLastSession
   bool _clearing = false; // re-entry guard for stopAndClear
+
+  /// Completes when the [stopAndClear] under way has finished; null when
+  /// none is. A load waits for it ([loadBook]).
+  Future<void>? _cleared;
   // True while paused *by* an audio interruption (call, alarm) rather than by
   // the user — the only case where interruption-end may auto-resume. Cleared
   // by any user-initiated play (see [play]).
@@ -489,6 +493,12 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     bool playWhenReady = false,
   }) async {
     if (tracks.isEmpty) throw ArgumentError('Cannot load a book with no tracks');
+
+    // A session being cleared (the pill swiped away) takes a moment: it
+    // saves the place and stops the player first. A load begun inside that
+    // moment would have its state wiped when the clear finished.
+    final cleared = _cleared;
+    if (cleared != null) await cleared;
 
     // With a TV connected the book goes there: the phone's player loads it
     // paused, as the place to come back to, and the TV gets the queue. Every
@@ -970,6 +980,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // A swipe and a media-button stop can both land; the second must no-op.
     if (_clearing) return;
     _clearing = true;
+    final cleared = Completer<void>();
+    _cleared = cleared.future;
     try {
       // The user asked for the session to be gone, so a throw in stop() must
       // not skip the teardown below — the pill and notification would survive
@@ -1001,6 +1013,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       AppLog.log('playback', 'session cleared by user');
     } finally {
       _clearing = false;
+      _cleared = null;
+      cleared.complete();
     }
   }
 
@@ -1915,7 +1929,7 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   Future<void> resumeBook(String bookRatingKey,
       {Future<List<PlexTrack>> Function()? loadTracks,
       bool inApp = false}) async {
-    if (_bookRatingKey == bookRatingKey) {
+    if (currentBookRatingKey == bookRatingKey) {
       await (inApp ? playFromApp() : play());
       return;
     }
@@ -2362,7 +2376,11 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   }
 
   AudioPlayer get player => _player;
-  String? get currentBookRatingKey => _bookRatingKey;
+  /// The loaded book, or null: also while the session is being cleared
+  /// ([stopAndClear]), when the book is on its way out. A tap on its card in
+  /// that moment took it for loaded and opened the player without loading
+  /// anything; the clear then emptied the session under the open player.
+  String? get currentBookRatingKey => _clearing ? null : _bookRatingKey;
 
   /// Where reports to Plex are held until, for the developer page: null when
   /// they go out ([ReportGate]).

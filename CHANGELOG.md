@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - **A book in several files lists them as 1, 2, 3 with their lengths in hours.** On the book screen, the files of a book that Plex had merged from separate parts were all numbered 0, and every file's length was given in minutes ("445m 30s"). They are now numbered in order and read "7:25:30", as in the player's chapter list.
+- **Tapping a book right after closing the mini player loads it.** Swiping the mini player away takes a moment to save your place and stop the player. Tapping that book's Continue listening card inside that moment opened an empty player, with no title or cover and the time left at zero. The card now waits for the close to finish and loads the book as usual. Your place was never affected.
 - **The Add to collection and Downloaded books sheets pull down from anywhere.** A swipe down on their list did nothing, so they only closed from the bar at the top or the title. A list now holds on to the swipe only when it is long enough to scroll.
 
 ## [1.3.0-beta.4] - 2026-11-22
