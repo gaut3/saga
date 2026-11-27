@@ -24,4 +24,16 @@ class SagaWidgetBridge {
   /// natively, since they arrive while the app may not be running.
   static Future<List<String>> takeLog() async =>
       (await _channel.invokeListMethod<String>('takeLog')) ?? const [];
+
+  /// Why the previous process ended, as Android recorded it ("killed for
+  /// memory at 11-27 03:55:40, was in the foreground service, 212 MB"), for
+  /// the diagnostics log. Null before Android 11, on iOS, and on a first
+  /// run. On this channel because it is the one every engine has.
+  static Future<String?> lastExit() async {
+    try {
+      return await _channel.invokeMethod<String>('lastExit');
+    } catch (_) {
+      return null;
+    }
+  }
 }

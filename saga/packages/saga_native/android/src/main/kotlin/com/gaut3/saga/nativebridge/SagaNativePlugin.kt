@@ -38,6 +38,7 @@ class SagaNativePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 result.success(null)
             }
             "takeLog" -> result.success(SagaWidget.takeLog(context))
+            "lastExit" -> result.success(LastExit.describe(context))
             else -> result.notImplemented()
         }
     }

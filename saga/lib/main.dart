@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:saga_native/saga_native.dart';
 
 import 'app.dart';
 import 'core/audio/audio_level.dart';
@@ -67,6 +68,10 @@ Future<void> _run() async {
   // first save already asks.
   await BuildChannel.init();
   AppLog.log('app', 'launch ${BuildChannel.version}'.trim());
+  // A crash in native code, or Android killing the process, leaves no line
+  // of ours: without this the log shows a second launch and nothing between.
+  final lastExit = await SagaWidgetBridge.lastExit();
+  if (lastExit != null) AppLog.log('app', 'previous exit: $lastExit');
 
   try {
     await Hive.initFlutter();
