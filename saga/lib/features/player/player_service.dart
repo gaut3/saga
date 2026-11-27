@@ -669,7 +669,12 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       }
       // Gen-guarded: a superseded load's finally must not reopen the save
       // window while the newer load is still mid-swap.
-      if (gen == _loadGeneration) _loadInProgress = false;
+      if (gen == _loadGeneration) {
+        _loadInProgress = false;
+        // Idle was published as loading while the load ran. If it failed
+        // and the player really is idle, say so now.
+        _broadcastState();
+      }
     }
     if (gen != _loadGeneration) return; // superseded by a newer load
     if (toTv) {
@@ -944,6 +949,12 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     // this stop (idle processing state) — there is deliberately no timer here.
     // A dead second implementation used to be cancelled on this line, which
     // read as "stopping clears the sleep timer" while clearing nothing.
+    // Every stop says so. It ends the media service, and the engine with it
+    // once Saga is off screen, and it can come from outside Saga: a stop
+    // command from a headset, a watch or the system reaches here with no
+    // other line. A book that "paused by itself" then logged nothing (#32).
+    AppLog.log('playback',
+        'stop (${_isPlaying ? 'was playing' : 'not playing'})');
     _progressTimer?.cancel();
     _pausedAt = DateTime.now();
     // Natural finish, media-button stop and swipe-away all end here, not in
@@ -2817,6 +2828,29 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
     );
   }
 
+  /// What the media service is told the player is doing.
+  ///
+  /// Idle in the middle of a load is published as loading. just_audio opens
+  /// every `setAudioSource` with a blank event, which reads as idle, and
+  /// audio_service answers a move to idle with `stopSelf()`. Swapping the
+  /// source under a loaded book (a session's Resume, a bookmark, History)
+  /// therefore left a playing service that was no longer started: alive only
+  /// while the activity stayed bound, and destroyed, the engine and the
+  /// audio with it, as soon as Android let the activity go (#32).
+  @visibleForTesting
+  static AudioProcessingState publishedProcessingState(
+      ProcessingState state,
+      {required bool loading}) {
+    return switch (state) {
+      ProcessingState.idle =>
+        loading ? AudioProcessingState.loading : AudioProcessingState.idle,
+      ProcessingState.loading => AudioProcessingState.loading,
+      ProcessingState.buffering => AudioProcessingState.buffering,
+      ProcessingState.ready => AudioProcessingState.ready,
+      ProcessingState.completed => AudioProcessingState.completed,
+    };
+  }
+
   void _broadcastState([PlaybackEvent? event]) {
     final playing = _isPlaying;
     final position = Duration(milliseconds: _trackPosMs);
@@ -2838,13 +2872,8 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
       androidCompactActionIndices: const [0, 1, 2],
       processingState: _castActive
           ? _castProcessing
-          : {
-              ProcessingState.idle: AudioProcessingState.idle,
-              ProcessingState.loading: AudioProcessingState.loading,
-              ProcessingState.buffering: AudioProcessingState.buffering,
-              ProcessingState.ready: AudioProcessingState.ready,
-              ProcessingState.completed: AudioProcessingState.completed,
-            }[_player.processingState]!,
+          : publishedProcessingState(_player.processingState,
+              loading: _loadInProgress),
       playing: playing,
       updatePosition: position,
       bufferedPosition: _castActive ? position : _player.bufferedPosition,
@@ -2889,6 +2918,14 @@ class AudioPlayerService extends BaseAudioHandler with SeekHandler {
   /// user request in the other direction.
   @override
   Future<void> onTaskRemoved() async {
+    AppLog.log('playback', 'task removed (swiped away or closed) → stop');
+    await stop();
+  }
+
+  // The base class's behaviour, plus a line saying where the stop came from.
+  @override
+  Future<void> onNotificationDeleted() async {
+    AppLog.log('playback', 'notification dismissed → stop');
     await stop();
   }
 }

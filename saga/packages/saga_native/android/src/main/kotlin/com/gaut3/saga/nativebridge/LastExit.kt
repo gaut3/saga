@@ -20,7 +20,15 @@ import java.util.Locale
  * its memory. Never the crash or ANR trace.
  */
 object LastExit {
+    // Lives as long as the process: a second ask means Dart started again in
+    // a process that never ended, which is audio_service building a new
+    // engine after disposing the last one. Android has no new exit to report
+    // then, and repeating the old one read as "the app was killed" (#32).
+    private var asked = false
+
     fun describe(context: Context): String? {
+        if (asked) return "none: same process, the Flutter engine was restarted"
+        asked = true
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         return try {
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
